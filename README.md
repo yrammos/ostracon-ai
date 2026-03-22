@@ -27,8 +27,8 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 ## Functionality
 
 1. Takes one or more PDF files as input.
-2. Extracts text from the first page (~450 words) and last ~150 words.
-3. Automatically runs OCR if the PDF appears to be scanned.
+2. Extracts text from the first page (~450 words) and the last page (~150 words).
+3. Runs OCR if necessary, after prompting the user to select the text language.
 4. Sends the extracted text to the Claude API with project guidelines and a reference template.
 5. Returns a properly formatted BibLaTeX-Chicago entry.
 6. Validates brace balance before saving.
