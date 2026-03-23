@@ -1,6 +1,6 @@
 # BibLaTeX-Chicago-Claude (a.k.a. “Ostracon”)
 
-A Claude-powered macOS tool for extracting bibliographic information from academic PDF files and generating BibLaTeX-Chicago entries in notes-and-bibliography style.
+A Claude-powered macOS agent for extracting bibliographic information from academic PDF files and generating BibLaTeX-Chicago entries in notes-and-bibliography style.
 
 ## Quick start
 
@@ -16,19 +16,19 @@ Then right-click any PDF in Finder and choose **Extract BibLaTeX-Chicago Bibliog
 
 ## Rationale
 
-[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the venerable bibliography style typically used in the humanities, celebrated for its attention to source and transmission history, various types of authorship, and detail in general. The notes-and-bibliography variant, in particular, relies on footnotes or endnotes rather than inline references, and is the more common one in music theory and musicology.
+[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission history, to various types of authorship, and to detail in general. In particular, the ”notes and bibliography” variant relies on footnotes or endnotes rather than inline (”author-date”) references, and is the more common one in music theory and musicology.
 
-Given the immense number of types and fields stipulated in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package, Zotero is hardly a viable bibliography manager for users of the style, with the otherwise excellent [Better BibTeX](https://retorque.re/zotero-better-bibtex/) extension only alleviating an unpleasant experience. On macOS, BibDesk is the only bibliography manager that elegantly negotiates the style's ontological complexity. Other writers avoid bibliography managers altogether and prefer to edit `.bib` files directly using a text editor.
+Given the immense number of types and fields stipulated in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package, Zotero is hardly a viable bibliography manager for users of the style, with the otherwise excellent [Better BibTeX](https://retorque.re/zotero-better-bibtex/) extension only alleviating a painful experience. For many writers, [BibDesk](https://bibdesk.sourceforge.io) is the only macOS bibliography manager that elegantly navigates the style's ontological complexity. Others avoid managers altogether and prefer to edit `.bib` files directly within a text editor.
 
-In either case, this tool aims to enhance BibDesk-based workflows with Zotero-like auto-fill capabilities for new bibliography entries. Thanks to its reliance on AI, prompted here with a mini-corpus of example bibliographic entries and a summary of BibLaTeX-Chicago’s specifications, this tool should not just match but actually outperform Zotero’s auto-fill performance in most cases.
+With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials. Thanks to its reliance on AI—prompted with a mini-corpus of bibliographic examples and a summary of BibLaTeX-Chicago’s specs—the agent should not only match Zotero but actually outperform it in most cases.
 
 Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context; it is left as a trivial exercise for the reader.
 
 ## Functionality
 
 1. Takes one or more PDF files as input.
-2. Extracts text from the first page (~450 words) and last ~150 words.
-3. Automatically runs OCR if the PDF appears to be scanned.
+2. Extracts text from the first page (~450 words) and the last page (~150 words).
+3. Runs OCR if necessary, after prompting the user to select the text language.
 4. Sends the extracted text to the Claude API with project guidelines and a reference template.
 5. Returns a properly formatted BibLaTeX-Chicago entry.
 6. Validates brace balance before saving.
@@ -75,7 +75,7 @@ failed_bib_file: "~/Desktop/biblio-failed.bib" # validation failures
 
 The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
 
-Set `notifications: true` to enable macOS notifications. When enabled, the tool sends notifications for batch progress updates and validation failures. Defaults to `false`.
+Set `notifications: true` to enable macOS notifications. When enabled, the agent sends notifications for batch progress updates and validation failures. Defaults to `false`.
 
 ### 4. Customize the extraction prompt
 
@@ -152,9 +152,9 @@ ostracon-ai/
 
 ## BibDesk integration
 
-By default the tool writes to the file set in `main_bib_file` (`config.yaml`), which you import into BibDesk manually. Each entry includes a `bdsk-file-1` bookmark so PDF links resolve correctly after import.
+By default the agent writes to the file set in `main_bib_file` (`config.yaml`), which you import into BibDesk manually. Each entry includes a `bdsk-file-1` bookmark so PDF links resolve correctly after import.
 
-Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The tool will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open) and immediately trigger BibDesk’s auto-file to move the PDF to your papers folder.
+Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The agent will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open) and immediately trigger BibDesk’s auto-file to move the PDF to your papers folder.
 
 ## Troubleshooting
 
@@ -172,7 +172,7 @@ Run `python3 install_service.py` and check System Settings → General → Login
 
 **OCR not working.**
 
-Install `ocrmypdf` via Homebrew. The tool will fall back to direct text extraction if OCR is unavailable. When a scanned PDF is detected, a language selection dialog will appear — pick the language of the document so Tesseract uses the correct model. In quiet/automation mode, the language defaults to `eng`; set `default_ocr_language` in `config.yaml` to override (e.g. `rus`, `deu`, `fra`).
+Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extraction if OCR is unavailable. When a scanned PDF is detected, a language selection dialog will appear — pick the language of the document so Tesseract uses the correct model. In quiet/automation mode, the language defaults to `eng`; set `default_ocr_language` in `config.yaml` to override (e.g. `rus`, `deu`, `fra`).
 
 ## Cost estimate
 
@@ -186,4 +186,4 @@ Using Claude Sonnet:
 
 ## License
 
-Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Free for personal use; attribution required for forks and modifications; commercial use prohibited.
+Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Free for personal use; attribution requested for forks and modifications; commercial use prohibited.
