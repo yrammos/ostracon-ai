@@ -1,6 +1,6 @@
 # BibLaTeX-Chicago-Claude (a.k.a. “Ostracon”)
 
-A Claude-powered macOS agent for extracting bibliographic information from academic PDF files and generating BibLaTeX-Chicago entries in notes-and-bibliography style.
+A Claude-powered macOS agent for generating BibLaTeX-Chicago entries from PDF files.
 
 ## Quick start
 
