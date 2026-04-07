@@ -69,8 +69,8 @@ Edit `config.yaml`:
 
 ```yaml
 anthropic_api_key: "sk-ant-..." # your Anthropic API key
-main_bib_file: "~/Desktop/biblio-staging.bib" # staging output
-failed_bib_file: "~/Desktop/biblio-failed.bib" # validation failures
+main_bib_file: "~/Desktop/biblio-staging.bib" # output file ("staging output")
+failed_bib_file: "~/Desktop/biblio-failed.bib" # error file
 ```
 
 The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
@@ -131,7 +131,7 @@ python biblio_agent.py --all
 python biblio_agent.py path/to/paper.pdf --output custom.bib
 ```
 
-## File structure
+## Project structure
 
 ```
 ostracon-ai/
