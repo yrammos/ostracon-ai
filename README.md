@@ -182,7 +182,7 @@ Using Claude Sonnet:
 
 ## “Ostracon”?
 
-> An ostracon (Greek: ὄστρακον ostrakon, plural ὄστρακα ostraka) is a piece of pottery (or stone), usually broken off from a vase or other earthenware vessel. In archaeology, ostraca may contain scratched-in words or other forms of writing which may give clues as to the time when the piece was in use.
+> An ostracon (Greek: ὄστρακον  /ós.tra.kon/, plural ὄστρακα  /ós.tra.ka/) is a piece of pottery (or stone), usually broken off from a vase or other earthenware vessel. In archaeology, ostraca may contain scratched-in words or other forms of writing which may give clues as to the time when the piece was in use.
 
 ## License
 
