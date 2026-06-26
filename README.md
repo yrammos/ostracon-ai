@@ -32,7 +32,7 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 4. Sends the extracted text to the Claude API with project guidelines and a reference template.
 5. Returns a properly formatted BibLaTeX-Chicago entry.
 6. Validates brace balance before saving.
-7. Saves the entry — with a BibDesk `bdsk-file-1` bookmark — either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file` in `config.yaml`).
+7. Saves the entry — with a BibDesk `bdsk-file` bookmark — either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file` in `config.yaml`).
 8. On validation failure, saves the raw entry to `failed_bib_file` and sends a macOS notification.
 
 With `autofile_bibdesk` disabled, the staging file can be periodically imported into BibDesk; PDF links will already be intact thanks to the embedded bookmark.
