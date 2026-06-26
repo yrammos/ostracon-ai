@@ -221,7 +221,7 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
             return bibtex_entry
 
         except Exception as e:
-            return f"Error calling Claude API: {e}"
+            return f"Error: {e}"
     
     def clean_bibtex(self, bibtex_entry):
         """Remove code fencing and surrounding prose from BibLaTeX entry if present."""
@@ -569,7 +569,7 @@ end tell'''
             # Save entry
             saved = self.save_entry(bibtex_entry, pdf_path)
             if not saved:
-                results['failed'].append((pdf_path.name, "brace validation failed"))
+                results['failed'].append((pdf_path.name, "save failed"))
                 continue
 
             # Move file if requested
