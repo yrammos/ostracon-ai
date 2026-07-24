@@ -201,9 +201,21 @@ Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extract
 
 ## Cost estimate
 
-Using Claude Sonnet:
+Costs are dominated by Claude API calls (`config.yaml`'s `model`, currently `claude-sonnet-4-6` at $3/$15 per 1M input/output tokens). Up to four calls happen per PDF, and the ~9,000 tokens of shared context (`CLAUDE.md` + `biblio-template.bib` + `biblatex-chicago-notes-ref.md`) is sent as a cached prompt prefix (`cache_control: {type: "ephemeral"}`), so only the first call in a run pays full price for it — every later call, including later PDFs in the same batch, reads it back at a 90% discount:
 
-- ~$0.02–$0.03 per PDF.
+| Call | Runs when | Approx. cost (cache hit) |
+|---|---|---|
+| Initial extraction | always | ~$0.044 (first PDF in a run) / ~$0.013 (later PDFs, context already cached) |
+| Grounding audit | always, if `enrich_missing_fields: true` (default) | ~$0.005 (doesn't use the shared context) |
+| Enrichment merge | only if required/desired fields are missing from the PDF | ~$0.007 |
+| Reconciliation | only if CrossRef/Scholar data conflicts with the extracted values | ~$0.008 |
+
+- **Best case** (clean, well-populated PDF): extraction + audit ≈ **$0.05/PDF** for the first PDF in a run, **~$0.02/PDF** for subsequent ones.
+- **Worst case** (missing fields, needs reconciliation): all four calls ≈ **$0.06/PDF** for the first PDF, **~$0.03/PDF** for subsequent ones.
+
+Since the Finder Quick Action is normally invoked on a multi-PDF selection in a single run (`biblio_agent.py --window --no-move <files...>`), most PDFs in practice land in the cheaper "subsequent" tier — only the very first PDF pays the full cache-write price. External API costs are negligible on top of this: CrossRef is free; the Google Scholar fallback (ScrapingDog) runs at roughly $0.0004/credit on the pay-as-you-go plan ($10 for 25,000 credits), and each lookup uses only a couple of credits.
+
+These figures are higher than the pipeline's original ~$0.02–$0.03/PDF estimate, reflecting the enrichment/audit/reconciliation calls added since — though caching claws back most of that increase for anything beyond the first PDF in a batch.
 
 ## “Ostracon”?
 

@@ -104,7 +104,44 @@ class BiblioAgent:
 
         return context
 
-    def build_prompt(self, pdf_text, context, pdf_metadata=None):
+    def _static_context_block(self, context):
+        """Build the static guidelines/template/reference text shared across
+        the extraction, enrichment, and reconciliation prompts.
+
+        Kept byte-identical across calls (same source files, same order) so
+        it can be cached as a stable prefix - see _cached_message_content().
+        """
+        parts = []
+        if context['claude_md']:
+            parts.append(f"<guidelines>\n{context['claude_md']}\n</guidelines>")
+        if context['template']:
+            parts.append(f"<reference_template>\n{context['template']}\n</reference_template>")
+        if context['ref']:
+            parts.append(f"<biblatex_chicago_reference>\n{context['ref']}\n</biblatex_chicago_reference>")
+        if not parts:
+            return None
+        return (
+            "Project guidelines, reference template, and biblatex-chicago field "
+            "reference for BibLaTeX-Chicago entries:\n\n" + "\n\n".join(parts)
+        )
+
+    def _cached_message_content(self, context, dynamic_text):
+        """Build a messages[].content value, marking the shared static
+        context as an ephemeral prompt-cache breakpoint when present.
+
+        Repeated calls within a run (and across PDFs in the same batch) reuse
+        this cached prefix instead of paying full input price for it on every
+        call.
+        """
+        static_block = self._static_context_block(context)
+        if not static_block:
+            return dynamic_text
+        return [
+            {"type": "text", "text": static_block, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": dynamic_text},
+        ]
+
+    def build_prompt(self, pdf_text, pdf_metadata=None):
         """Build the prompt for Claude."""
         prompt = f"""I need you to extract bibliographic information from a PDF and create a BibLaTeX entry using the biblatex-chicago package (notes and bibliography style).
 
@@ -126,33 +163,6 @@ excerpt's text won't (e.g. the file's own Author field):
 <pdf_file_metadata>
 {metadata_lines}
 </pdf_file_metadata>
-
-"""
-
-        if context['claude_md']:
-            prompt += f"""Here are the project guidelines:
-
-<guidelines>
-{context['claude_md']}
-</guidelines>
-
-"""
-
-        if context['template']:
-            prompt += f"""Here is a reference template showing the types and fields you should use:
-
-<reference_template>
-{context['template']}
-</reference_template>
-
-"""
-
-        if context['ref']:
-            prompt += f"""Here is a condensed reference for biblatex-chicago entry types and fields (notes and bibliography variant):
-
-<biblatex_chicago_reference>
-{context['ref']}
-</biblatex_chicago_reference>
 
 """
 
@@ -257,7 +267,7 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
         context = self.load_context_files()
 
         # Build prompt
-        prompt = self.build_prompt(pdf_text, context, pdf_metadata)
+        prompt = self.build_prompt(pdf_text, pdf_metadata)
 
         # Call Claude API
         self._log("   Sending to Claude...", 'info')
@@ -267,7 +277,7 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
                 model=self.config['model'],
                 max_tokens=self.config['max_tokens'],
                 messages=[
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": self._cached_message_content(context, prompt)}
                 ]
             )
 
@@ -287,7 +297,7 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
         except Exception as e:
             return f"Error: {e}"
 
-    def _build_enrich_prompt(self, entry, found_fields, context):
+    def _build_enrich_prompt(self, entry, found_fields):
         """Build a prompt asking Claude to merge externally-sourced fields
         into an entry without touching anything else."""
         fields_str = "\n".join(f"{k} = {v}" for k, v in found_fields.items())
@@ -306,13 +316,6 @@ Here is the current entry:
 </entry>
 
 """
-        if context['claude_md']:
-            prompt += f"<guidelines>\n{context['claude_md']}\n</guidelines>\n\n"
-        if context['template']:
-            prompt += f"<reference_template>\n{context['template']}\n</reference_template>\n\n"
-        if context['ref']:
-            prompt += f"<biblatex_chicago_reference>\n{context['ref']}\n</biblatex_chicago_reference>\n\n"
-
         prompt += """Add ONLY the supplementary fields listed above to the entry, formatted
 correctly per the guidelines above (e.g. single hyphens for page ranges, correct
 field names/casing). Do not change any existing field value. Do not add any
@@ -352,12 +355,12 @@ commentary."""
         self._log(f"   Enriched -- {summary}", 'info')
 
         context = self.load_context_files()
-        prompt = self._build_enrich_prompt(entry_text, found, context)
+        prompt = self._build_enrich_prompt(entry_text, found)
         try:
             message = self.client.messages.create(
                 model=self.config['model'],
                 max_tokens=self.config['max_tokens'],
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
             merged = self.clean_bibtex(message.content[0].text)
             valid, _ = self.validate_braces(merged)
@@ -434,7 +437,7 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
 
         return ungrounded
 
-    def _build_reconcile_prompt(self, entry, candidates, context):
+    def _build_reconcile_prompt(self, entry, candidates):
         """Build a prompt asking Claude to reconcile claimed-vs-verified field
         values using only the two given values - not its own background
         knowledge of the work - while still applying the project's own
@@ -458,13 +461,6 @@ same work:
 </entry>
 
 """
-        if context['claude_md']:
-            prompt += f"<guidelines>\n{context['claude_md']}\n</guidelines>\n\n"
-        if context['template']:
-            prompt += f"<reference_template>\n{context['template']}\n</reference_template>\n\n"
-        if context['ref']:
-            prompt += f"<biblatex_chicago_reference>\n{context['ref']}\n</biblatex_chicago_reference>\n\n"
-
         prompt += """For each field above, decide on the best final value using ONLY the two
 values given - do NOT draw on your own background/training knowledge of this
 work, even if you recognize it. Two cases:
@@ -490,12 +486,12 @@ corrected BibLaTeX entry, with no additional commentary."""
         the unchanged entry on any failure.
         """
         context = self.load_context_files()
-        prompt = self._build_reconcile_prompt(entry_text, candidates, context)
+        prompt = self._build_reconcile_prompt(entry_text, candidates)
         try:
             message = self.client.messages.create(
                 model=self.config['model'],
                 max_tokens=self.config['max_tokens'],
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
             merged = self.clean_bibtex(message.content[0].text)
             valid, _ = self.validate_braces(merged)
