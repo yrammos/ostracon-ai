@@ -4,25 +4,43 @@ Extract bibliographic text from PDF files.
 Extracts first N and last M words, with OCR fallback for scanned documents.
 """
 
+import os
 import sys
 import subprocess
 import shutil
+import tempfile
 import re
 from pathlib import Path
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 
 
-def run_ocr(pdf_path, pages=None, language="eng"):
+def _key_page_numbers(num_pages):
+    """1-indexed page numbers most likely to carry bibliographic metadata:
+    first 3 and last 2 pages (or all pages for short documents)."""
+    if num_pages <= 5:
+        return list(range(1, num_pages + 1))
+    return [1, 2, 3, num_pages - 1, num_pages]
+
+
+def run_ocr(pdf_path, page_numbers, language="eng", timeout=180):
     """
-    Run ocrmypdf on the file.
+    OCR only the given pages by extracting them into a small temp PDF and
+    running ocrmypdf on that temp file, instead of in-place on the whole
+    source document. ocrmypdf re-reads/re-writes the entire PDF stream even
+    when --pages limits which pages get OCR'd, so on a large scan that's
+    where a 2-minute timeout gets blown despite only needing ~5 pages of text.
+
+    Note: the source PDF is left untouched, so these pages will NOT be
+    searchable in the archived/BibDesk-filed copy.
 
     Args:
-        pdf_path: Path to PDF
-        pages: Optional page specification (e.g., "1-3,98-100")
+        pdf_path: Path to source PDF
+        page_numbers: 1-indexed page numbers to OCR
         language: Tesseract language code (e.g., "eng", "rus", "deu")
+        timeout: Seconds before giving up
 
     Returns:
-        True on success, error string on failure
+        dict mapping page_number -> extracted text, or an error string on failure.
     """
     ocrmypdf_bin = shutil.which("ocrmypdf") or next(
         (p for p in ["/opt/homebrew/bin/ocrmypdf", "/usr/local/bin/ocrmypdf"] if Path(p).exists()),
@@ -31,13 +49,29 @@ def run_ocr(pdf_path, pages=None, language="eng"):
     if not ocrmypdf_bin:
         return "Error: ocrmypdf not installed. Install with: brew install ocrmypdf"
 
-    try:
-        cmd = [ocrmypdf_bin, "--skip-text", "-l", language or "eng"]
-        if pages:
-            cmd.extend(["--pages", pages])
-        cmd.extend([str(pdf_path), str(pdf_path)])
+    reader = PdfReader(str(pdf_path))
+    writer = PdfWriter()
+    for n in page_numbers:
+        writer.add_page(reader.pages[n - 1])
 
-        import os
+    tmp_fd, tmp_name = tempfile.mkstemp(suffix=".pdf")
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_name)
+
+    def _read_subset_text():
+        subset_reader = PdfReader(str(tmp_path))
+        return {
+            n: (subset_reader.pages[i].extract_text() or "")
+            for i, n in enumerate(page_numbers)
+        }
+
+    try:
+        with open(tmp_path, "wb") as f:
+            writer.write(f)
+
+        cmd = [ocrmypdf_bin, "--skip-text", "--optimize", "0", "-l", language or "eng",
+               str(tmp_path), str(tmp_path)]
+
         env = os.environ.copy()
         for brew_bin in ["/opt/homebrew/bin", "/usr/local/bin"]:
             if brew_bin not in env.get("PATH", ""):
@@ -47,17 +81,19 @@ def run_ocr(pdf_path, pages=None, language="eng"):
             cmd,
             check=True,
             capture_output=True,
-            timeout=120,
+            timeout=timeout,
             env=env,
         )
-        return True
+        return _read_subset_text()
     except subprocess.TimeoutExpired:
-        return "OCR Error: Process timed out after 2 minutes"
+        return f"OCR Error: Process timed out after {timeout} seconds"
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode() if e.stderr else str(e)
         if "already has text" in stderr.lower():
-            return True
+            return _read_subset_text()
         return f"OCR Error: {stderr}"
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def extract_all_text(pdf_path):
@@ -133,7 +169,8 @@ def snap_to_sentence_end(text, target_word_count, from_end=False):
         return subset_text
 
 
-def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_threshold=100, quiet=False, language_prompt_fn=None):
+def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_threshold=100,
+                     quiet=False, language_prompt_fn=None, ocr_timeout=180):
     """
     Extract beginning and end of PDF for bibliographic extraction.
 
@@ -148,6 +185,7 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         quiet: Suppress status messages
         language_prompt_fn: Optional callable () -> str that returns a tesseract language
             code (e.g. "eng", "rus"). Called interactively when OCR is needed.
+        ocr_timeout: Seconds to allow ocrmypdf before giving up
 
     Returns:
         str: Extracted text with section markers
@@ -176,22 +214,14 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
             language = language_prompt_fn() or "eng"
 
         # OCR first 3 + last 2 pages (or all if short doc)
-        if num_pages <= 5:
-            pages_spec = None
-        else:
-            first_pages = "1-3"
-            last_pages = f"{num_pages-1}-{num_pages}"
-            pages_spec = f"{first_pages},{last_pages}"
+        ocr_pages = _key_page_numbers(num_pages)
+        ocr_result = run_ocr(pdf_path, ocr_pages, language=language, timeout=ocr_timeout)
 
-        ocr_result = run_ocr(pdf_path, pages_spec, language=language)
-
-        if ocr_result is True:
+        if isinstance(ocr_result, dict):
             if not quiet:
                 print("✓ OCR successful", file=sys.stderr)
-            result, num_pages = extract_all_text(pdf_path)
-            if isinstance(result, str) and result.startswith("Error:"):
-                return result
-            page_texts = result
+            for n, text in ocr_result.items():
+                page_texts[n - 1] = text
             full_text = "\n\n".join(page_texts)
             words = split_into_words(full_text)
             total_words = len(words)
@@ -232,6 +262,6 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python extract_pages.py <pdf_file>", file=sys.stderr)
         sys.exit(1)
-    
+
     result = extract_content(sys.argv[1])
     print(result)

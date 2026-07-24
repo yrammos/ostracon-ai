@@ -45,7 +45,7 @@ class BiblioAgent:
             print(message, file=sys.stderr)
         if self._progress_callback:
             self._progress_callback(message, level)
-        
+
     def load_config(self, config_path):
         """Load configuration from YAML file."""
         config_path = Path(config_path)
@@ -54,19 +54,19 @@ class BiblioAgent:
                 f"Config file not found: {config_path}\n"
                 "Please create config.yaml from the template."
             )
-        
+
         with open(config_path) as f:
             config = yaml.safe_load(f)
-        
+
         # Validate required fields
         if not config.get('anthropic_api_key') or config['anthropic_api_key'] == 'YOUR_API_KEY_HERE':
             raise ValueError(
                 "Please set your Anthropic API key in config.yaml\n"
                 "Get one at: https://console.anthropic.com/settings/keys"
             )
-        
+
         return config
-    
+
     def load_context_files(self):
         """Load CLAUDE.md, biblio-template.bib, and optional ref file for context."""
         context = {}
@@ -101,7 +101,7 @@ class BiblioAgent:
                 self._log(f"⚠️  Warning: ref_file {ref_path} not found", 'warning')
 
         return context
-    
+
     def build_prompt(self, pdf_text, context):
         """Build the prompt for Claude."""
         prompt = f"""I need you to extract bibliographic information from a PDF and create a BibLaTeX entry using the biblatex-chicago package (notes and bibliography style).
@@ -113,7 +113,7 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
 </pdf_text>
 
 """
-        
+
         if context['claude_md']:
             prompt += f"""Here are the project guidelines:
 
@@ -122,7 +122,7 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
 </guidelines>
 
 """
-        
+
         if context['template']:
             prompt += f"""Here is a reference template showing the types and fields you should use:
 
@@ -152,7 +152,7 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
 Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
         return prompt
-    
+
     def extract_bibtex(self, pdf_path, batch_info=None):
         """
         Extract bibliographic information from a PDF.
@@ -189,7 +189,13 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
                 self._log(f"   OCR language: {lang}", 'info')
                 return lang
 
-        pdf_text = extract_content(pdf_path, quiet=quiet, language_prompt_fn=language_prompt_fn)
+        pdf_text = extract_content(
+            pdf_path,
+            quiet=quiet,
+            language_prompt_fn=language_prompt_fn,
+            min_words_threshold=self.config.get('ocr_threshold', 100),
+            ocr_timeout=self.config.get('ocr_timeout', 180),
+        )
 
         if pdf_text.startswith("Error:"):
             return pdf_text
@@ -222,7 +228,7 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
         except Exception as e:
             return f"Error: {e}"
-    
+
     def clean_bibtex(self, bibtex_entry):
         """Remove code fencing and surrounding prose from BibLaTeX entry if present."""
         entry = bibtex_entry.strip()

@@ -16,7 +16,8 @@ claude_md_file: "./CLAUDE.md"
 ref_file: "./biblatex-chicago-notes-ref.md"  # Optional: condensed biblatex-chicago field reference
 
 # Processing options
-ocr_threshold: 50 # Minimum characters to consider a page as having text
+ocr_threshold: 100 # Minimum words extracted before OCR is attempted on key pages
+ocr_timeout: 180 # Seconds to allow ocrmypdf on the extracted page subset before giving up
 max_tokens: 4000 # Maximum tokens for Claude response
 model: "claude-sonnet-4-20250514" # Claude model to use
 default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
