@@ -14,6 +14,41 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 
 
+def extract_pdf_metadata(pdf_path):
+    """
+    Extract embedded PDF file metadata (Title, Author, Subject, CreationDate)
+    when present.
+
+    This is a first-party signal from the file itself, distinct from the
+    document's body text - and it's sometimes the ONLY textual clue to
+    authorship available (e.g. a chapter-only excerpt with no title/copyright
+    page), so it's worth surfacing even when it can't be fully trusted.
+
+    Returns:
+        dict of {label: value} for whichever fields are present and non-empty.
+    """
+    try:
+        reader = PdfReader(str(pdf_path))
+    except Exception:
+        return {}
+
+    meta = reader.metadata
+    if not meta:
+        return {}
+
+    fields = {}
+    for key, label in [('/Title', 'Title'), ('/Author', 'Author'),
+                        ('/Subject', 'Subject'), ('/CreationDate', 'CreationDate')]:
+        try:
+            value = meta.get(key)
+            value = value.get_object() if hasattr(value, 'get_object') else value
+        except Exception:
+            value = None
+        if value:
+            fields[label] = str(value)
+    return fields
+
+
 def _key_page_numbers(num_pages):
     """1-indexed page numbers most likely to carry bibliographic metadata:
     first 3 and last 2 pages (or all pages for short documents)."""
