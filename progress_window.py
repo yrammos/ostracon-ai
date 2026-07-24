@@ -218,23 +218,14 @@ class ProgressWindow:
 
     def finish(self, had_error: bool) -> None:
         """
-        Signal that processing is complete.
-        On success: log "All done." and auto-close after 3 s.
-        On error: stay open for review; user closes manually.
+        Signal that processing is complete. The window stays open for review
+        either way - the user closes it manually - so the log is never lost
+        to an auto-close before it's been read.
         """
         if had_error:
             self.log("\u2717 Finished with errors. Close this window when done.", 'error')
         else:
-            self.log("All done.", 'success')
-            # Auto-close: sleep on a daemon thread, then stop the run loop.
-            def _delayed_close():
-                time.sleep(3)
-                def _stop():
-                    NSApp.stop_(None)
-                    _wake_run_loop()
-                _on_main(_stop)
-
-            threading.Thread(target=_delayed_close, daemon=True).start()
+            self.log("\u2713 All done. Close this window when done.", 'success')
 
     @property
     def cancelled(self) -> bool:
