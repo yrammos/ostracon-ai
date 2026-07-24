@@ -14,6 +14,7 @@ import yaml
 from anthropic import Anthropic
 
 from extract_pages import extract_content
+import enrich
 
 # Tesseract language codes shown in the OCR language picker.
 OCR_LANGUAGES = [
@@ -144,10 +145,16 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
         prompt += """Please:
 1. Identify the publication type (@Book, @Article, @InCollection, etc.)
 2. Extract all relevant bibliographic fields
-3. Format as a single BibLaTeX entry using biblatex-chicago standards
-4. Use a citation key in the format: AuthorYEAR (e.g., Smith2023)
-5. Use single hyphens (-) for all ranges (pages, dates, etc.)
-6. Do NOT include these fields: ISSN, ISBN, keywords, reference, devonthink
+3. Pay special attention to volume, issue/number, page range, and chapter number.
+   These are frequently printed in running headers or footers rather than in the
+   main body text - check the "HEADERS/FOOTERS FROM KEY PAGES" section above (if
+   present) in addition to the BEGINNING/END sections, since this information can
+   appear on any of the first few or last few pages, not just the very first or
+   very last page.
+4. Format as a single BibLaTeX entry using biblatex-chicago standards
+5. Use a citation key in the format: AuthorYEAR (e.g., Smith2023)
+6. Use single hyphens (-) for all ranges (pages, dates, etc.)
+7. Do NOT include these fields: ISSN, ISBN, keywords, reference, devonthink
 
 Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
@@ -221,6 +228,9 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
             bibtex_entry = message.content[0].text
 
+            if self.config.get('enrich_missing_fields', True):
+                bibtex_entry = self.enrich_entry(bibtex_entry, pdf_text)
+
             self._log("   Validating entry...", 'info')
             self._log("   ✓ Complete", 'success')
 
@@ -228,6 +238,79 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
         except Exception as e:
             return f"Error: {e}"
+
+    def _build_enrich_prompt(self, entry, found_fields, context):
+        """Build a prompt asking Claude to merge externally-sourced fields
+        into an entry without touching anything else."""
+        fields_str = "\n".join(f"{k} = {v}" for k, v in found_fields.items())
+        prompt = f"""This BibLaTeX-Chicago entry is missing some fields that the source PDF
+did not contain. Supplementary bibliographic data was found from an external
+source (CrossRef and/or Google Scholar) for the following fields:
+
+<supplementary_data>
+{fields_str}
+</supplementary_data>
+
+Here is the current entry:
+
+<entry>
+{entry}
+</entry>
+
+"""
+        if context['claude_md']:
+            prompt += f"<guidelines>\n{context['claude_md']}\n</guidelines>\n\n"
+        if context['template']:
+            prompt += f"<reference_template>\n{context['template']}\n</reference_template>\n\n"
+        if context['ref']:
+            prompt += f"<biblatex_chicago_reference>\n{context['ref']}\n</biblatex_chicago_reference>\n\n"
+
+        prompt += """Add ONLY the supplementary fields listed above to the entry, formatted
+correctly per the guidelines above (e.g. single hyphens for page ranges, correct
+field names/casing). Do not change any existing field value. Do not add any
+other fields. Output ONLY the corrected BibLaTeX entry, with no additional
+commentary."""
+        return prompt
+
+    def enrich_entry(self, entry_text, pdf_text):
+        """
+        Fill in bibliographic fields the PDF didn't supply (volume, issue,
+        pages, chapter, etc.) via CrossRef/Google Scholar, then ask Claude to
+        merge only those fields into the entry.
+
+        Returns the (possibly unchanged) entry text.
+        """
+        entry_type = enrich.get_entry_type(entry_text)
+        fields = enrich.parse_bibtex_fields(entry_text)
+        required, desired = enrich.missing_fields(entry_type, fields)
+        if not required and not desired:
+            return entry_text
+
+        title = enrich.strip_latex(fields.get('title', ''))
+        found, sources = enrich.gather_enrichment(
+            pdf_text, title, entry_type, fields,
+            crossref_email=self.config.get('crossref_email'),
+            scrapingdog_api_key=self.config.get('scrapingdog_api_key'),
+        )
+        if not found:
+            return entry_text
+
+        self._log(f"   Enriched via {', '.join(sources)}: {', '.join(found)}", 'info')
+
+        context = self.load_context_files()
+        prompt = self._build_enrich_prompt(entry_text, found, context)
+        try:
+            message = self.client.messages.create(
+                model=self.config['model'],
+                max_tokens=self.config['max_tokens'],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            merged = self.clean_bibtex(message.content[0].text)
+            valid, _ = self.validate_braces(merged)
+            return merged if valid else entry_text
+        except Exception as e:
+            self._log(f"   ⚠️  Enrichment merge failed: {e}", 'warning')
+            return entry_text
 
     def clean_bibtex(self, bibtex_entry):
         """Remove code fencing and surrounding prose from BibLaTeX entry if present."""
@@ -399,6 +482,17 @@ end tell'''
             script += f' subtitle "{subtitle}"'
         subprocess.run(['osascript', '-e', script], capture_output=True)
 
+    def notify_incomplete(self, pdf_name, missing_fields):
+        """Send a macOS notification that an entry was saved but is missing fields."""
+        if not self.config.get('notifications', True):
+            return
+        msg = f"{pdf_name}: saved but missing {', '.join(missing_fields)}."
+        subprocess.run(
+            ['osascript', '-e',
+             f'display notification "{msg}" with title "Ostracon AI" subtitle "Incomplete Entry" sound name "Basso"'],
+            capture_output=True
+        )
+
     def notify_failure(self, pdf_name, error_msg):
         """Send a macOS notification about a validation failure."""
         if not self.config.get('notifications', True):
@@ -464,6 +558,15 @@ end tell'''
             self.save_failure(entry, pdf_path.name, error_msg)
             self.notify_failure(pdf_path.name, error_msg)
             return False
+
+        # Flag entries still missing critical fields after enrichment (does not block saving)
+        entry_type = enrich.get_entry_type(entry)
+        fields = enrich.parse_bibtex_fields(entry)
+        still_missing, _ = enrich.missing_fields(entry_type, fields)
+        if still_missing:
+            self._log(f"   ⚠️  Incomplete: missing {', '.join(still_missing)}", 'warning')
+            self.notify_incomplete(pdf_path.name, still_missing)
+            entry = f"% INCOMPLETE: missing {', '.join(still_missing)}\n" + entry
 
         # Attach a BibDesk file bookmark
         entry = self.add_bdsk_bookmark(entry, pdf_path)

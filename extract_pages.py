@@ -169,6 +169,29 @@ def snap_to_sentence_end(text, target_word_count, from_end=False):
         return subset_text
 
 
+def extract_headers_footers(page_texts, num_pages, lines_per_edge=3):
+    """
+    Capture the first and last few lines of each key page (first 3 + last 2).
+
+    Volume/issue numbers, page ranges, and chapter numbers often live in
+    running headers/footers that fall outside the beginning/end word-count
+    window used for the main extraction (which only looks at page 1 and the
+    last page's tail) - this makes them visible regardless of which page
+    they land on.
+    """
+    sections = []
+    for n in _key_page_numbers(num_pages):
+        text = page_texts[n - 1] if 0 <= n - 1 < len(page_texts) else ""
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            continue
+        head = lines[:lines_per_edge]
+        tail = lines[-lines_per_edge:] if len(lines) > lines_per_edge else []
+        snippet = "\n".join(head + (["..."] + tail if tail else []))
+        sections.append(f"[Page {n}]\n{snippet}")
+    return "\n\n".join(sections)
+
+
 def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_threshold=100,
                      quiet=False, language_prompt_fn=None, ocr_timeout=180):
     """
@@ -255,6 +278,14 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         f"\n--- END ({last_count} words) ---",
         last_section
     ]
+
+    headers_footers = extract_headers_footers(page_texts, num_pages)
+    if headers_footers:
+        output.append(
+            "\n--- HEADERS/FOOTERS FROM KEY PAGES "
+            "(volume, issue, page range, and chapter numbers often appear here) ---"
+        )
+        output.append(headers_footers)
 
     return "\n".join(output)
 

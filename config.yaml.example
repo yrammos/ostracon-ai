@@ -22,6 +22,14 @@ max_tokens: 4000 # Maximum tokens for Claude response
 model: "claude-sonnet-4-20250514" # Claude model to use
 default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
 
+# Enrichment: fill in fields the PDF itself doesn't contain (volume, issue,
+# page range, chapter) via CrossRef and/or Google Scholar (ScrapingDog).
+# Entries still missing required fields afterward are saved with a leading
+# "% INCOMPLETE: ..." comment rather than blocked.
+enrich_missing_fields: true
+crossref_email: "" # Optional: your email, for CrossRef's "polite pool" (faster, more reliable)
+scrapingdog_api_key: "" # Optional: ScrapingDog API key for Google Scholar fallback lookups (paid, https://scrapingdog.com)
+
 # Logging
 verbose: true
 notifications: false  # Send macOS notifications (batch progress updates and validation failures)
