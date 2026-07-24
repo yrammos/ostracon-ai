@@ -28,14 +28,39 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 
 1. Takes one or more PDF files as input.
 2. Runs OCR if necessary, after prompting the user to select the text language.
-3. Extracts text from the first page (~450 words) and the last page (~150 words).
-4. Sends the extracted text to the Claude API with project guidelines and a reference template.
-5. Returns a properly formatted BibLaTeX-Chicago entry.
-6. Validates brace balance before saving.
-7. Saves the entry — with a BibDesk `bdsk-file` bookmark — either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file` in `config.yaml`).
-8. On validation failure, saves the raw entry to `failed_bib_file` and sends a macOS notification.
+3. Extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from key pages (volume, issue, page range, chapter number), and embedded PDF metadata (title, author, subject, creation date).
+4. Sends all of the above to the Claude API with project guidelines and a reference template, and returns a BibLaTeX-Chicago entry.
+5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude call.
+6. Audits the entry for fields that may have been filled from Claude's background/training-data recollection rather than the PDF, CrossRef, or Scholar — a real failure mode with academic works Claude may "recognize."
+7. For any recollection-based or still-missing container-level fields (editor, series, publisher, location, date), re-checks CrossRef/Scholar and, when their values conflict with what was extracted, reconciles the two via a further Claude call using the project guidelines/template as formatting context. Fields that can't be verified this way are flagged as unresolved.
+8. Validates brace balance before saving.
+9. Saves the entry — with a BibDesk `bdsk-file` bookmark — either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file` in `config.yaml`). Entries with unresolved flagged fields are colored amber in BibDesk for manual review (only possible when `autofile_bibdesk` is enabled).
+10. On validation failure, saves the raw entry to `failed_bib_file` and sends a macOS notification.
 
 With `autofile_bibdesk` disabled, the staging file can be periodically imported into BibDesk; PDF links will already be intact thanks to the embedded bookmark.
+
+### Extraction and reconciliation flow
+
+```mermaid
+flowchart TD
+    A[PDF file] --> B[Extract text: first/last page,<br/>headers/footers, embedded metadata]
+    B --> C[Claude: initial extraction]
+    C --> D{Required/desired<br/>fields missing?}
+    D -- yes --> E[CrossRef / Google Scholar search]
+    E --> F[Claude: merge enrichment fields]
+    D -- no --> G[Claude: grounding audit]
+    F --> G
+    G --> H{Recollection-based or<br/>missing container fields?}
+    H -- yes --> I[CrossRef / Google Scholar re-check]
+    I --> J{Conflicts with<br/>extracted values?}
+    J -- yes --> K[Claude: reconcile conflicting fields]
+    J -- no --> L[Validate brace balance]
+    K --> L
+    H -- no --> L
+    L --> M{Unresolved fields<br/>remain?}
+    M -- yes --> N[Save + flag amber in BibDesk]
+    M -- no --> O[Save entry]
+```
 
 ![Progress window](screenshot.png)
 

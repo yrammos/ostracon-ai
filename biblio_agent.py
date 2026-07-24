@@ -5,6 +5,7 @@ Processes PDFs and generates BibLaTeX-Chicago entries.
 """
 
 import sys
+import re
 import argparse
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ from datetime import datetime
 import yaml
 from anthropic import Anthropic
 
-from extract_pages import extract_content
+from extract_pages import extract_content, extract_pdf_metadata
 import enrich
 
 # Tesseract language codes shown in the OCR language picker.
@@ -103,7 +104,7 @@ class BiblioAgent:
 
         return context
 
-    def build_prompt(self, pdf_text, context):
+    def build_prompt(self, pdf_text, context, pdf_metadata=None):
         """Build the prompt for Claude."""
         prompt = f"""I need you to extract bibliographic information from a PDF and create a BibLaTeX entry using the biblatex-chicago package (notes and bibliography style).
 
@@ -112,6 +113,19 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
 <pdf_text>
 {pdf_text}
 </pdf_text>
+
+"""
+
+        if pdf_metadata:
+            metadata_lines = "\n".join(f"{k}: {v}" for k, v in pdf_metadata.items())
+            prompt += f"""Here is metadata embedded in the PDF file itself. It may be incomplete, or
+absent for fields it doesn't cover, but is a first-party signal from the file
+itself - unlike the body text, it sometimes carries information a chapter-only
+excerpt's text won't (e.g. the file's own Author field):
+
+<pdf_file_metadata>
+{metadata_lines}
+</pdf_file_metadata>
 
 """
 
@@ -143,7 +157,33 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
 """
 
         prompt += """Please:
-1. Identify the publication type (@Book, @Article, @InCollection, etc.)
+1. Identify the publication type (@Book, @Article, @InCollection, etc.). Look
+   for markers showing this excerpt is only PART of a larger container work -
+   e.g. "Chapter 1"/"chapter one", a numbered/titled heading distinct from a
+   running-header book title, or a paper within a named conference
+   proceedings volume - rather than treating the whole excerpt as a
+   standalone work. When that's the case:
+   - Use @Inbook if it's one chapter of a book sharing the same author(s)
+     throughout.
+   - Use @Incollection if it's one chapter of an edited volume where
+     different chapters have different authors (an Editor field for the
+     volume, distinct from this chapter's Author).
+   - Use @Inproceedings if it's one paper within a conference proceedings
+     volume (Booktitle = the proceedings volume, Booktitleaddon = the
+     conference name/location if given).
+   - In all these cases, set Title to the SPECIFIC piece's own title (e.g.
+     "Manifesto"), and Booktitle to the overall container's title (often
+     visible in a running header, distinct from the piece's own heading) -
+     do NOT use the container's title as the entry's Title when the excerpt
+     is clearly one part of a larger work.
+   - Exception: if the piece is UNTITLED supplemental material (a generic
+     preface, foreword, introduction, or index with no title of its own,
+     written by someone other than the book's main author) rather than a
+     titled chapter, use @Suppbook instead (or @Suppcollection for an edited
+     volume) - in that case Title correctly holds the BOOK's own title, with
+     Bookauthor (or Editor/Editora) distinguishing the book's real author
+     from the supplement's Author. Only use @Inbook/@Incollection when the
+     piece has its own distinct title.
 2. Extract all relevant bibliographic fields
 3. Pay special attention to volume, issue/number, page range, and chapter number.
    These are frequently printed in running headers or footers rather than in the
@@ -155,6 +195,9 @@ Here is the extracted text from the first 2 pages and last page of the PDF:
 5. Use a citation key in the format: AuthorYEAR (e.g., Smith2023)
 6. Use single hyphens (-) for all ranges (pages, dates, etc.)
 7. Do NOT include these fields: ISSN, ISBN, keywords, reference, devonthink
+8. Omit any field you cannot populate from the given text/metadata entirely -
+   do not include it with an empty value (e.g. do not write `Langid = {}` for
+   a field you have no data for). Only include fields that actually apply.
 
 Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
@@ -207,12 +250,14 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
         if pdf_text.startswith("Error:"):
             return pdf_text
 
+        pdf_metadata = extract_pdf_metadata(pdf_path)
+
         # Load context files
         self._log("   Loading context...", 'info')
         context = self.load_context_files()
 
         # Build prompt
-        prompt = self.build_prompt(pdf_text, context)
+        prompt = self.build_prompt(pdf_text, context, pdf_metadata)
 
         # Call Claude API
         self._log("   Sending to Claude...", 'info')
@@ -230,6 +275,9 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
             if self.config.get('enrich_missing_fields', True):
                 bibtex_entry = self.enrich_entry(bibtex_entry, pdf_text)
+                bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, pdf_text, pdf_metadata)
+                if needs_color:
+                    bibtex_entry = "% NEEDS_COLOR_FLAG\n" + bibtex_entry
 
             self._log("   Validating entry...", 'info')
             self._log("   ✓ Complete", 'success')
@@ -284,18 +332,24 @@ commentary."""
         fields = enrich.parse_bibtex_fields(entry_text)
         required, desired = enrich.missing_fields(entry_type, fields)
         if not required and not desired:
+            self._log("   Source: PDF (all fields present, no enrichment needed)", 'info')
             return entry_text
 
         title = enrich.strip_latex(fields.get('title', ''))
-        found, sources = enrich.gather_enrichment(
+        found, field_sources = enrich.gather_enrichment(
             pdf_text, title, entry_type, fields,
             crossref_email=self.config.get('crossref_email'),
             scrapingdog_api_key=self.config.get('scrapingdog_api_key'),
         )
         if not found:
+            self._log(f"   ⚠️  Missing fields not found via CrossRef/Scholar: {', '.join(required + desired)}", 'warning')
             return entry_text
 
-        self._log(f"   Enriched via {', '.join(sources)}: {', '.join(found)}", 'info')
+        by_source = {}
+        for field, source in field_sources.items():
+            by_source.setdefault(source, []).append(field)
+        summary = '; '.join(f"{src}: {', '.join(sorted(fs))}" for src, fs in by_source.items())
+        self._log(f"   Enriched -- {summary}", 'info')
 
         context = self.load_context_files()
         prompt = self._build_enrich_prompt(entry_text, found, context)
@@ -307,10 +361,225 @@ commentary."""
             )
             merged = self.clean_bibtex(message.content[0].text)
             valid, _ = self.validate_braces(merged)
-            return merged if valid else entry_text
+            if not valid:
+                return entry_text
         except Exception as e:
             self._log(f"   ⚠️  Enrichment merge failed: {e}", 'warning')
             return entry_text
+
+        # Record per-field provenance as a persistent comment so it survives
+        # past this run's log, rather than only being visible in the console/window.
+        pdf_fields = sorted(f for f, v in fields.items() if v)
+        source_lines = []
+        if pdf_fields:
+            source_lines.append(f"PDF: {', '.join(pdf_fields)}")
+        for src, fs in by_source.items():
+            source_lines.append(f"{src}: {', '.join(sorted(fs))}")
+        comment = f"% Sources -- {'; '.join(source_lines)}\n"
+
+        return comment + merged
+
+    def _build_audit_prompt(self, entry, pdf_text, pdf_metadata):
+        """Build a prompt asking Claude to self-audit which of its own field
+        values are grounded in the given text/metadata versus recalled from
+        its own background knowledge of the work."""
+        metadata_block = ""
+        if pdf_metadata:
+            lines = "\n".join(f"{k}: {v}" for k, v in pdf_metadata.items())
+            metadata_block = f"\n<pdf_file_metadata>\n{lines}\n</pdf_file_metadata>\n"
+
+        return f"""Here is text extracted from a PDF:
+
+<pdf_text>
+{pdf_text}
+</pdf_text>
+{metadata_block}
+Here is a BibLaTeX entry produced for this PDF:
+
+<entry>
+{entry}
+</entry>
+
+For each non-empty field in the entry, decide whether its value is explicitly
+present in (or directly derivable from) the PDF text or file metadata above,
+or whether it instead relies on outside/background knowledge about this work
+(e.g. recognizing the book or article and recalling its author, publisher,
+date, or place from what you already know about it, rather than reading it
+from the given text/metadata).
+
+Respond in EXACTLY this format and nothing else:
+
+UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/metadata, or NONE>"""
+
+    def _audit_entry_grounding(self, entry_text, pdf_text, pdf_metadata):
+        """Ask Claude which fields in entry_text are grounded in the given
+        text/metadata vs. recalled from its own background knowledge.
+
+        Returns a list of ungrounded field names (possibly empty).
+        """
+        prompt = self._build_audit_prompt(entry_text, pdf_text, pdf_metadata)
+        message = self.client.messages.create(
+            model=self.config['model'],
+            max_tokens=150,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        response = message.content[0].text
+
+        ungrounded = []
+        m = re.search(r'UNGROUNDED_FIELDS:\s*(.+)', response)
+        if m:
+            raw = m.group(1).strip()
+            if raw.upper() != 'NONE':
+                ungrounded = [f.strip().lower() for f in raw.split(',') if f.strip()]
+
+        return ungrounded
+
+    def _build_reconcile_prompt(self, entry, candidates, context):
+        """Build a prompt asking Claude to reconcile claimed-vs-verified field
+        values using only the two given values - not its own background
+        knowledge of the work - while still applying the project's own
+        formatting conventions (name format, title case, etc.) via the same
+        guidelines/template context the other prompts get."""
+        lines = "\n".join(
+            f"- {c['field']}: claimed = {c['claimed']!r} (from the PDF/initial extraction) "
+            f"vs. verified = {c['verified']!r} (from {c['source']})"
+            for c in candidates
+        )
+        prompt = f"""This BibLaTeX entry has fields whose claimed value differs from what an
+external bibliographic source (CrossRef or Google Scholar) reports for the
+same work:
+
+<fields_to_reconcile>
+{lines}
+</fields_to_reconcile>
+
+<entry>
+{entry}
+</entry>
+
+"""
+        if context['claude_md']:
+            prompt += f"<guidelines>\n{context['claude_md']}\n</guidelines>\n\n"
+        if context['template']:
+            prompt += f"<reference_template>\n{context['template']}\n</reference_template>\n\n"
+        if context['ref']:
+            prompt += f"<biblatex_chicago_reference>\n{context['ref']}\n</biblatex_chicago_reference>\n\n"
+
+        prompt += """For each field above, decide on the best final value using ONLY the two
+values given - do NOT draw on your own background/training knowledge of this
+work, even if you recognize it. Two cases:
+- If the two values refer to the same underlying fact expressed with
+  different completeness or formatting (e.g. one is a fuller name, or a more
+  complete author list that includes a co-author the other is missing),
+  merge them into the single most complete, correct form.
+- If they genuinely contradict each other (not just differing in
+  completeness/formatting - e.g. two unrelated names), prefer the verified
+  value, since it comes from an external source rather than recollection.
+
+Apply the formatting guidelines/template above to whatever you output (e.g.
+the "LastName, FirstName~Initials" name format, and its worked examples for
+how a merged author list should look) - do not just concatenate the two raw
+values as given. Do not change any field not listed above. Output ONLY the
+corrected BibLaTeX entry, with no additional commentary."""
+        return prompt
+
+    def reconcile_fields(self, entry_text, candidates):
+        """
+        Ask Claude to reconcile claimed-vs-verified field values (see
+        _build_reconcile_prompt) and return the updated entry. Falls back to
+        the unchanged entry on any failure.
+        """
+        context = self.load_context_files()
+        prompt = self._build_reconcile_prompt(entry_text, candidates, context)
+        try:
+            message = self.client.messages.create(
+                model=self.config['model'],
+                max_tokens=self.config['max_tokens'],
+                messages=[{"role": "user", "content": prompt}],
+            )
+            merged = self.clean_bibtex(message.content[0].text)
+            valid, _ = self.validate_braces(merged)
+            if valid:
+                for c in candidates:
+                    self._log(f"   Reconciled '{c['field']}' using {c['source']} data", 'info')
+                return merged
+        except Exception as e:
+            self._log(f"   ⚠️  Reconciliation failed: {e}", 'warning')
+        return entry_text
+
+    def verify_and_flag_recollection(self, entry_text, pdf_text, pdf_metadata):
+        """
+        Ask Claude to self-audit which field values are not grounded in the
+        given PDF text/metadata (i.e. likely drawn from its own background
+        knowledge), then attempt to confirm or refute those specific fields
+        via CrossRef/Google Scholar. The same lookup also fills in a few
+        container-level fields (Editor, Series, Publisher, Location) when the
+        entry is missing them entirely - e.g. an edited collection's Editor,
+        which is otherwise never sourced anywhere else in this pipeline.
+
+        Fields whose claimed value differs from a verified external record
+        are reconciled via a second, narrowly-scoped Claude call (using only
+        the two given values, not background knowledge - see
+        reconcile_fields). Fields that can be neither confirmed nor refuted
+        (the work isn't found in either source) are left as Claude produced
+        them, but needs_color_flag is returned True so the caller can mark
+        the saved publication for manual review.
+
+        Returns (entry_text, needs_color_flag).
+        """
+        entry_type = enrich.get_entry_type(entry_text)
+        fields = enrich.parse_bibtex_fields(entry_text)
+
+        try:
+            ungrounded = self._audit_entry_grounding(entry_text, pdf_text, pdf_metadata)
+        except Exception as e:
+            self._log(f"   ⚠️  Grounding audit failed: {e}", 'warning')
+            return entry_text, False
+
+        missing_container = enrich.container_fields_missing(fields)
+        if not ungrounded and not missing_container:
+            return entry_text, False
+
+        if ungrounded:
+            self._log(f"   Checking recollection-based fields: {', '.join(ungrounded)}", 'info')
+        if missing_container:
+            self._log(f"   Also checking for missing container-level fields: {', '.join(missing_container)}", 'info')
+
+        work_title = enrich.work_level_title(entry_type, fields)
+        year = fields.get('date') or fields.get('year')
+        reconcile_candidates, additions, unresolved = enrich.verify_recollection(
+            work_title, ungrounded, fields, year=year,
+            crossref_email=self.config.get('crossref_email'),
+            scrapingdog_api_key=self.config.get('scrapingdog_api_key'),
+            log=lambda msg: self._log(f"     {msg}", 'dim'),
+        )
+
+        if reconcile_candidates:
+            entry_text = self.reconcile_fields(entry_text, reconcile_candidates)
+
+        for field, value in additions.items():
+            self._log(f"   Filled '{field}' from a verified work-level record", 'info')
+            entry_text = enrich.add_field(entry_text, field, value)
+
+        if unresolved:
+            # Re-derive what's actually still outstanding rather than reusing
+            # the pre-search lists, which would misreport anything that just
+            # got reconciled/filled above as still missing.
+            reconciled_fields = {c['field'] for c in reconcile_candidates}
+            still_ungrounded = [f for f in ungrounded if f not in reconciled_fields]
+            still_missing_container = [f for f in missing_container if f not in additions]
+            reasons = []
+            if still_ungrounded:
+                reasons.append(f"recollection-based field(s) ({', '.join(still_ungrounded)})")
+            if still_missing_container:
+                reasons.append(f"container-level field(s) ({', '.join(still_missing_container)})")
+            if reasons:
+                self._log(
+                    f"   ⚠️  Could not verify {' and '.join(reasons)} via CrossRef/Scholar - flagging for review",
+                    'warning'
+                )
+
+        return entry_text, unresolved
 
     def clean_bibtex(self, bibtex_entry):
         """Remove code fencing and surrounding prose from BibLaTeX entry if present."""
@@ -398,7 +667,13 @@ commentary."""
             self._log("   ⚠️  pyobjc not available, skipping bdsk-file-1", 'warning')
             return entry
 
-    def _save_via_bibdesk(self, entry, bib_path):
+    # Amber/orange - flags a publication whose entry contains at least one
+    # field Claude filled in from its own background knowledge of the work
+    # rather than the given PDF text/metadata, and that CrossRef/Scholar
+    # could neither confirm nor refute (the work wasn't found in either).
+    UNVERIFIED_COLOR = "{65535, 40000, 0, 65535}"
+
+    def _save_via_bibdesk(self, entry, bib_path, needs_color=False):
         """Open the staging file in BibDesk (if needed), import the entry, and auto-file it.
 
         Uses a temp file for the import to avoid AppleScript quoting issues.
@@ -413,6 +688,7 @@ commentary."""
             tmp.write(entry)
             tmp_path = tmp.name
 
+        color_line = f"set color of pub to {self.UNVERIFIED_COLOR}\n    " if needs_color else ""
         script = f'''
 tell application "BibDesk"
     set bibPath to "{bib_path}"
@@ -428,7 +704,9 @@ tell application "BibDesk"
     end if
     set thePubs to import theDoc from POSIX file "{tmp_path}"
     if thePubs is missing value or (count of thePubs) is 0 then return "import failed"
-    auto file item 1 of thePubs
+    set pub to item 1 of thePubs
+    set cite key of pub to (generated cite key of pub)
+    {color_line}auto file pub
     return "ok"
 end tell'''
 
@@ -543,6 +821,27 @@ end tell'''
     def save_entry(self, bibtex_entry, pdf_path):
         """Validate, enrich with a BibDesk bookmark, and append to the main bib file."""
         pdf_path = Path(pdf_path)
+
+        # verify_and_flag_recollection() prepends a bare "% NEEDS_COLOR_FLAG"
+        # marker when a recollection-based field couldn't be confirmed or
+        # refuted via CrossRef/Scholar. Unlike the Sources comment below, this
+        # one is discarded (not re-attached) - it only decides whether to
+        # color the BibDesk publication, so it shouldn't persist in the .bib text.
+        needs_color = False
+        marker_match = re.match(r'(%\s*NEEDS_COLOR_FLAG\s*\n)', bibtex_entry)
+        if marker_match:
+            needs_color = True
+            bibtex_entry = bibtex_entry[marker_match.end():]
+
+        # enrich_entry() prepends a "% Sources -- ..." comment recording field
+        # provenance; clean_bibtex() strips anything before the first '@', so
+        # pull the comment out first and re-attach it once cleaning is done.
+        sources_comment = ''
+        marker_match = re.match(r'(%\s*Sources\b[^\n]*\n)', bibtex_entry)
+        if marker_match:
+            sources_comment = marker_match.group(1)
+            bibtex_entry = bibtex_entry[marker_match.end():]
+
         entry = self.clean_bibtex(bibtex_entry)
 
         # Reject responses that are not BibTeX entries
@@ -558,6 +857,9 @@ end tell'''
             self.save_failure(entry, pdf_path.name, error_msg)
             self.notify_failure(pdf_path.name, error_msg)
             return False
+
+        if sources_comment:
+            entry = sources_comment + entry
 
         # Flag entries still missing critical fields after enrichment (does not block saving)
         entry_type = enrich.get_entry_type(entry)
@@ -578,11 +880,14 @@ end tell'''
                 output_path.touch()
             bib_path = str(output_path.resolve())
             try:
-                self._save_via_bibdesk(entry, bib_path)
+                self._save_via_bibdesk(entry, bib_path, needs_color=needs_color)
                 return True
             except RuntimeError as e:
                 self._log(f"   ⚠️  BibDesk import failed: {e}", 'warning')
                 return False
+
+        if needs_color:
+            self._log("   ⚠️  Unverified recollection-based field(s) - color flag needs autofile_bibdesk to apply", 'warning')
 
         output_path = Path(self.config['main_bib_file']).expanduser()
         if not output_path.exists():
