@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Bibliographic extraction agent using Claude API.
-Processes PDFs and generates BibLaTeX-Chicago entries.
+Processes PDFs and .webloc files, generating BibLaTeX-Chicago entries.
 """
 
 import sys
@@ -14,7 +14,8 @@ from datetime import datetime
 import yaml
 from anthropic import Anthropic
 
-from extract_pages import extract_content, extract_pdf_metadata
+from extract_pages import extract_pdf
+import web_source
 import enrich
 
 # Tesseract language codes shown in the OCR language picker.
@@ -32,6 +33,22 @@ OCR_LANGUAGES = [
     ("Czech",      "ces"),
     ("Hungarian",  "hun"),
 ]
+
+# The single dispatch point for source file type - the only place in this
+# pipeline that branches on PDF vs. webloc. Every extractor takes a path and
+# returns a SourceContent (or an "Error: ..." string), so everything after
+# this lookup is generic.
+EXTRACTORS = {
+    '.pdf': extract_pdf,
+    '.webloc': web_source.extract_webloc,
+}
+
+
+def glob_input_files(folder):
+    """All supported source files in folder (PDFs and .weblocs), sorted."""
+    return sorted(
+        f for suffix in EXTRACTORS for f in Path(folder).glob(f'*{suffix}')
+    )
 
 
 class BiblioAgent:
@@ -141,28 +158,38 @@ class BiblioAgent:
             {"type": "text", "text": dynamic_text},
         ]
 
-    def build_prompt(self, pdf_text, pdf_metadata=None):
-        """Build the prompt for Claude."""
-        prompt = f"""I need you to extract bibliographic information from a PDF and create a BibLaTeX entry using the biblatex-chicago package (notes and bibliography style).
+    def build_prompt(self, content):
+        """Build the prompt for Claude from a SourceContent (PDF, webpage, ...).
 
-Here is the extracted text from the first 2 pages and last page of the PDF:
+        content.label supplies the one sentence naming the source kind;
+        content.url - set only for online-only sources with no PDF to file -
+        is the single behavioral fork between source types, added as data
+        (step 9 below) rather than as a separate code path.
+        """
+        source_desc = (
+            "the first 2 pages and last page of the PDF" if content.label == "PDF"
+            else f"the {content.label}"
+        )
+        prompt = f"""I need you to extract bibliographic information from a {content.label} and create a BibLaTeX entry using the biblatex-chicago package (notes and bibliography style).
 
-<pdf_text>
-{pdf_text}
-</pdf_text>
+Here is the extracted text from {source_desc}:
+
+<source_text>
+{content.text}
+</source_text>
 
 """
 
-        if pdf_metadata:
-            metadata_lines = "\n".join(f"{k}: {v}" for k, v in pdf_metadata.items())
-            prompt += f"""Here is metadata embedded in the PDF file itself. It may be incomplete, or
-absent for fields it doesn't cover, but is a first-party signal from the file
+        if content.metadata:
+            metadata_lines = "\n".join(f"{k}: {v}" for k, v in content.metadata.items())
+            prompt += f"""Here is metadata associated with the {content.label} itself. It may be incomplete, or
+absent for fields it doesn't cover, but is a first-party signal from the source
 itself - unlike the body text, it sometimes carries information a chapter-only
-excerpt's text won't (e.g. the file's own Author field):
+excerpt's text won't (e.g. an embedded Author field):
 
-<pdf_file_metadata>
+<source_metadata>
 {metadata_lines}
-</pdf_file_metadata>
+</source_metadata>
 
 """
 
@@ -208,36 +235,24 @@ excerpt's text won't (e.g. the file's own Author field):
 8. Omit any field you cannot populate from the given text/metadata entirely -
    do not include it with an empty value (e.g. do not write `Langid = {}` for
    a field you have no data for). Only include fields that actually apply.
+"""
 
-Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
+        if content.url:
+            today = datetime.now().strftime('%Y-%m-%d')
+            prompt += f"""9. This work has no PDF and is only available online. Set Url to exactly
+   this address: {content.url}
+   Set Urldate to {today} (today's date). This is a source-specific exception
+   to any general rule against populating Url - it applies here because there
+   is no PDF to file as the locator instead.
+"""
+
+        prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
 
         return prompt
 
-    def extract_bibtex(self, pdf_path, batch_info=None):
-        """
-        Extract bibliographic information from a PDF.
-
-        Args:
-            pdf_path: Path to PDF file
-            batch_info: Optional (current_index, total) tuple for batch progress display
-
-        Returns:
-            str: BibLaTeX entry or error message
-        """
-        pdf_path = Path(pdf_path)
-
-        if not pdf_path.exists():
-            return f"Error: File not found: {pdf_path}"
-
-        if batch_info:
-            i, total = batch_info
-            self._log(f"\n📄 Processing: {pdf_path.name}", 'info')
-        else:
-            self._log(f"📄 Processing: {pdf_path.name}", 'info')
-
-        # Extract text from PDF
-        self._log("   Extracting text...", 'info')
-
+    def _pdf_extractor_kwargs(self, pdf_path):
+        """OCR-related options extract_pdf() needs that only apply to PDFs
+        (interactive language prompting, OCR thresholds/timeout)."""
         quiet = not self.config.get('verbose', True)
         default_lang = self.config.get('default_ocr_language', 'eng')
 
@@ -249,25 +264,54 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
                 self._log(f"   OCR language: {lang}", 'info')
                 return lang
 
-        pdf_text = extract_content(
-            pdf_path,
+        return dict(
             quiet=quiet,
             language_prompt_fn=language_prompt_fn,
             min_words_threshold=self.config.get('ocr_threshold', 100),
             ocr_timeout=self.config.get('ocr_timeout', 180),
         )
 
-        if pdf_text.startswith("Error:"):
-            return pdf_text
+    def extract_bibtex(self, path, batch_info=None):
+        """
+        Extract bibliographic information from a source file (PDF or .webloc).
 
-        pdf_metadata = extract_pdf_metadata(pdf_path)
+        Args:
+            path: Path to the source file
+            batch_info: Optional (current_index, total) tuple for batch progress display
+
+        Returns:
+            str: BibLaTeX entry or error message
+        """
+        path = Path(path)
+
+        if not path.exists():
+            return f"Error: File not found: {path}"
+
+        extractor = EXTRACTORS.get(path.suffix.lower())
+        if extractor is None:
+            return f"Error: Unsupported file type: {path.name}"
+
+        if batch_info:
+            i, total = batch_info
+            self._log(f"\n📄 Processing: {path.name}", 'info')
+        else:
+            self._log(f"📄 Processing: {path.name}", 'info')
+
+        # Extract source content (PDF pages / webpage - the one place this
+        # branches on file type; everything below is generic)
+        self._log("   Extracting content...", 'info')
+        kwargs = self._pdf_extractor_kwargs(path) if path.suffix.lower() == '.pdf' else {}
+        content = extractor(path, **kwargs)
+
+        if isinstance(content, str):  # error message
+            return content
 
         # Load context files
         self._log("   Loading context...", 'info')
         context = self.load_context_files()
 
         # Build prompt
-        prompt = self.build_prompt(pdf_text, pdf_metadata)
+        prompt = self.build_prompt(content)
 
         # Call Claude API
         self._log("   Sending to Claude...", 'info')
@@ -283,11 +327,22 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
 
             bibtex_entry = message.content[0].text
 
+            # Structural safety net: the prompt above already asks Claude not
+            # to include these, but doesn't reliably follow through (e.g. a
+            # PDF whose own body text states a URL can still get a Url field
+            # despite the instruction against it) - so strip them here rather
+            # than trusting prompt compliance alone.
+            bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry, allow_url=bool(content.url))
+            if stripped:
+                self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
+
             if self.config.get('enrich_missing_fields', True):
-                bibtex_entry = self.enrich_entry(bibtex_entry, pdf_text)
-                bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, pdf_text, pdf_metadata)
+                bibtex_entry = self.enrich_entry(bibtex_entry, content)
+                bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
                 if needs_color:
                     bibtex_entry = "% NEEDS_COLOR_FLAG\n" + bibtex_entry
+
+            bibtex_entry = f"% Source: {content.label} ({content.url or path.name})\n" + bibtex_entry
 
             self._log("   Validating entry...", 'info')
             self._log("   ✓ Complete", 'success')
@@ -301,7 +356,7 @@ Output ONLY the BibLaTeX entry, with no additional commentary or explanation."""
         """Build a prompt asking Claude to merge externally-sourced fields
         into an entry without touching anything else."""
         fields_str = "\n".join(f"{k} = {v}" for k, v in found_fields.items())
-        prompt = f"""This BibLaTeX-Chicago entry is missing some fields that the source PDF
+        prompt = f"""This BibLaTeX-Chicago entry is missing some fields that the source
 did not contain. Supplementary bibliographic data was found from an external
 source (CrossRef and/or Google Scholar) for the following fields:
 
@@ -323,11 +378,15 @@ other fields. Output ONLY the corrected BibLaTeX entry, with no additional
 commentary."""
         return prompt
 
-    def enrich_entry(self, entry_text, pdf_text):
+    def enrich_entry(self, entry_text, content):
         """
-        Fill in bibliographic fields the PDF didn't supply (volume, issue,
+        Fill in bibliographic fields the source didn't supply (volume, issue,
         pages, chapter, etc.) via CrossRef/Google Scholar, then ask Claude to
         merge only those fields into the entry.
+
+        Args:
+            entry_text: The BibLaTeX entry produced so far
+            content: The SourceContent (PDF or webpage) the entry was drawn from
 
         Returns the (possibly unchanged) entry text.
         """
@@ -335,12 +394,12 @@ commentary."""
         fields = enrich.parse_bibtex_fields(entry_text)
         required, desired = enrich.missing_fields(entry_type, fields)
         if not required and not desired:
-            self._log("   Source: PDF (all fields present, no enrichment needed)", 'info')
+            self._log(f"   Source: {content.label} (all fields present, no enrichment needed)", 'info')
             return entry_text
 
         title = enrich.strip_latex(fields.get('title', ''))
         found, field_sources = enrich.gather_enrichment(
-            pdf_text, title, entry_type, fields,
+            content.text, title, entry_type, fields,
             crossref_email=self.config.get('crossref_email'),
             scrapingdog_api_key=self.config.get('scrapingdog_api_key'),
         )
@@ -372,40 +431,40 @@ commentary."""
 
         # Record per-field provenance as a persistent comment so it survives
         # past this run's log, rather than only being visible in the console/window.
-        pdf_fields = sorted(f for f, v in fields.items() if v)
+        source_fields = sorted(f for f, v in fields.items() if v)
         source_lines = []
-        if pdf_fields:
-            source_lines.append(f"PDF: {', '.join(pdf_fields)}")
+        if source_fields:
+            source_lines.append(f"{content.label}: {', '.join(source_fields)}")
         for src, fs in by_source.items():
             source_lines.append(f"{src}: {', '.join(sorted(fs))}")
         comment = f"% Sources -- {'; '.join(source_lines)}\n"
 
         return comment + merged
 
-    def _build_audit_prompt(self, entry, pdf_text, pdf_metadata):
+    def _build_audit_prompt(self, entry, content):
         """Build a prompt asking Claude to self-audit which of its own field
         values are grounded in the given text/metadata versus recalled from
         its own background knowledge of the work."""
         metadata_block = ""
-        if pdf_metadata:
-            lines = "\n".join(f"{k}: {v}" for k, v in pdf_metadata.items())
-            metadata_block = f"\n<pdf_file_metadata>\n{lines}\n</pdf_file_metadata>\n"
+        if content.metadata:
+            lines = "\n".join(f"{k}: {v}" for k, v in content.metadata.items())
+            metadata_block = f"\n<source_metadata>\n{lines}\n</source_metadata>\n"
 
-        return f"""Here is text extracted from a PDF:
+        return f"""Here is text extracted from a {content.label}:
 
-<pdf_text>
-{pdf_text}
-</pdf_text>
+<source_text>
+{content.text}
+</source_text>
 {metadata_block}
-Here is a BibLaTeX entry produced for this PDF:
+Here is a BibLaTeX entry produced for this {content.label}:
 
 <entry>
 {entry}
 </entry>
 
 For each non-empty field in the entry, decide whether its value is explicitly
-present in (or directly derivable from) the PDF text or file metadata above,
-or whether it instead relies on outside/background knowledge about this work
+present in (or directly derivable from) the text or metadata above, or
+whether it instead relies on outside/background knowledge about this work
 (e.g. recognizing the book or article and recalling its author, publisher,
 date, or place from what you already know about it, rather than reading it
 from the given text/metadata).
@@ -414,13 +473,13 @@ Respond in EXACTLY this format and nothing else:
 
 UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/metadata, or NONE>"""
 
-    def _audit_entry_grounding(self, entry_text, pdf_text, pdf_metadata):
+    def _audit_entry_grounding(self, entry_text, content):
         """Ask Claude which fields in entry_text are grounded in the given
         text/metadata vs. recalled from its own background knowledge.
 
         Returns a list of ungrounded field names (possibly empty).
         """
-        prompt = self._build_audit_prompt(entry_text, pdf_text, pdf_metadata)
+        prompt = self._build_audit_prompt(entry_text, content)
         message = self.client.messages.create(
             model=self.config['model'],
             max_tokens=150,
@@ -437,20 +496,27 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
 
         return ungrounded
 
-    def _build_reconcile_prompt(self, entry, candidates):
-        """Build a prompt asking Claude to reconcile claimed-vs-verified field
-        values using only the two given values - not its own background
-        knowledge of the work - while still applying the project's own
-        formatting conventions (name format, title case, etc.) via the same
-        guidelines/template context the other prompts get."""
+    def _build_reconcile_prompt(self, entry, content, candidates):
+        """Build a prompt asking Claude to merge a claimed value with a
+        verified one it's already been confirmed (in code, by
+        enrich._is_completion() - see verify_recollection()) to merely
+        complete rather than contradict - so this call's job is purely
+        formatting the merge correctly per the project's own conventions
+        (name format, title case, etc.), not judging whether to apply it."""
         lines = "\n".join(
-            f"- {c['field']}: claimed = {c['claimed']!r} (from the PDF/initial extraction) "
+            f"- {c['field']}: claimed = {c['claimed']!r} (from the initial extraction) "
             f"vs. verified = {c['verified']!r} (from {c['source']})"
             for c in candidates
         )
-        prompt = f"""This BibLaTeX entry has fields whose claimed value differs from what an
-external bibliographic source (CrossRef or Google Scholar) reports for the
-same work:
+        metadata_block = ""
+        if content.metadata:
+            meta_lines = "\n".join(f"{k}: {v}" for k, v in content.metadata.items())
+            metadata_block = f"\n<source_metadata>\n{meta_lines}\n</source_metadata>\n"
+
+        prompt = f"""This BibLaTeX entry has fields whose claimed value is a less complete
+version of what an external bibliographic source (CrossRef) reports for the
+same work - e.g. an abbreviated first name, or an author list missing a
+co-author:
 
 <fields_to_reconcile>
 {lines}
@@ -460,33 +526,44 @@ same work:
 {entry}
 </entry>
 
-"""
-        prompt += """For each field above, decide on the best final value using ONLY the two
-values given - do NOT draw on your own background/training knowledge of this
-work, even if you recognize it. Two cases:
-- If the two values refer to the same underlying fact expressed with
-  different completeness or formatting (e.g. one is a fuller name, or a more
-  complete author list that includes a co-author the other is missing),
-  merge them into the single most complete, correct form.
-- If they genuinely contradict each other (not just differing in
-  completeness/formatting - e.g. two unrelated names), prefer the verified
-  value, since it comes from an external source rather than recollection.
+For reference, here is the source text/metadata the entry was originally
+drawn from - useful for formatting nuances (e.g. spelling, diacritics), but
+do not add, remove, or alter any field other than those explicitly listed in
+<fields_to_reconcile>, even if you notice other bibliographic details below:
 
-Apply the formatting guidelines/template above to whatever you output (e.g.
-the "LastName, FirstName~Initials" name format, and its worked examples for
-how a merged author list should look) - do not just concatenate the two raw
-values as given. Do not change any field not listed above. Output ONLY the
-corrected BibLaTeX entry, with no additional commentary."""
+<source_text>
+{content.text}
+</source_text>
+{metadata_block}
+"""
+        prompt += """For each field above, merge the claimed and verified values into the
+single most complete, correct form (e.g. spelling out an abbreviated first
+name, or adding a missing co-author to the list), applying the formatting
+guidelines/template above (e.g. the "LastName, FirstName~Initials" name
+format, and its worked examples for how a merged author list should look) -
+do not just concatenate the two raw values as given, and do not draw on your
+own background/training knowledge of this work beyond what's given here.
+
+Do not add, remove, or change any field not listed in <fields_to_reconcile>,
+even one you can now see is missing or fillable from the source text/metadata
+above - that is out of scope for this step. Output ONLY the corrected
+BibLaTeX entry, with no additional commentary."""
         return prompt
 
-    def reconcile_fields(self, entry_text, candidates):
+    def reconcile_fields(self, entry_text, content, candidates):
         """
         Ask Claude to reconcile claimed-vs-verified field values (see
         _build_reconcile_prompt) and return the updated entry. Falls back to
-        the unchanged entry on any failure.
+        the unchanged entry on any failure, or if the merge added a field
+        outside what was asked for (the prompt now shows the full source
+        text/metadata for grounding checks, which risks Claude "helpfully"
+        filling in an unrelated field it noticed there - e.g. a Url found in
+        the PDF body - so this is checked structurally rather than trusted
+        from the prompt instructions alone).
         """
         context = self.load_context_files()
-        prompt = self._build_reconcile_prompt(entry_text, candidates)
+        prompt = self._build_reconcile_prompt(entry_text, content, candidates)
+        allowed_fields = set(enrich.parse_bibtex_fields(entry_text)) | {c['field'].lower() for c in candidates}
         try:
             message = self.client.messages.create(
                 model=self.config['model'],
@@ -495,31 +572,42 @@ corrected BibLaTeX entry, with no additional commentary."""
             )
             merged = self.clean_bibtex(message.content[0].text)
             valid, _ = self.validate_braces(merged)
-            if valid:
-                for c in candidates:
-                    self._log(f"   Reconciled '{c['field']}' using {c['source']} data", 'info')
-                return merged
+            if not valid:
+                return entry_text
+
+            unexpected = set(enrich.parse_bibtex_fields(merged)) - allowed_fields
+            if unexpected:
+                self._log(
+                    f"   ⚠️  Reconciliation added unexpected field(s) {', '.join(sorted(unexpected))} - discarding merge",
+                    'warning'
+                )
+                return entry_text
+
+            for c in candidates:
+                self._log(f"   Reconciled '{c['field']}' against {c['source']} data", 'info')
+            return merged
         except Exception as e:
             self._log(f"   ⚠️  Reconciliation failed: {e}", 'warning')
         return entry_text
 
-    def verify_and_flag_recollection(self, entry_text, pdf_text, pdf_metadata):
+    def verify_and_flag_recollection(self, entry_text, content):
         """
         Ask Claude to self-audit which field values are not grounded in the
-        given PDF text/metadata (i.e. likely drawn from its own background
+        given source text/metadata (i.e. likely drawn from its own background
         knowledge), then attempt to confirm or refute those specific fields
         via CrossRef/Google Scholar. The same lookup also fills in a few
         container-level fields (Editor, Series, Publisher, Location) when the
         entry is missing them entirely - e.g. an edited collection's Editor,
         which is otherwise never sourced anywhere else in this pipeline.
 
-        Fields whose claimed value differs from a verified external record
-        are reconciled via a second, narrowly-scoped Claude call (using only
-        the two given values, not background knowledge - see
-        reconcile_fields). Fields that can be neither confirmed nor refuted
-        (the work isn't found in either source) are left as Claude produced
-        them, but needs_color_flag is returned True so the caller can mark
-        the saved publication for manual review.
+        Fields whose claimed value differs from a verified external record are
+        only auto-reconciled (via a second, narrowly-scoped Claude call - see
+        reconcile_fields) when enrich.verify_recollection() has already
+        vetted them in code as a safe CrossRef-sourced completion, never a
+        genuine contradiction. Anything that doesn't clear that bar - a real
+        contradiction, or any Google Scholar-sourced conflict - is left as
+        Claude produced it, but needs_color_flag is returned True so the
+        caller can mark the saved publication for manual review.
 
         Returns (entry_text, needs_color_flag).
         """
@@ -527,7 +615,7 @@ corrected BibLaTeX entry, with no additional commentary."""
         fields = enrich.parse_bibtex_fields(entry_text)
 
         try:
-            ungrounded = self._audit_entry_grounding(entry_text, pdf_text, pdf_metadata)
+            ungrounded = self._audit_entry_grounding(entry_text, content)
         except Exception as e:
             self._log(f"   ⚠️  Grounding audit failed: {e}", 'warning')
             return entry_text, False
@@ -551,7 +639,7 @@ corrected BibLaTeX entry, with no additional commentary."""
         )
 
         if reconcile_candidates:
-            entry_text = self.reconcile_fields(entry_text, reconcile_candidates)
+            entry_text = self.reconcile_fields(entry_text, content, reconcile_candidates)
 
         for field, value in additions.items():
             self._log(f"   Filled '{field}' from a verified work-level record", 'info')
@@ -665,7 +753,7 @@ corrected BibLaTeX entry, with no additional commentary."""
 
     # Amber/orange - flags a publication whose entry contains at least one
     # field Claude filled in from its own background knowledge of the work
-    # rather than the given PDF text/metadata, and that CrossRef/Scholar
+    # rather than the given source text/metadata, and that CrossRef/Scholar
     # could neither confirm nor refute (the work wasn't found in either).
     UNVERIFIED_COLOR = "{65535, 40000, 0, 65535}"
 
@@ -818,6 +906,17 @@ end tell'''
         """Validate, enrich with a BibDesk bookmark, and append to the main bib file."""
         pdf_path = Path(pdf_path)
 
+        # extract_bibtex() prepends a "% Source: ..." comment recording which
+        # kind of source (PDF/webpage) and locator produced this entry;
+        # clean_bibtex() strips anything before the first '@', so pull it out
+        # first and re-attach it once cleaning is done (outermost marker -
+        # see the prepend order in extract_bibtex).
+        source_comment = ''
+        marker_match = re.match(r'(%\s*Source:\b[^\n]*\n)', bibtex_entry)
+        if marker_match:
+            source_comment = marker_match.group(1)
+            bibtex_entry = bibtex_entry[marker_match.end():]
+
         # verify_and_flag_recollection() prepends a bare "% NEEDS_COLOR_FLAG"
         # marker when a recollection-based field couldn't be confirmed or
         # refuted via CrossRef/Scholar. Unlike the Sources comment below, this
@@ -856,6 +955,8 @@ end tell'''
 
         if sources_comment:
             entry = sources_comment + entry
+        if source_comment:
+            entry = source_comment + entry
 
         # Flag entries still missing critical fields after enrichment (does not block saving)
         entry_type = enrich.get_entry_type(entry)
@@ -903,8 +1004,17 @@ end tell'''
         return True
 
     def move_to_processed(self, pdf_path):
-        """Move a processed PDF to the output folder."""
+        """Move a processed source file to the output folder."""
         pdf_path = Path(pdf_path)
+
+        if not pdf_path.exists():
+            # autofile_bibdesk already relocated the linked file into
+            # BibDesk's own Papers folder as part of auto-filing (BibDesk
+            # renames/moves the file it's given, it doesn't just read it) -
+            # there's nothing left here to move, and that's fine.
+            self._log(f"   (already relocated by BibDesk's autofile, not moving to pdf-out)", 'info')
+            return None
+
         out_folder = Path(self.config.get('pdf_out_folder', './pdf-out'))
         out_folder.mkdir(parents=True, exist_ok=True)
 
@@ -925,7 +1035,8 @@ end tell'''
 
     def process_batch(self, move_files=True, pdf_files=None, progress_window=None):
         """
-        Process a list of PDFs (or all PDFs in the input folder when pdf_files is None).
+        Process a list of source files (or all supported files in the input
+        folder when pdf_files is None).
 
         Args:
             move_files: If True, move processed files to output folder
@@ -943,14 +1054,14 @@ end tell'''
                 self._log(f"Error: Input folder not found: {in_folder}", 'error')
                 self._log(f"Create it with: mkdir {in_folder}", 'error')
                 return {'success': [], 'failed': [], 'skipped': []}
-            files = sorted(in_folder.glob('*.pdf'))
+            files = glob_input_files(in_folder)
 
         if not files:
-            self._log("No PDF files found.", 'warning')
+            self._log("No source files found.", 'warning')
             return {'success': [], 'failed': [], 'skipped': []}
 
         total = len(files)
-        self._log(f"\n📚 Processing {total} PDF(s)\n", 'info')
+        self._log(f"\n📚 Processing {total} file(s)\n", 'info')
         self.notify_progress(f"Processing {total} file{'s' if total != 1 else ''}…")
 
         if self.config.get('autofile_bibdesk', False):
@@ -1058,17 +1169,17 @@ def _run_windowed(agent, pdf_files, move_files):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract bibliographic data from PDFs using Claude"
+        description="Extract bibliographic data from PDFs and .webloc files using Claude"
     )
     parser.add_argument(
-        'pdf_files',
+        'input_files',
         nargs='*',
-        help='Path(s) to PDF file(s) to process'
+        help='Path(s) to PDF and/or .webloc file(s) to process'
     )
     parser.add_argument(
         '--all',
         action='store_true',
-        help='Process all PDFs in the input folder (pdf-in/)'
+        help='Process all supported files in the input folder (pdf-in/)'
     )
     parser.add_argument(
         '--no-move',
@@ -1115,8 +1226,8 @@ def main():
     args = parser.parse_args()
 
     # Validate arguments
-    if not args.all and not args.pdf_files:
-        parser.error("Either provide PDF file(s) or use --all to process the input folder")
+    if not args.all and not args.input_files:
+        parser.error("Either provide file(s) or use --all to process the input folder")
 
     try:
         # Initialize agent
@@ -1134,7 +1245,7 @@ def main():
         if args.all:
             if show_window:
                 in_folder = Path(agent.config.get('pdf_in_folder', './pdf-in'))
-                pdf_files = sorted(in_folder.glob('*.pdf'))
+                pdf_files = glob_input_files(in_folder)
                 _run_windowed(agent, pdf_files, move_files=not args.no_move)
             else:
                 results = agent.process_batch(move_files=not args.no_move)
@@ -1143,7 +1254,7 @@ def main():
             return
 
         # ── explicit file list ────────────────────────────────────────────────
-        pdf_files = [Path(f) for f in args.pdf_files]
+        pdf_files = [Path(f) for f in args.input_files]
 
         if show_window and len(pdf_files) >= 1:
             _run_windowed(agent, pdf_files, move_files=not args.no_move)

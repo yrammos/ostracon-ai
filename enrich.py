@@ -137,6 +137,90 @@ def add_field(entry_text, field_name, value):
     return '\n'.join(lines)
 
 
+def remove_field(entry_text, field_name):
+    """
+    Remove a top-level field and its trailing comma from a BibTeX entry,
+    handling nested braces in its value (see set_field()). Returns the entry
+    unchanged if the field isn't found. Fixes up the new last field's
+    trailing comma if the removed field was the last one before the closing
+    brace.
+    """
+    m = re.search(rf'(?im)^([ \t]*{re.escape(field_name)}\s*=\s*)', entry_text)
+    if not m:
+        return entry_text
+
+    value_start = m.end()
+    if value_start >= len(entry_text) or entry_text[value_start] != '{':
+        return entry_text
+
+    depth = 0
+    i = value_start
+    while i < len(entry_text):
+        if entry_text[i] == '{':
+            depth += 1
+        elif entry_text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    end = i + 1
+    if end < len(entry_text) and entry_text[end] == ',':
+        end += 1
+    newline_pos = entry_text.find('\n', end)
+    end = newline_pos + 1 if newline_pos != -1 else len(entry_text)
+
+    line_start = entry_text.rfind('\n', 0, m.start()) + 1
+    lines = (entry_text[:line_start] + entry_text[end:]).split('\n')
+
+    # If the removed field was the last one before the closing brace, the
+    # new last field may now have a dangling trailing comma - strip it.
+    for idx in range(len(lines) - 1, -1, -1):
+        if lines[idx].strip() == '}':
+            for prev in range(idx - 1, -1, -1):
+                if lines[prev].strip():
+                    if lines[prev].rstrip().endswith(','):
+                        lines[prev] = lines[prev].rstrip()[:-1]
+                    break
+            break
+
+    return '\n'.join(lines)
+
+
+FORBIDDEN_FIELDS_ALWAYS = {'issn', 'isbn', 'keywords', 'reference', 'devonthink'}
+URL_RESTRICTED_TYPES = {'article', 'book', 'collection', 'incollection', 'inbook'}
+
+
+def strip_forbidden_fields(entry_text, allow_url):
+    """
+    Remove fields CLAUDE.md forbids from a raw BibLaTeX entry, structurally -
+    the initial extraction prompt already asks Claude not to include these,
+    but doesn't reliably follow through (e.g. a PDF whose own body text
+    states a URL can still get a Url field despite the instruction against
+    it for PDF-sourced @article/@book/@collection/@incollection/@inbook
+    entries).
+
+    Args:
+        entry_text: The raw BibLaTeX entry
+        allow_url: True for webloc-sourced entries (Url/Urldate are the
+            entry's only locator and should stay); False for PDF-sourced
+            entries (Url is redundant with the filed PDF and forbidden for
+            the types in URL_RESTRICTED_TYPES).
+
+    Returns (entry_text, stripped_field_names).
+    """
+    entry_type = get_entry_type(entry_text)
+    fields = parse_bibtex_fields(entry_text)
+
+    to_strip = [f for f in FORBIDDEN_FIELDS_ALWAYS if fields.get(f)]
+    if not allow_url and entry_type in URL_RESTRICTED_TYPES:
+        to_strip += [f for f in ('url', 'urldate') if fields.get(f)]
+
+    for field in to_strip:
+        entry_text = remove_field(entry_text, field)
+
+    return entry_text, to_strip
+
+
 def strip_latex(text):
     """Strip LaTeX markup from a field value for use in external search queries."""
     if not text:
@@ -483,6 +567,54 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
 _LIST_FIELDS = {'author', 'editor'}
 _COMPARABLE_FIELDS = _LIST_FIELDS | {'title', 'date', 'publisher', 'location'}
 
+
+def _split_name_list(value):
+    """Split a bibtex name list ('Last, First and Last2, First2') into
+    {lastname_lower: firstname} pairs. Entries without a comma are skipped."""
+    names = {}
+    for part in value.split(' and '):
+        part = part.strip()
+        if ',' not in part:
+            continue
+        last, first = part.split(',', 1)
+        names[last.strip().lower()] = first.strip()
+    return names
+
+
+def _is_name_completion(claimed, verified):
+    """True only if `verified` adds detail to `claimed` - a missing
+    co-author, or a fuller/spelled-out first name for a surname both share -
+    never a surname claimed doesn't share with verified. That distinction is
+    exactly what a bad fuzzy match (typically from Google Scholar) fails:
+    it substitutes an unrelated person's name rather than completing one
+    that's genuinely there."""
+    claimed_names = _split_name_list(claimed)
+    verified_names = _split_name_list(verified)
+    if not claimed_names:
+        return False
+    for last, first in claimed_names.items():
+        if last not in verified_names:
+            return False
+        v_first = verified_names[last]
+        c_first = first.rstrip('.').strip()
+        if c_first and not v_first.lower().startswith(c_first.lower()):
+            return False
+    return True
+
+
+def _is_completion(field, claimed, verified):
+    """Deterministic (non-LLM) check that `verified` merely completes
+    `claimed` - adds detail - rather than contradicting it. This is the only
+    case auto-reconciliation is allowed to apply (see verify_recollection());
+    a genuine contradiction is always left for manual review instead, no
+    matter how confident an external match looks."""
+    if field in _LIST_FIELDS:
+        return _is_name_completion(claimed, verified)
+    claimed_norm = strip_latex(claimed).strip().lower()
+    verified_norm = strip_latex(verified).strip().lower()
+    return bool(claimed_norm) and claimed_norm in verified_norm
+
+
 # Container-level fields worth filling from a work-level match even when they
 # weren't flagged, as long as the entry doesn't already have them - e.g. the
 # Editor of an edited collection is a distinct field from the chapter's own
@@ -532,22 +664,28 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
 
     Returns (reconcile_candidates, additions, unresolved):
     - reconcile_candidates: [{field, claimed, verified, source}] for flagged
-      fields whose claimed value differs from a confirmed external record.
-      Deliberately NOT auto-resolved here: "differs" covers both a flat
-      contradiction (wrong author) and a compatible-but-incomplete claim (a
-      partial author list missing a co-author), and a similarity threshold
-      can't reliably tell those apart - that's a judgment call, left to the
-      caller's own AI-based reconciliation step rather than decided by an
-      arbitrary string-distance cutoff here.
+      fields whose claimed value differs from a confirmed external record,
+      pre-vetted (via _is_completion(), see _maybe_reconcile() above) as safe
+      to auto-apply: the source must be CrossRef (DOI-keyed, high trust), and
+      the verified value must provably just complete the claimed one (add a
+      missing co-author, spell out an initial) rather than contradict it.
+      Anything that doesn't clear that bar - a genuine contradiction, or any
+      Google Scholar-sourced conflict regardless of how it looks - is routed
+      into `unconfirmed`/`unresolved` instead, never silently applied. This
+      is a deterministic, code-level gate rather than an LLM judgment call:
+      two real cases (both Scholar-sourced) had the LLM-judgment version of
+      this decision get it wrong, overwriting a correct author with an
+      unrelated person's name from a bad fuzzy match.
     - additions: {field: value} for _CONTAINER_FIELDS the entry is missing
       entirely, filled from the same matched record. Unlike overrides, there
       is nothing to reconcile against here, so these are applied directly.
     - unresolved: True if at least one flagged/comparable field has no
-      verified value to compare against at all - either because no matching
-      record was found via either source, or because a record WAS found but
-      simply doesn't cover that particular field (e.g. an edited collection's
-      record may list an editor but no author). The caller should treat it
-      as "unverified, review manually" rather than "confirmed".
+      verified value to compare against at all, or was rejected by the
+      reconciliation gate above - either because no matching record was
+      found via either source, a record WAS found but doesn't cover that
+      field, or its value didn't pass the completion/source check. The
+      caller should treat it as "unverified, review manually" rather than
+      "confirmed".
     """
     log = log or (lambda msg: None)
     # Author/editor completeness is checked opportunistically whenever a
@@ -618,6 +756,23 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
 
     reconcile_candidates = []
     unconfirmed = []
+
+    def _maybe_reconcile(field, claimed, verified_value):
+        # Auto-reconciliation is only ever allowed for a CrossRef-sourced
+        # (DOI-keyed, high-trust) value that provably just completes the
+        # claimed one (see _is_completion()) - a genuine contradiction, or
+        # anything from Google Scholar's fuzzy title/author search, is left
+        # unresolved for manual review instead of risking a silent, wrong
+        # override. Two real cases (a Scholar mismatch on an author name)
+        # showed the LLM-judgment version of this check isn't reliable
+        # enough on its own.
+        if source == 'CrossRef' and _is_completion(field, claimed, verified_value):
+            reconcile_candidates.append({
+                'field': field, 'claimed': claimed, 'verified': verified_value, 'source': source,
+            })
+        else:
+            unconfirmed.append(field)
+
     for field in relevant:
         claimed = entry_fields.get(field, '')
         if field in _LIST_FIELDS:
@@ -631,18 +786,14 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
                 continue
             verified_value = ' and '.join(names)
             if not _exact_match(claimed, verified_value):
-                reconcile_candidates.append({
-                    'field': field, 'claimed': claimed, 'verified': verified_value, 'source': source,
-                })
+                _maybe_reconcile(field, claimed, verified_value)
         else:
             verified_value = verified.get(field)
             if not verified_value:
                 unconfirmed.append(field)
                 continue
             if not _exact_match(claimed, verified_value):
-                reconcile_candidates.append({
-                    'field': field, 'claimed': claimed, 'verified': verified_value, 'source': source,
-                })
+                _maybe_reconcile(field, claimed, verified_value)
 
     additions = {}
     for field in _CONTAINER_FIELDS:

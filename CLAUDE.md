@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-This repository contains academic PDF publications. The task is to extract bibliographic information from PDFs in the `./pdf` fodler and store it in a BibLaTeX file using the **biblatex-chicago** standard (notes and bibliography variant, not author-date).
+This repository contains academic publications - PDFs, and `.webloc` bookmarks to online-only publications with no PDF. The task is to extract bibliographic information from each source in the `./pdf-in` folder and store it in a BibLaTeX file using the **biblatex-chicago** standard (notes and bibliography variant, not author-date).
 
 ## Bibliographic Extraction Guidelines
 
-- Look for PDFs in the `/.pdf` folder.
+- Look for PDFs and `.webloc` files in the `./pdf-in` folder.
 - **Read only** the beginning (max of first page or ~450 words) and last ~150 words of each PDF for bibliographic data.
+- For a `.webloc` file, fetch the page it bookmarks and extract from that instead - the same recognition/formatting rules apply, source text and metadata just come from the fetched webpage (main body text and `citation_*`/`og:*`/JSON-LD metadata) rather than from PDF pages and embedded file metadata.
 - IMPORTANT: Use `biblio-template.bib` as reference for publication types and fields. Try to use the types and fields in this template.
 - Select the appropriate entry type (@Book, @Article, etc.) and populate relevant fields.
 - Every new entry must include `date-added` and `date-modified` fields, both set to the current date, time, and timezone. Run `date "+%Y-%m-%d %H:%M:%S %z"` to get the value. Format: `date-added = {2026-03-22 14:30:00 +0200}`.
@@ -19,7 +20,7 @@ This repository contains academic PDF publications. The task is to extract bibli
   - keywords
   - reference
   - devonthink
-  - URL (in @article, @book, @collection, @incollection, @inbook types)
+  - URL (in @article, @book, @collection, @incollection, @inbook types) - **exception:** for entries sourced from a `.webloc` file rather than a PDF, populate `Url` (the bookmarked page's address) and `Urldate` (the date accessed). The general rule above assumes a PDF is always filed as the entry's locator instead; when there is no PDF, `Url`/`Urldate` is the locator.
 - Use a single hyphen (`-`) for page ranges, date ranges, and any other ranges.
 - In the date field only the four-digit year, unless the item is:
   - @unpublished

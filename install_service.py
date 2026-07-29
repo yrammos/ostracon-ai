@@ -20,7 +20,7 @@ def build_info_plist() -> dict:
                 "NSMenuItem": {"default": SERVICE_NAME},
                 "NSMessage": "runWorkflowAsService",
                 "NSRequiredContext": {},
-                "NSSendFileTypes": ["com.adobe.pdf"],
+                "NSSendFileTypes": ["com.adobe.pdf", "com.apple.web-internet-location"],
             }
         ]
     }
@@ -154,7 +154,7 @@ def main():
         print(f"  ⚠️  Automator registration failed: {result.stderr.strip()}")
         print("  Open Automator manually, open the workflow, and save it.")
     else:
-        print("✓ Registered via Automator — right-click a PDF in Finder to use it")
+        print("✓ Registered via Automator — right-click a PDF or .webloc file in Finder to use it")
 
 
 if __name__ == "__main__":

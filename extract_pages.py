@@ -10,8 +10,24 @@ import subprocess
 import shutil
 import tempfile
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 from pypdf import PdfReader, PdfWriter
+
+
+@dataclass
+class SourceContent:
+    """Normalized shape produced by every source extractor (PDF, webloc, ...).
+
+    This is the entire interface the rest of the pipeline (prompt building,
+    enrichment, verification, saving) needs - it never inspects which kind of
+    source produced it.
+    """
+    text: str
+    metadata: dict = field(default_factory=dict)
+    label: str = "PDF"          # human-readable source kind, used once in build_prompt
+    url: Optional[str] = None   # set only when the source has a canonical access URL
 
 
 def extract_pdf_metadata(pdf_path):
@@ -323,6 +339,26 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         output.append(headers_footers)
 
     return "\n".join(output)
+
+
+def extract_pdf(pdf_path, **opts):
+    """
+    Extract a PDF's bibliographic content as a SourceContent.
+
+    Thin wrapper around extract_content()/extract_pdf_metadata() that
+    presents the same interface as other source extractors (e.g.
+    web_source.extract_webloc). Accepts the same keyword options as
+    extract_content() (min_first_words, last_words, min_words_threshold,
+    quiet, language_prompt_fn, ocr_timeout).
+
+    Returns:
+        SourceContent on success, or a string starting with "Error:" on failure.
+    """
+    text = extract_content(pdf_path, **opts)
+    if isinstance(text, str) and text.startswith("Error:"):
+        return text
+    return SourceContent(text=text, metadata=extract_pdf_metadata(pdf_path), label="PDF")
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
