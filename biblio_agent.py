@@ -967,10 +967,15 @@ end tell'''
             self.notify_incomplete(pdf_path.name, still_missing)
             entry = f"% INCOMPLETE: missing {', '.join(still_missing)}\n" + entry
 
-        # Attach a BibDesk file bookmark
-        entry = self.add_bdsk_bookmark(entry, pdf_path)
+        # Attach a BibDesk file bookmark and auto-file the linked document -
+        # PDF sources only. A .webloc is just a bookmark to a webpage used to
+        # extract bibliographic data; it has no document worth filing into
+        # BibDesk's library, so it's left untouched (not bookmarked, not moved).
+        is_fileable_source = pdf_path.suffix.lower() == '.pdf'
+        if is_fileable_source:
+            entry = self.add_bdsk_bookmark(entry, pdf_path)
 
-        if self.config.get('autofile_bibdesk', False):
+        if is_fileable_source and self.config.get('autofile_bibdesk', False):
             output_path = Path(self.config['main_bib_file']).expanduser()
             if not output_path.exists():
                 output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -984,7 +989,8 @@ end tell'''
                 return False
 
         if needs_color:
-            self._log("   ⚠️  Unverified recollection-based field(s) - color flag needs autofile_bibdesk to apply", 'warning')
+            reason = "not a PDF source" if not is_fileable_source else "autofile_bibdesk to apply"
+            self._log(f"   ⚠️  Unverified recollection-based field(s) - color flag needs {reason}", 'warning')
 
         output_path = Path(self.config['main_bib_file']).expanduser()
         if not output_path.exists():
