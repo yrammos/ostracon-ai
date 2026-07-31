@@ -1,4 +1,4 @@
-# BibLaTeX-Chicago-Claude (a.k.a. "Ostracon")
+# BibLaTeX-Chicago-Claude (a.k.a. “Ostracon”)
 
 A Claude-powered macOS agent for generating BibLaTeX-Chicago entries from PDF files and `.webloc` bookmarks to online-only publications.
 
