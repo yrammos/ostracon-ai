@@ -2,6 +2,30 @@
 
 A Claude-powered macOS agent for generating BibLaTeX-Chicago entries from PDF files and `.webloc` bookmarks to online-only publications.
 
+- [Quick Start](#quick-start)
+- [Rationale](#rationale)
+- [Functionality](#functionality)
+  - [Extraction and Reconciliation Flow](#extraction-and-reconciliation-flow)
+- [Setup](#setup)
+  - [1. Install System Dependencies](#1-install-system-dependencies)
+  - [2. Create a Python Environment and Install Dependencies](#2-create-a-python-environment-and-install-dependencies)
+  - [3. Configure](#3-configure)
+  - [4. Customize the Extraction Prompt](#4-customize-the-extraction-prompt)
+  - [5. Configure the Automator Script](#5-configure-the-automator-script)
+  - [6. Install the macOS Quick Action](#6-install-the-macos-quick-action)
+  - [7. Verify the setup](#7-verify-the-setup)
+- [Usage](#usage)
+  - [macOS Quick Action (Recommended)](#macos-quick-action-recommended)
+  - [Command Line](#command-line)
+- [Project Structure](#project-structure)
+- [BibDesk Integration](#bibdesk-integration)
+- [Troubleshooting](#troubleshooting)
+- [Cost Estimate](#cost-estimate)
+  - [Batching and cache TTL](#batching-and-cache-ttl)
+- ["Ostracon"?](#ostracon)
+- [License](#license)
+  - [Third-party material](#third-party-material)
+
 ## Quick Start
 
 ```bash
