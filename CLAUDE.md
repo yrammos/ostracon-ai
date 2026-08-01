@@ -71,3 +71,11 @@ Upstream (consult when the local files are insufficient):
 
 - Use biblatex-chicago specific types and fields, not generic BibLaTeX.
 - The Chicago style variant is "notes and bibliography", not "author-date".
+
+### Operator note: model choice for reference works
+
+*This is guidance for whoever runs the pipeline, not an instruction to the extracting model.*
+
+Reference works — Grove Music Online, the Stanford Encyclopedia, Wikipedia and the like — are the hardest sources here, because a correct entry has to put the *work* in `Title` and the *article* in `Lista`, add `Entrysubtype = {online}` where there is no print counterpart, and prefer a stated revision date in `Urldate` qualified by `Userd` over a bare access date. Comparison runs on `plato.stanford.edu` and Grove showed `claude-sonnet-4-6` getting parts of this wrong (article name in `Title`) and `claude-sonnet-5` fabricating a publisher and a date, while `claude-opus-5` produced the full correct form including the `Urldate`/`Userd` revision-date pairing.
+
+For a batch of reference works, run with `--model claude-opus-5`; the flag overrides `config.yaml` for that invocation only. It roughly doubles the cost — Opus prices at $5/$25 per 1M tokens against Sonnet's $3/$15, and its tokenizer makes the cached prefix about 27% larger — so it is worth reaching for on awkward sources rather than by default. `estimate_cost.py --model claude-opus-5` prices it before you commit.
