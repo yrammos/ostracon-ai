@@ -285,7 +285,8 @@ ostracon-ai/
 │   ├── test_setup.py     # Checks dependencies, config, context files, and documentation drift
 │   ├── estimate_cost.py  # Measures the current prompt-cache cost profile
 │   ├── extract_intro.py  # Regenerates cms-notes-intro-guide.md from the upstream .tex
-│   └── install_service.py # Builds and installs the macOS Quick Action
+│   ├── install_service.py # Builds and installs the macOS Quick Action
+│   └── normalization-plan.md # Draft plan for bringing a legacy .bib up to the current house style
 │
 ├── automator/
 │   ├── script.sh.example # Shell script template (copy to script.sh and edit)
