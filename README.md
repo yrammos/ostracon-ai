@@ -180,6 +180,8 @@ python3 test_setup.py
 
 Checks dependencies, `config.yaml`, the context files, OCR availability, and — since both drifted twice while this was being built — that `README.md` still names every config key, every CLI flag, and every tracked root file. Re-run it after adding a setting or a flag; it fails loudly rather than leaving the documentation quietly stale.
 
+The Quick Action runs `test_setup.py --preflight` before each batch — a fast subset covering dependencies, config, and the context files. It is silent when everything is in order, and aborts with an alert naming the problem when it isn't, rather than letting a broken environment surface as a Python traceback after the progress window has opened. OCR, the input folder, and the documentation audit are skipped there, being either non-blocking or a developer concern.
+
 ## Usage
 
 ### macOS Quick Action (Recommended)

@@ -188,6 +188,38 @@ def test_documentation():
 
     return ok
 
+def preflight():
+    """Fast pre-batch check: only what determines whether a run can work.
+
+    Silent on success so the Quick Action stays quiet, and non-zero with a
+    short human-readable reason on failure - a missing dependency otherwise
+    surfaces as a Python traceback in an alert box, after the progress window
+    has already opened. Deliberately skips OCR (a warning, not a blocker),
+    pdf-in/ (irrelevant when files are named explicitly), and the
+    documentation audit (a developer concern, and it shells out to git).
+    """
+    import io
+    import contextlib
+
+    problems = []
+    for name, check in (("dependencies", test_imports), ("configuration", test_config),
+                        ("context files", test_project_files)):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            passed = check()
+        if not passed:
+            detail = [l.strip() for l in buf.getvalue().splitlines()
+                      if l.strip().startswith(("✗", "⚠"))]
+            problems.append(f"{name}:\n  " + "\n  ".join(detail))
+
+    if problems:
+        print("Setup check failed - the batch was not started.\n")
+        print("\n\n".join(problems))
+        print("\nRun test_setup.py for the full report.")
+        return 1
+    return 0
+
+
 def main():
     print("=" * 60)
     print("Bibliographic Extractor - Setup Test")
@@ -231,4 +263,6 @@ def main():
     print()
 
 if __name__ == "__main__":
+    if "--preflight" in sys.argv:
+        sys.exit(preflight())
     main()
