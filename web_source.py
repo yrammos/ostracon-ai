@@ -10,7 +10,9 @@ SourceContent.
 
 import json
 import plistlib
+import re
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 import requests
 from bs4 import BeautifulSoup
@@ -51,6 +53,49 @@ OG_META_FIELDS = {
 }
 
 JSONLD_TYPES = {'Article', 'ScholarlyArticle', 'NewsArticle', 'BlogPosting', 'Book', 'CreativeWork'}
+
+
+# Query parameters that identify a campaign, a referrer, or the person who
+# shared the link rather than the resource itself. A Url lands in a .bib file
+# that may be published or shared, so a share token there is both noise and a
+# small leak - Oxford's "email this article" links carry one identifying the
+# sender. Deliberately conservative: only parameters that are unambiguously
+# tracking. Anything load-bearing (a page or article id) must survive, since a
+# wrongly-stripped parameter yields a broken citation, which is worse than an
+# untidy one.
+_TRACKING_PARAMS = {
+    'fbclid', 'gclid', 'dclid', 'msclkid', 'twclid', 'ttclid', 'igshid', 'yclid',
+    'mc_cid', 'mc_eid', '_ga', '_gl', 'at_medium', 'at_campaign', 'ito', 'cmp',
+}
+_TRACKING_PREFIXES = ('utm_',)
+
+# Some platforms put the share token in a generically-named parameter, so the
+# name alone can't identify it. Silverchair (Oxford Academic, Grove Music
+# Online) uses p=email<token>; `p` is far too common a name to strip outright,
+# so it is matched on the value instead.
+_TRACKING_VALUES = {'p': re.compile(r'^email\w+$', re.I)}
+
+
+def _is_tracking(key, value):
+    lower = key.lower()
+    if lower in _TRACKING_PARAMS or lower.startswith(_TRACKING_PREFIXES):
+        return True
+    pattern = _TRACKING_VALUES.get(lower)
+    return bool(pattern and pattern.match(value))
+
+
+def clean_url(url):
+    """Drop tracking and share-token parameters from a URL.
+
+    Everything else - path, fragment, and any parameter that might identify
+    the resource - is left untouched.
+    """
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if not _is_tracking(k, v)]
+    return urlunsplit(parts._replace(query=urlencode(kept)))
 
 
 def resolve_webloc(path):
@@ -176,5 +221,6 @@ def extract_webloc(webloc_path, timeout=20):
         text=_page_text(soup),
         metadata=_page_metadata(soup),
         label="webpage",
-        url=response.url,  # final URL after any redirects (e.g. DOI resolvers)
+        # Final URL after any redirects (e.g. DOI resolvers), minus tracking.
+        url=clean_url(response.url),
     )

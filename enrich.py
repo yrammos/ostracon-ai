@@ -249,7 +249,14 @@ def strip_forbidden_fields(entry_text):
     fields = parse_bibtex_fields(entry_text)
 
     to_strip = [f for f in FORBIDDEN_FIELDS_ALWAYS if fields.get(f)]
-    keep_url = entry_type == 'online' or not fields.get('date')
+    # An online reference work is the third case that must keep its locator.
+    # The package is explicit that these "need not only a url but also,
+    # always, a urldate (instead of a date), as these sources are in constant
+    # flux" - so a dated @Inreference/@Reference carrying entrysubtype=online
+    # would otherwise be stripped of exactly the fields it requires.
+    online_reference = (entry_type in ('inreference', 'reference')
+                        and fields.get('entrysubtype', '').strip().lower() == 'online')
+    keep_url = entry_type == 'online' or online_reference or not fields.get('date')
     if not keep_url:
         to_strip += [f for f in ('url', 'urldate') if fields.get(f)]
 
