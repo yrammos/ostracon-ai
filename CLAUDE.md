@@ -37,6 +37,7 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
   - Booktitle
   - Issuetitle
   - Publisher
+- Hyphenated and other compound words are where title case most often goes wrong — capitalising only the first element is the usual error. Give compounds particular attention and apply the Chicago Manual's treatment of them rather than a mechanical first-word-only rule.
 - If the language of the publication is Russian or French, use title case.
 - If the language of the publication is German, use German title case.
 - Do not use all caps, unless it is a single, individual word in the title.
