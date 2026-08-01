@@ -1,4 +1,4 @@
-# BibLaTeX-Chicago-Claude (a.k.a. “Ostracon”)
+# “Ostracon”
 
 A Claude-powered macOS agent for generating BibLaTeX-Chicago entries from PDF files and `.webloc` bookmarks to online-only publications.
 
@@ -50,7 +50,7 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 
 ## Functionality
 
-1. Takes one or more PDF and/or `.webloc` files as input.
+1. Accepts one or more PDF and/or `.webloc` files as input.
 2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from key pages (volume, issue, page range, chapter number), and embedded PDF metadata (title, author, subject, creation date). For a `.webloc` file: resolves the bookmarked URL, fetches the page, and extracts its main body text along with `citation_*`/`og:*`/JSON-LD metadata—the online equivalent of a PDF's embedded metadata.
 3. Sends all of the above to the Claude API together with the cached context prefix — the house-style guidelines, the entry-type template, the field reference, and the worked-example corpora — and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` is given its `Url`/`Urldate`, since there is no PDF to file as the entry's locator instead.
 4. Strips any field the guidelines forbid (ISSN, keywords, or `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included anyway. A structural safeguard, because the prompt instruction alone isn't followed reliably.
