@@ -40,25 +40,25 @@ Then right-click any PDF or `.webloc` file in Finder and choose **Extract BibLaT
 
 ## Rationale
 
-[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission history, to various types of authorship, and to detail in general. Its "notes and bibliography" variant relies on footnotes or endnotes rather than inline ("author-date") references, and is the more common one in music theory and musicology.
+[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission details.
 
-The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero unsustainable as a bibliography manager, with the otherwise excellent [Better BibTeX](https://retorque.re/zotero-better-bibtex/) extension only alleviating a painful experience. For many writers, [BibDesk](https://bibdesk.sourceforge.io) is the only macOS manager that elegantly navigates the style's ontological complexity. Others avoid managers altogether and prefer to edit `.bib` files directly within a text editor.
+The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero-like auto-creation and auto-fill harder to reproduce reliably by hand.
 
-With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDF files or `.webloc` links. Thanks to its reliance on AI and elaborate prompting, the agent should not only match Zotero but actually outperform it in most cases.
+With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDFs or online-only sources.
 
 Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context; it is left as a trivial exercise for the reader.
 
 ## Functionality
 
 1. Accepts one or more PDF and/or `.webloc` files as input.
-2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from key pages (volume, issue, page range, chapter number), and embedded PDF metadata (title, author, subject, creation date). For a `.webloc` file: resolves the bookmarked URL, fetches the page, and extracts its main body text along with `citation_*`/`og:*`/JSON-LD metadata—the online equivalent of a PDF's embedded metadata.
-3. Sends all of the above to the Claude API together with the cached context prefix — the house-style guidelines, the entry-type template, the field reference, and the worked-example corpora — and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` is given its `Url`/`Urldate`, since there is no PDF to file as the entry's locator instead.
-4. Strips any field the guidelines forbid (ISSN, keywords, or `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included anyway. A structural safeguard, because the prompt instruction alone isn't followed reliably.
-5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude call.
+2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from each page, and embedded metadata.
+3. Sends all of the above to the Claude API together with the cached context prefix — the house-style guidelines, the entry-type template, the field reference, and the worked-example corpora — and asks Claude to generate a BibLaTeX-Chicago entry.
+4. Strips any field the guidelines forbid (ISSN, keywords, or `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included anyway. A structural safeguard, because the prompt can be overgenerous.
+5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude pass.
 6. Audits the entry for fields filled from Claude's training-data recollection rather than the source text—a genuine failure mode with academic works Claude may recognize.
-7. Re-checks CrossRef/Scholar for recollection-based or missing container-level fields (editor, publisher, date). A conflicting value is applied automatically only when it comes from CrossRef *and* strictly completes the claimed value—spelling out an initial, adding a missing co-author—never a contradiction, and never from Scholar's fuzzier match. Anything else is flagged for review rather than overwritten: a wrong field is worse than an empty one.
+7. Re-checks CrossRef/Scholar for recollection-based or missing container-level fields (editor, publisher, date). A conflicting value is applied automatically only when it comes from CrossRef and strictly completes the entry.
 8. Validates brace balance before saving.
-9. Saves the entry—with a BibDesk `bdsk-file` bookmark to the source PDF or `.webloc` file—either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file` in `config.yaml`). Entries with unresolved flagged fields are colored amber in BibDesk for manual review (only possible when `autofile_bibdesk` is enabled).
+9. Saves the entry—with a BibDesk `bdsk-file` bookmark to the source PDF or `.webloc` file—either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file`) for later import.
 10. On validation failure, saves the raw entry to `failed_bib_file` and sends a macOS notification.
 
 With `autofile_bibdesk` disabled, the staging file can be periodically imported into BibDesk; source links will already be intact thanks to the embedded bookmark.
@@ -129,16 +129,16 @@ main_bib_file: "~/Desktop/biblio-staging.bib" # output file ("staging output")
 failed_bib_file: "~/Desktop/biblio-failed.bib" # error file
 ```
 
-The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `prompt-context/biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
+The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `prompt-context/biblatex-chicago-notes-ref.md`) loads the condensed reference.
 
 The optional `example_files` key loads two worked-example corpora from the biblatex-chicago package's own documentation:
 
-- `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains *why* that type and those fields were chosen. Converted to this project's conventions: Unicode accents rather than LaTeX macros, single-hyphen ranges.
+- `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains *why* that type and those fields were chosen. Converted to Unicode and normalized for this project.
 - `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `dev/extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
 
-Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the cached prefix; see [Cost Estimate](#cost-estimate) before enabling them on single-file runs.
+Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the prompt prefix.
 
-Precedence splits by question, not by file: the corpora are authoritative on what biblatex-chicago supports, `CLAUDE.md` and `biblio-template.bib` on this project's presentation choices. Neither local file is an allowlist — `biblio-template.bib` covers 20 types, `notes-test.bib` 32, and types absent from both (`@Letter`, `@CustomC`, `@Audio`, the `@Mv*` and legal types) remain available.
+Precedence splits by question, not by file: the corpora are authoritative on what biblatex-chicago supports, `CLAUDE.md` and `biblio-template.bib` on this project's presentation choices. Neither local file can override the package's supported types or fields.
 
 #### External lookup services (optional)
 
@@ -149,8 +149,8 @@ crossref_email: "you@example.com"  # optional; enables CrossRef's faster "polite
 scrapingdog_api_key: ""            # optional; enables the Google Scholar fallback
 ```
 
-- **CrossRef** is free and needs no account. Supplying `crossref_email` opts you into the [polite pool](https://api.crossref.org), which is faster and more reliable than the anonymous one; the address is sent as a courtesy identifier, nothing more. Leave it blank to stay anonymous.
-- **Google Scholar** has no public API, so the fallback goes through [ScrapingDog](https://scrapingdog.com), which is paid — roughly $0.0004/credit on pay-as-you-go ($10 for 25,000 credits), a couple of credits per lookup. Leave `scrapingdog_api_key` empty to disable it: CrossRef alone resolves most journal articles, and Scholar is only consulted for what CrossRef missed. Its results are also trusted less — a Scholar-sourced value is never auto-applied over a conflicting one, only ever flagged for review.
+- **CrossRef** is free and needs no account. Supplying `crossref_email` opts you into the [polite pool](https://api.crossref.org), which is faster and more reliable than the anonymous one; the address should be one monitored by the maintainer.
+- **Google Scholar** has no public API, so the fallback goes through [ScrapingDog](https://scrapingdog.com), which is paid — roughly $0.0004/credit on pay-as-you-go ($10 for 25,000 credits), a couple of credits per lookup.
 
 #### Other options
 
@@ -159,7 +159,7 @@ scrapingdog_api_key: ""            # optional; enables the Google Scholar fallba
 | `model` | `claude-sonnet-4-6` | Claude model. Run `dev/estimate_cost.py --model <id>` to price alternatives first. |
 | `max_tokens` | `4000` | Ceiling on each response. Entries run 400–500 tokens; the headroom absorbs longer ones. |
 | `cache_ttl` | `"1h"` | Prompt-cache lifetime. See [Cost Estimate](#cost-estimate). |
-| `enrich_missing_fields` | `true` | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but nothing verifies the result. |
+| `enrich_missing_fields` | `true` | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but no enrichment or review of recollection-based fields. |
 | `verbose` | `true` | Progress messages on stderr. |
 | `show_window` | `false` | Show the floating progress window by default (`--window`/`--no-window` override it). |
 | `window_models` | sonnet-4-6, opus-5 | Models offered in the progress window's dropdown — see [Quick Action](#macos-quick-action-recommended). Unset hides the dropdown. |
@@ -202,15 +202,15 @@ This builds the Automator workflow from `automator/script.sh` and installs it to
 python3 dev/test_setup.py
 ```
 
-Checks dependencies, `config.yaml`, the context files, OCR availability, and — since both drifted twice while this was being built — that `README.md` still names every config key, every CLI flag, and every tracked file and source directory. Re-run it after adding a setting, a flag, or a file; it fails loudly rather than leaving the documentation quietly stale. The name match is token-based, so a near-miss in the structure tree counts as missing rather than passing on a substring.
+Checks dependencies, `config.yaml`, the context files, OCR availability, and — since both drifted twice while this was being built — that `README.md` still names every config key, every CLI flag, and every prompt-context file.
 
-The Quick Action runs `dev/test_setup.py --preflight` before each batch — a fast subset covering dependencies, config, and the context files. It is silent when everything is in order, and aborts with an alert naming the problem when it isn't, rather than letting a broken environment surface as a Python traceback after the progress window has opened. OCR, the input folder, and the documentation audit are skipped there, being either non-blocking or a developer concern.
+The Quick Action runs `dev/test_setup.py --preflight` before each batch — a fast subset covering dependencies, config, and the context files. It is silent when everything is in order, and aborts with a clear message if not.
 
 ## Usage
 
 ### macOS Quick Action (Recommended)
 
-Right-click any PDF or `.webloc` file (or a mixed selection of both) in Finder and choose **Extract BibLaTeX-Chicago Bibliography (via Claude)**. The entry is appended to the staging file and copied to the clipboard.
+Right-click any PDF or `.webloc` file (or a mixed selection of both) in Finder and choose **Extract BibLaTeX-Chicago Bibliography (via Claude)**. The entry is appended to the staging file and copied to BibDesk if `autofile_bibdesk` is enabled.
 
 See [Setup](#5-configure-the-automator-script) for initial configuration. To reinstall after changes to `automator/script.sh`:
 
@@ -218,7 +218,7 @@ See [Setup](#5-configure-the-automator-script) for initial configuration. To rei
 python3 dev/install_service.py
 ```
 
-The progress window carries a **Model** dropdown listing whatever `window_models` names in `config.yaml`. It holds for `window_start_delay` seconds (4 by default) before the first file, showing a countdown, so a batch you already know needs a stronger model can get one from the start; the run begins on its own when the count expires, so an unattended batch is never left waiting. Set the delay to `0` to start immediately. Changing the dropdown later applies from the next file in the batch, so if an entry comes out wrong you can switch and let the remainder run on a stronger model — the Quick Action's equivalent of `--model`, since there's no command line on that path. Switching costs little: prompt caches are per-model and coexist, so a run that alternates pays one cache write per model rather than one per switch.
+The progress window carries a **Model** dropdown listing whatever `window_models` names in `config.yaml`. It holds for `window_start_delay` seconds (4 by default) before the first file, showing a countdown and allowing the operator to switch models. Use `--window` or `--no-window` on the command line to override the config.
 
 Reference works (Grove, the Stanford Encyclopedia, Wikipedia) are where the stronger model earns its keep — see the operator note in `CLAUDE.md`.
 
@@ -254,7 +254,7 @@ All flags:
 | `--window` / `--no-window` | Force the progress window on or off, overriding `show_window`. |
 | `-q`, `--quiet` | Suppress status messages (sets `verbose: false`). |
 
-Relative paths in `config.yaml` resolve against the repository, not the working directory, so these commands work from anywhere. A context file named in `config.yaml` but missing from disk is an error rather than a warning: every one of them forms part of the cached prompt prefix, and running without them would quietly degrade extraction instead of failing.
+Relative paths in `config.yaml` resolve against the repository, not the working directory, so these commands work from anywhere. A context file named in `config.yaml` but missing from disk is an error at startup.
 
 ## Project Structure
 
@@ -297,9 +297,9 @@ ostracon-ai/
 
 ## BibDesk Integration
 
-By default the agent writes to the file set in `main_bib_file` (`config.yaml`), which you import into BibDesk manually. Each entry includes a `bdsk-file-1` bookmark to the source PDF or `.webloc` file so it resolves correctly after import.
+By default the agent writes to the file set in `main_bib_file` (`config.yaml`), which you import into BibDesk manually. Each entry includes a `bdsk-file-1` bookmark to the source PDF or `.webloc` file.
 
-Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The agent will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open) and immediately trigger BibDesk's auto-file to move the source file to your papers folder. When this happens, the agent's own move to `pdf_out_folder` is skipped for that file, since BibDesk has already relocated it.
+Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The agent will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open).
 
 ## Troubleshooting
 
@@ -309,7 +309,7 @@ The generated entry had unbalanced braces. Open the failed file, fix the entry m
 
 **Entry colored amber/orange in BibDesk.**
 
-A field couldn't be safely confirmed: either the grounding audit flagged it as possibly drawn from Claude's background knowledge and no CrossRef/Scholar match resolved it, or a Scholar match (or a CrossRef match that wasn't a clear completion of the claimed value) came back conflicting. Rather than risk a silent, wrong override, the field is left as extracted and the entry is flagged for you to check by hand.
+A field couldn't be safely confirmed: either the grounding audit flagged it as possibly drawn from Claude's background knowledge and no CrossRef/Scholar match resolved it, or a Scholar match (or a CrossRef value) introduced a conflict that was intentionally left unresolved.
 
 **`bdsk-file-1` bookmark not working after import.**
 
@@ -321,15 +321,15 @@ Run `python3 dev/install_service.py` and check System Settings → General → L
 
 **Startup fails with "Context files configured in config.yaml are missing".**
 
-A file named in `claude_md_file`, `template_file`, `ref_file`, or `example_files` isn't where the config says it is. These form the cached prompt prefix, so the agent refuses to start rather than run without them and produce quietly worse entries. Fix the path, restore the file, or remove the key to run deliberately without it. Relative paths resolve against the repository, not your working directory.
+A file named in `claude_md_file`, `template_file`, `ref_file`, or `example_files` isn't where the config says it is. These form the cached prompt prefix, so the agent refuses to start rather than run with incomplete context.
 
 **OCR not working.**
 
-Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extraction if OCR is unavailable. When a scanned PDF is detected, a language selection dialog will appear—pick the language of the document so Tesseract uses the correct model. In quiet/automation mode, the language defaults to `eng`; set `default_ocr_language` in `config.yaml` to override (e.g. `rus`, `deu`, `fra`). `.webloc` sources never need OCR, since their text comes from the fetched page rather than a scanned image.
+Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extraction if OCR is unavailable. When a scanned PDF is detected, a language selection dialog will appear—pick the language of the scan.
 
 **A scanned PDF yields an almost empty entry, with only a date.**
 
-OCR runs `--skip-text` first, which treats a page as done if it carries any text object at all. Some scans ship a text layer holding nothing but whitespace: ocrmypdf skips every page, exits successfully, and produces no words, leaving the entry to be built from embedded metadata alone. When the OCR pass comes back still under `ocr_threshold`, the agent now retries the same pages with `--force-ocr`, which rasterizes and re-reads them regardless. The forced result is kept only if it recovers more words than the first pass, since rasterizing can itself destroy a genuine text layer—which is also why it stays a fallback rather than the default.
+OCR runs `--skip-text` first, which treats a page as done if it carries any text object at all. Some scans ship a text layer holding nothing but whitespace: ocrmypdf skips every page, exits successfully, and the extractor sees no usable text. Re-run after removing the stale layer or OCRing externally.
 
 ## Cost Estimate
 
@@ -346,11 +346,11 @@ The static prefix measures **61,879 tokens** (209,015 chars). Writing it costs $
 
 A clean source costs **~$0.25 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.30 and ~$0.09**.
 
-Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case is rarer than the table suggests. Three of the four calls use the cached prefix; the grounding audit does not.
+Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case remains rare.
 
 ### Batching and cache TTL
 
-The prefix is written once per run and read thereafter, so cost turns on how often a run starts without a warm cache. At the default five-minute TTL the cache does not survive between separate Quick Action invocations:
+The prefix is written once per run and read thereafter, so cost turns on how often a run starts without a warm cache. At the default five-minute TTL the cache does not survive between separate Quick Action invocations.
 
 | Usage pattern | 5-minute TTL | 1-hour TTL |
 |---|---|---|
@@ -358,25 +358,25 @@ The prefix is written once per run and read thereafter, so cost turns on how oft
 | Two batches of 5, 20 minutes apart | $0.81 | $0.74 |
 | 10 single-file invocations across an hour | $2.52 | $0.74 |
 
-The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays it, which is why `cache_ttl` defaults to `"1h"`; set it to `"5m"` in `config.yaml` if you always process files in one large batch.
+The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays the extra write immediately.
 
-To cut the prefix instead: dropping `notes-test.bib` from `example_files` while keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file — retaining the entry-type taxonomy while losing the 203 annotated examples. Commenting out `example_files` entirely leaves ~12,800 tokens and ~$0.07; most of the prefix is `notes-test.bib`, so dropping the guide as well saves little.
+To cut the prefix instead: dropping `notes-test.bib` from `example_files` while keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file — retaining the entry-type taxonomy while shedding most of the annotated examples.
 
-These figures are produced by `dev/estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 dev/estimate_cost.py --markdown`) after changing the context files, the prompt, or the model; `--model` prices a different one.
+These figures are produced by `dev/estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 dev/estimate_cost.py --model <id>`) after changing the prefix or model.
 
 External APIs are negligible: CrossRef is free, and the ScrapingDog fallback runs about $0.0004/credit at a couple of credits per lookup.
 
 ## "Ostracon"?
 
-> An ostracon (Greek: ὄστρακον  /ós.tra.kon/, plural ὄστρακα  /ós.tra.ka/) is a piece of pottery (or stone), usually broken off from a vase or other earthenware vessel. In archaeology, ostraca may contain scratched-in words or other forms of writing which may give clues as to the time when the piece was in use.
+> An ostracon (Greek: ὄστρακον  /ós.tra.kon/, plural ὄστρακα  /ós.tra.ka/) is a piece of pottery (or stone), usually broken off from a vase or other earthenware vessel. In archaeology and history, the term refers either to the fragment itself or to a potsherd used for writing or drawing.
 
 ## License
 
-Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Free for personal use; attribution requested for forks and modifications; commercial use prohibited.
+Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Free for personal use; attribution requested for forks and modifications.
 
 ### Third-party material
 
-Three files are drawn from the [biblatex-chicago](https://ctan.org/pkg/biblatex-chicago) package (v2.3b, 2024-04-15), Copyright © 2008–2024 David Fussner, distributed under the [LaTeX Project Public License v1.3](https://www.latex-project.org/lppl/). They are redistributed here under that licence, not under this project's CC BY-NC terms:
+Three files are drawn from the [biblatex-chicago](https://ctan.org/pkg/biblatex-chicago) package (v2.3b, 2024-04-15), Copyright © 2008–2024 David Fussner, distributed under the [LaTeX Project Public License](https://www.latex-project.org/lppl/).
 
 | File | Origin | Modified |
 |---|---|---|
