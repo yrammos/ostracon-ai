@@ -73,7 +73,7 @@ def _key_page_numbers(num_pages):
     return [1, 2, 3, num_pages - 1, num_pages]
 
 
-def run_ocr(pdf_path, page_numbers, language="eng", timeout=180):
+def run_ocr(pdf_path, page_numbers, language="eng", timeout=180, force=False):
     """
     OCR only the given pages by extracting them into a small temp PDF and
     running ocrmypdf on that temp file, instead of in-place on the whole
@@ -89,6 +89,13 @@ def run_ocr(pdf_path, page_numbers, language="eng", timeout=180):
         page_numbers: 1-indexed page numbers to OCR
         language: Tesseract language code (e.g., "eng", "rus", "deu")
         timeout: Seconds before giving up
+        force: Use --force-ocr instead of --skip-text, rasterizing each page
+            and OCR'ing it whatever it already contains. Only for the retry in
+            extract_content(): --skip-text treats a page as done if it carries
+            *any* text object, so a scan whose text layer holds nothing but
+            whitespace is skipped and ocrmypdf exits 0 having produced nothing.
+            Forcing recovers those, at the cost of discarding a genuine text
+            layer where one exists - hence a fallback, never the default.
 
     Returns:
         dict mapping page_number -> extracted text, or an error string on failure.
@@ -120,7 +127,8 @@ def run_ocr(pdf_path, page_numbers, language="eng", timeout=180):
         with open(tmp_path, "wb") as f:
             writer.write(f)
 
-        cmd = [ocrmypdf_bin, "--skip-text", "--optimize", "0", "-l", language or "eng",
+        cmd = [ocrmypdf_bin, "--force-ocr" if force else "--skip-text",
+               "--optimize", "0", "-l", language or "eng",
                str(tmp_path), str(tmp_path)]
 
         env = os.environ.copy()
@@ -292,13 +300,41 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         ocr_result = run_ocr(pdf_path, ocr_pages, language=language, timeout=ocr_timeout)
 
         if isinstance(ocr_result, dict):
-            if not quiet:
-                print("✓ OCR successful", file=sys.stderr)
             for n, text in ocr_result.items():
                 page_texts[n - 1] = text
             full_text = "\n\n".join(page_texts)
             words = split_into_words(full_text)
             total_words = len(words)
+
+            # --skip-text considers a page done if it carries any text object
+            # at all, so a scan whose text layer is nothing but whitespace is
+            # skipped and ocrmypdf still exits 0. That reads as success while
+            # yielding no words, and the entry then gets built from the PDF's
+            # embedded metadata alone - typically just a creation date. Retry
+            # forced before giving up.
+            if total_words < min_words_threshold:
+                if not quiet:
+                    print(f"⚠️  OCR returned {total_words} words - the text layer is "
+                          "likely blank rather than absent. Retrying with --force-ocr...",
+                          file=sys.stderr)
+                forced = run_ocr(pdf_path, ocr_pages, language=language,
+                                 timeout=ocr_timeout, force=True)
+                if isinstance(forced, dict):
+                    forced_texts = list(page_texts)
+                    for n, text in forced.items():
+                        forced_texts[n - 1] = text
+                    forced_full = "\n\n".join(forced_texts)
+                    forced_words = split_into_words(forced_full)
+                    # Keep the forced pass only if it actually did better;
+                    # rasterizing can also lose text on a page that had some.
+                    if len(forced_words) > total_words:
+                        page_texts, full_text = forced_texts, forced_full
+                        words, total_words = forced_words, len(forced_words)
+                elif not quiet:
+                    print(f"⚠️  Forced OCR failed: {forced}", file=sys.stderr)
+
+            if not quiet:
+                print(f"✓ OCR successful ({total_words} words)", file=sys.stderr)
         else:
             return f"Error: {ocr_result}"
 

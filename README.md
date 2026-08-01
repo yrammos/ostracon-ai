@@ -302,6 +302,10 @@ A file named in `claude_md_file`, `template_file`, `ref_file`, or `example_files
 
 Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extraction if OCR is unavailable. When a scanned PDF is detected, a language selection dialog will appear—pick the language of the document so Tesseract uses the correct model. In quiet/automation mode, the language defaults to `eng`; set `default_ocr_language` in `config.yaml` to override (e.g. `rus`, `deu`, `fra`). `.webloc` sources never need OCR, since their text comes from the fetched page rather than a scanned image.
 
+**A scanned PDF yields an almost empty entry, with only a date.**
+
+OCR runs `--skip-text` first, which treats a page as done if it carries any text object at all. Some scans ship a text layer holding nothing but whitespace: ocrmypdf skips every page, exits successfully, and produces no words, leaving the entry to be built from embedded metadata alone. When the OCR pass comes back still under `ocr_threshold`, the agent now retries the same pages with `--force-ocr`, which rasterizes and re-reads them regardless. The forced result is kept only if it recovers more words than the first pass, since rasterizing can itself destroy a genuine text layer—which is also why it stays a fallback rather than the default.
+
 ## Cost Estimate
 
 Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input at the default five-minute TTL, 2× at one hour, and cache reads 0.1×.
