@@ -28,7 +28,7 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 
 1. Takes one or more PDF and/or `.webloc` files as input.
 2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from key pages (volume, issue, page range, chapter number), and embedded PDF metadata (title, author, subject, creation date). For a `.webloc` file: resolves the bookmarked URL, fetches the page, and extracts its main body text along with `citation_*`/`og:*`/JSON-LD metadata—the online equivalent of a PDF's embedded metadata.
-3. Sends all of the above to the Claude API with project guidelines and a reference template, and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` is given its `Url`/`Urldate`, since there is no PDF to file as the entry's locator instead.
+3. Sends all of the above to the Claude API together with the cached context prefix — the house-style guidelines, the entry-type template, the field reference, and the worked-example corpora — and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` is given its `Url`/`Urldate`, since there is no PDF to file as the entry's locator instead.
 4. Strips any field the guidelines forbid (ISSN, keywords, or `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included anyway. A structural safeguard, because the prompt instruction alone isn't followed reliably.
 5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude call.
 6. Audits the entry for fields filled from Claude's training-data recollection rather than the source text—a genuine failure mode with academic works Claude may recognize.
@@ -112,11 +112,38 @@ The optional `example_files` key loads two worked-example corpora from the bibla
 - `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains *why* that type and those fields were chosen. Converted to this project's conventions: Unicode accents rather than LaTeX macros, single-hyphen ranges.
 - `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
 
-Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~47,000 tokens to the cached prefix; see [Cost Estimate](#cost-estimate) before enabling them on single-file runs.
+Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the cached prefix; see [Cost Estimate](#cost-estimate) before enabling them on single-file runs.
 
 Precedence splits by question, not by file: the corpora are authoritative on what biblatex-chicago supports, `CLAUDE.md` and `biblio-template.bib` on this project's presentation choices. Neither local file is an allowlist — `biblio-template.bib` covers 20 types, `notes-test.bib` 32, and types absent from both (`@Letter`, `@CustomC`, `@Audio`, the `@Mv*` and legal types) remain available.
 
 Set `notifications: true` to enable macOS notifications. When enabled, the agent sends notifications for batch progress updates and validation failures. Defaults to `false`.
+
+#### External lookup services (optional)
+
+When a source doesn't yield every field the entry type needs, the agent queries external catalogues. Both keys are optional and the pipeline runs without them — it simply flags what it couldn't fill.
+
+```yaml
+crossref_email: "you@example.com"  # optional; enables CrossRef's faster "polite pool"
+scrapingdog_api_key: ""            # optional; enables the Google Scholar fallback
+```
+
+- **CrossRef** is free and needs no account. Supplying `crossref_email` opts you into the [polite pool](https://api.crossref.org), which is faster and more reliable than the anonymous one; the address is sent as a courtesy identifier, nothing more. Leave it blank to stay anonymous.
+- **Google Scholar** has no public API, so the fallback goes through [ScrapingDog](https://scrapingdog.com), which is paid — roughly $0.0004/credit on pay-as-you-go ($10 for 25,000 credits), a couple of credits per lookup. Leave `scrapingdog_api_key` empty to disable it: CrossRef alone resolves most journal articles, and Scholar is only consulted for what CrossRef missed. Its results are also trusted less — a Scholar-sourced value is never auto-applied over a conflicting one, only ever flagged for review.
+
+#### Other options
+
+| Key | Default | Effect |
+|---|---|---|
+| `model` | `claude-sonnet-4-6` | Claude model. Run `estimate_cost.py --model <id>` to price alternatives first. |
+| `max_tokens` | `4000` | Ceiling on each response. Entries run 400–500 tokens; the headroom absorbs longer ones. |
+| `cache_ttl` | `"1h"` | Prompt-cache lifetime. See [Cost Estimate](#cost-estimate). |
+| `enrich_missing_fields` | `true` | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but nothing verifies the result. |
+| `verbose` | `true` | Progress messages on stderr. |
+| `show_window` | `false` | Show the floating progress window by default (`--window`/`--no-window` override it). |
+| `ocr_threshold` | `100` | Words below which a PDF is treated as scanned and sent to OCR. |
+| `ocr_timeout` | `180` | Seconds allowed for `ocrmypdf` before giving up. |
+| `default_ocr_language` | `eng` | Tesseract language used when OCR runs non-interactively. |
+
 
 ### 4. Customize the Extraction Prompt
 
@@ -182,17 +209,26 @@ ostracon-ai/
 ├── extract_pages.py      # PDF text extraction with OCR fallback; the shared SourceContent shape
 ├── web_source.py         # Fetches and extracts bibliographic content from a .webloc's bookmarked page
 ├── enrich.py             # CrossRef/Google Scholar enrichment and reconciliation, BibTeX field utilities
+├── progress_window.py    # Native macOS floating progress window (--window)
 ├── install_service.py    # Builds and installs the macOS Quick Action
 ├── estimate_cost.py      # Measures the current prompt-cache cost profile
 ├── extract_intro.py      # Regenerates cms-notes-intro-guide.md from the upstream .tex
-├── config.yaml           # Configuration (API key, paths, model)
+├── test_setup.py         # Checks dependencies, config, and API connectivity
+├── config.yaml.example   # Configuration template (copy to config.yaml)
+├── config.yaml           # Your configuration (gitignored — contains the API key)
 ├── requirements.txt      # Python dependencies
-├── CLAUDE.md             # Bibliographic extraction guidelines for Claude
-├── biblio-template.bib   # Reference template for BibLaTeX-Chicago types/fields
-├── biblatex-chicago-notes-ref.md  # Condensed biblatex-chicago field reference (sent to Claude)
+│
+│   # Sent to Claude as the cached prompt prefix:
+├── CLAUDE.md             # Bibliographic extraction guidelines — the house style
+├── biblio-template.bib   # One worked example per entry type, in this project's conventions
+├── biblatex-chicago-notes-ref.md  # Condensed biblatex-chicago field and entry-type reference
+├── notes-test.bib        # The package's annotated test suite (203 entries) — see Third-party material
+├── cms-notes-intro-guide.md       # Entry-type guide derived from cms-notes-intro.tex
+├── cms-notes-intro.tex   # Upstream source for the guide above (not sent to Claude)
+│
 ├── automator/
 │   ├── script.sh.example # Shell script template (copy to script.sh and edit)
-│   └── script.sh         # Your local script (gitignored—machine-specific paths)
+│   └── script.sh         # Your local script (gitignored — machine-specific paths)
 ├── pdf-in/               # Drop PDFs and .webloc files here for batch processing (--all)
 └── pdf-out/              # Processed PDFs are moved here (webloc files are typically relocated by BibDesk instead—see below)
 ```
@@ -220,6 +256,10 @@ Make sure `pyobjc-framework-Cocoa` is installed in the Python environment used b
 **Quick Action not appearing in Finder.**
 
 Run `python3 install_service.py` and check System Settings → General → Login Items & Extensions to confirm the action is enabled.
+
+**Startup fails with "Context files configured in config.yaml are missing".**
+
+A file named in `claude_md_file`, `template_file`, `ref_file`, or `example_files` isn't where the config says it is. These form the cached prompt prefix, so the agent refuses to start rather than run without them and produce quietly worse entries. Fix the path, restore the file, or remove the key to run deliberately without it. Relative paths resolve against the repository, not your working directory.
 
 **OCR not working.**
 
@@ -254,7 +294,7 @@ The prefix is written once per run and read thereafter, so cost turns on how oft
 
 The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays it, which is why `cache_ttl` defaults to `"1h"`; set it to `"5m"` in `config.yaml` if you always process files in one large batch.
 
-To cut the prefix instead: dropping `notes-test.bib` from `example_files` but keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file, retaining the entry-type taxonomy while losing the 203 annotated examples. Commenting out `example_files` entirely returns it to ~9,000 tokens and ~$0.05.
+To cut the prefix instead: dropping `notes-test.bib` from `example_files` while keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file — retaining the entry-type taxonomy while losing the 203 annotated examples. Commenting out `example_files` entirely leaves ~12,800 tokens and ~$0.07; most of the prefix is `notes-test.bib`, so dropping the guide as well saves little.
 
 These figures are produced by `estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 estimate_cost.py --markdown`) after changing the context files, the prompt, or the model; `--model` prices a different one.
 

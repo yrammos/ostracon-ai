@@ -73,12 +73,19 @@ def test_project_files():
     
     files = {
         'CLAUDE.md': 'Project guidelines',
-        'biblio-template.bib': 'Reference template'
+        'biblio-template.bib': 'Reference template',
+        'biblatex-chicago-notes-ref.md': 'Field reference',
+        'notes-test.bib': 'Annotated test suite (example_files)',
+        'cms-notes-intro-guide.md': 'Entry-type guide (example_files)',
     }
-    
+
+    # Resolve against the repository, not the working directory, so this check
+    # agrees with how biblio_agent.py itself resolves config paths.
+    root = Path(__file__).resolve().parent
+
     all_present = True
     for filename, description in files.items():
-        path = Path(filename)
+        path = root / filename
         if path.exists():
             print(f"  ✓ {filename} ({description})")
         else:
