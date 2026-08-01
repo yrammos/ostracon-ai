@@ -223,22 +223,32 @@ Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extract
 
 ## Cost Estimate
 
-Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input and cache reads 0.1×.
+Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input at the default five-minute TTL, 2× at one hour, and cache reads 0.1×.
 
-The static prefix — `CLAUDE.md`, `biblio-template.bib`, the field reference, and both worked-example corpora — is roughly 56,000 tokens. Writing it costs about $0.21; every later call in the same run reads it back for $0.017. Three of the four per-file calls use it; the grounding audit does not.
+The static prefix — `CLAUDE.md`, `biblio-template.bib`, the field reference, and both worked-example corpora — measures **61,879 tokens** (via `count_tokens`), of which `notes-test.bib` alone is 46,353. Writing it costs $0.23; every later call in the same run reads it back for $0.019. Three of the four per-file calls use it; the grounding audit does not.
 
 | Call | Runs when | First file | Later files |
 |---|---|---|---|
-| Extraction | always | $0.23 | $0.03 |
+| Extraction | always | $0.25 | $0.03 |
 | Grounding audit | `enrich_missing_fields: true` (default) | $0.007 | $0.007 |
 | Enrichment merge | required/desired fields missing from the source | $0.03 | $0.03 |
 | Reconciliation | a CrossRef match strictly completes a flagged value | $0.03 | $0.03 |
 
-A clean source costs **~$0.23 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.28 and ~$0.09**. Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case is rarer than the table suggests.
+A clean source costs **~$0.25 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.31 and ~$0.09**. Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case is rarer than the table suggests.
 
-**Batch your files.** The prefix uses the default five-minute TTL, so it does not survive between separate Quick Action invocations. Ten PDFs filed one at a time cost about $2.30; the same ten in a single selection cost about $0.60. If you prefer filing them individually, changing `cache_control` to `{"type": "ephemeral", "ttl": "1h"}` in `_cached_message_content()` doubles the write but survives the gaps, bringing that case to roughly $0.70.
+### Batching and cache TTL
 
-Commenting out `example_files` returns the prefix to ~9,000 tokens and the first file to ~$0.05, at the cost of the entry-type classification material.
+The prefix is written once per run and read thereafter, so cost turns on how often a run starts without a warm cache. At the default five-minute TTL the cache does not survive between separate Quick Action invocations:
+
+| Usage pattern | 5-minute TTL | 1-hour TTL |
+|---|---|---|
+| One batch of 10, nothing else that hour | **$0.60** | $0.74 |
+| Two batches of 5, 20 minutes apart | $0.82 | **$0.74** |
+| 10 single-file invocations across an hour | $2.53 | **$0.74** |
+
+The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays it. To switch, set `cache_control` to `{"type": "ephemeral", "ttl": "1h"}` in `_cached_message_content()`.
+
+To cut the prefix instead: dropping `notes-test.bib` from `example_files` but keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file, retaining the entry-type taxonomy while losing the 203 annotated examples. Commenting out `example_files` entirely returns it to ~9,000 tokens and ~$0.05.
 
 External APIs are negligible: CrossRef is free, and the ScrapingDog fallback runs about $0.0004/credit at a couple of credits per lookup.
 
