@@ -209,12 +209,26 @@ class BiblioAgent:
         Repeated calls within a run (and across PDFs in the same batch) reuse
         this cached prefix instead of paying full input price for it on every
         call.
+
+        The 1-hour TTL costs 2x base input to write against the default
+        5-minute tier's 1.25x, but the prefix is large enough (~62k tokens)
+        that avoiding a re-write dominates: a write is ~$0.23 at the short
+        TTL, a read ~$0.019. The Finder Quick Action is typically invoked on
+        one file at a time, minutes apart, so a 5-minute cache expires between
+        invocations and every file pays a full write. At 1 hour the surcharge
+        is a flat ~$0.14 per write and any second run within the hour repays
+        it - only a genuinely isolated single batch is cheaper on the short
+        tier. See the README's Cost Estimate section.
         """
         static_block = self._static_context_block(context)
         if not static_block:
             return dynamic_text
+        cache_ttl = self.config.get('cache_ttl', '1h')
+        cache_control = {"type": "ephemeral"}
+        if cache_ttl:
+            cache_control["ttl"] = cache_ttl
         return [
-            {"type": "text", "text": static_block, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": static_block, "cache_control": cache_control},
             {"type": "text", "text": dynamic_text},
         ]
 

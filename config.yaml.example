@@ -32,6 +32,13 @@ ocr_threshold: 100 # Minimum words extracted before OCR is attempted on key page
 ocr_timeout: 180 # Seconds to allow ocrmypdf on the extracted page subset before giving up
 max_tokens: 4000 # Maximum tokens for Claude response
 model: "claude-sonnet-4-20250514" # Claude model to use
+
+# Prompt cache TTL for the shared static context. "1h" costs 2x base input to
+# write (vs 1.25x for the 5-minute default) but survives between separate
+# Quick Action invocations, which is the cheaper trade unless you always
+# process files in one large batch. Set to "5m" for the short tier, or to an
+# empty value to use the API default.
+cache_ttl: "1h"
 default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
 
 # Enrichment: fill in fields the PDF itself doesn't contain (volume, issue,
