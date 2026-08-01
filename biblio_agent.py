@@ -672,7 +672,8 @@ whether it instead relies on outside/background knowledge about this work
 date, or place from what you already know about it, rather than reading it
 from the given text/metadata).
 
-Respond in EXACTLY this format and nothing else:
+Your ENTIRE reply must be one line, beginning with the marker, and nothing
+else - no analysis, no preamble, no reasoning. Emit the marker first:
 
 UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/metadata, or NONE>"""
 
@@ -685,19 +686,28 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
         prompt = self._build_audit_prompt(entry_text, content)
         message = self.client.messages.create(
             model=self.config['model'],
-            max_tokens=150,
+            # Generous enough that a reply which ignores the one-line format and
+            # narrates instead still reaches the marker. At 150 the model would
+            # analyse each field in prose, hit the cap mid-sentence, and never
+            # emit the marker at all - see the parse-failure branch below.
+            max_tokens=600,
             messages=[{"role": "user", "content": prompt}],
         )
         response = response_text(message)
 
-        ungrounded = []
         m = re.search(r'UNGROUNDED_FIELDS:\s*(.+)', response)
-        if m:
-            raw = m.group(1).strip()
-            if raw.upper() != 'NONE':
-                ungrounded = [f.strip().lower() for f in raw.split(',') if f.strip()]
+        if not m:
+            # No marker means the audit did not return a verdict - NOT that
+            # every field is grounded. Failing open here silently disarms the
+            # one check standing between a recalled value and a saved entry,
+            # so treat it as "could not verify" and let the caller flag it.
+            self._log("   ⚠️  Grounding audit returned no verdict - flagging for review", 'warning')
+            raise ValueError("grounding audit returned no parseable verdict")
 
-        return ungrounded
+        raw = m.group(1).strip()
+        if raw.upper() == 'NONE':
+            return []
+        return [f.strip().lower() for f in raw.split(',') if f.strip()]
 
     def _build_reconcile_prompt(self, entry, content, candidates):
         """Build a prompt asking Claude to merge a claimed value with a
@@ -820,8 +830,11 @@ BibLaTeX entry, with no additional commentary."""
         try:
             ungrounded = self._audit_entry_grounding(entry_text, content)
         except Exception as e:
-            self._log(f"   ⚠️  Grounding audit failed: {e}", 'warning')
-            return entry_text, False
+            # Flag rather than pass. An audit that didn't run leaves the entry
+            # unverified, which is precisely what the amber marker is for -
+            # returning False here would present an unchecked entry as clean.
+            self._log(f"   ⚠️  Grounding audit failed ({e}) - flagging for review", 'warning')
+            return entry_text, True
 
         missing_container = enrich.container_fields_missing(fields, entry_type)
         if not ungrounded and not missing_container:
