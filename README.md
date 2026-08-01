@@ -116,8 +116,6 @@ Where the field reference teaches *vocabulary* (which fields a type takes), thes
 
 Precedence splits by question, not by file: the corpora are authoritative on what biblatex-chicago supports, `CLAUDE.md` and `biblio-template.bib` on this project's presentation choices. Neither local file is an allowlist — `biblio-template.bib` covers 20 types, `notes-test.bib` 32, and types absent from both (`@Letter`, `@CustomC`, `@Audio`, the `@Mv*` and legal types) remain available.
 
-Set `notifications: true` to enable macOS notifications. When enabled, the agent sends notifications for batch progress updates and validation failures. Defaults to `false`.
-
 #### External lookup services (optional)
 
 When a source doesn't yield every field the entry type needs, the agent queries external catalogues. Both keys are optional and the pipeline runs without them — it simply flags what it couldn't fill.
@@ -140,6 +138,9 @@ scrapingdog_api_key: ""            # optional; enables the Google Scholar fallba
 | `enrich_missing_fields` | `true` | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but nothing verifies the result. |
 | `verbose` | `true` | Progress messages on stderr. |
 | `show_window` | `false` | Show the floating progress window by default (`--window`/`--no-window` override it). |
+| `window_models` | sonnet-4-6, opus-5 | Models offered in the progress window's dropdown — see [Quick Action](#macos-quick-action-recommended). Unset hides the dropdown. |
+| `window_start_delay` | `4` | Seconds the window waits before the first file so the model can be changed; `0` starts immediately. |
+| `notifications` | `false` | macOS notifications for batch progress and validation failures. |
 | `ocr_threshold` | `100` | Words below which a PDF is treated as scanned and sent to OCR. |
 | `ocr_timeout` | `180` | Seconds allowed for `ocrmypdf` before giving up. |
 | `default_ocr_language` | `eng` | Tesseract language used when OCR runs non-interactively. |
@@ -205,6 +206,19 @@ python biblio_agent.py path/to/paper.pdf --output custom.bib
 # Use a different model for one run (overrides config.yaml)
 python biblio_agent.py path/to/entry.webloc --model claude-opus-5
 ```
+
+All flags:
+
+| Flag | Effect |
+|---|---|
+| `--all` | Process everything in `pdf_in_folder` instead of named files. |
+| `--no-save` | Print to stdout only — no staging file, no BibDesk import. |
+| `--no-move` | Leave processed files where they are (the Quick Action uses this, since your sources aren't in `pdf-in/`). |
+| `--output FILE` | Write to `FILE` instead of `main_bib_file`. |
+| `--model ID` | Use a different model for this run. |
+| `--config FILE` | Use an alternate config file. |
+| `--window` / `--no-window` | Force the progress window on or off, overriding `show_window`. |
+| `-q`, `--quiet` | Suppress status messages (sets `verbose: false`). |
 
 Relative paths in `config.yaml` resolve against the repository, not the working directory, so these commands work from anywhere. A context file named in `config.yaml` but missing from disk is an error rather than a warning: every one of them forms part of the cached prompt prefix, and running without them would quietly degrade extraction instead of failing.
 
