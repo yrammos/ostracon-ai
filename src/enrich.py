@@ -109,14 +109,20 @@ def work_level_title(entry_type, fields):
     the book it's part of is usually far more distinctive.
 
     Subtitles are rejoined so external searches see the full title the
-    indexes actually hold.
+    indexes actually hold, and LaTeX markup is stripped: the value goes
+    straight into a CrossRef/Scholar query and into the title-similarity gate
+    that vets the results, and neither has any use for it. A German book
+    searched as "\\foreignlanguage{ngerman}{Die Romanzen Robert Schumanns}"
+    missed in CrossRef and only matched in Scholar on the strength of the
+    author; the similarity gate meanwhile scored the wrapper's own letters as
+    part of the title.
     """
     entry_type = (entry_type or '').lower()
     if entry_type in ('incollection', 'inbook', 'inproceedings'):
         booktitle = join_subtitle(fields.get('booktitle'), fields.get('booksubtitle'))
         if booktitle:
-            return booktitle
-    return join_subtitle(fields.get('title'), fields.get('subtitle'))
+            return strip_latex(booktitle)
+    return strip_latex(join_subtitle(fields.get('title'), fields.get('subtitle')))
 
 
 def set_field(entry_text, field_name, new_value):
@@ -266,6 +272,67 @@ def strip_forbidden_fields(entry_text):
     return entry_text, to_strip
 
 
+# Macros whose FIRST brace group is a parameter rather than content. The
+# generic rule below unwraps every group it sees, which on \foreignlanguage
+# leaves the language name welded to the front of the title - "Die Romanzen
+# Robert Schumanns" searched as "ngermanDie Romanzen Robert Schumanns". These
+# have to be handled before it runs.
+_PARAM_FIRST_MACROS = ('foreignlanguage', 'hyphenation')
+
+
+def _matching_brace(text, start):
+    """Index of the `}` closing the `{` at `start`, or None if unbalanced."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return i
+    return None
+
+
+def _drop_first_arg(text, macro):
+    r"""Rewrite \macro{param}{content} to just `content`, brace-aware.
+
+    Brace-aware rather than a regex because the content group nests:
+    \foreignlanguage{french}{\mkbibquote{Le Sacre}} is routine here.
+    """
+    token = '\\' + macro
+    out, i = [], 0
+    while True:
+        j = text.find(token, i)
+        if j == -1:
+            out.append(text[i:])
+            return ''.join(out)
+        out.append(text[i:j])
+        k = j + len(token)
+        while k < len(text) and text[k].isspace():
+            k += 1
+        end1 = _matching_brace(text, k) if k < len(text) and text[k] == '{' else None
+        if end1 is None:                      # not the shape we expected
+            out.append(text[j:k or len(text)])
+            i = max(k, j + len(token))
+            continue
+        m = end1 + 1
+        while m < len(text) and text[m].isspace():
+            m += 1
+        if m >= len(text) or text[m] != '{':
+            # Only the parameter group is present. Drop it rather than falling
+            # back to treating it as content: for these macros group one is a
+            # language name, never text, and emitting it is the exact noise
+            # this function exists to remove.
+            i = end1 + 1
+            continue
+        end2 = _matching_brace(text, m)
+        if end2 is None:                      # unbalanced - keep what follows
+            out.append(text[m + 1:])
+            return ''.join(out)
+        out.append(text[m + 1:end2])
+        i = end2 + 1
+
+
 def strip_latex(text):
     """Strip LaTeX markup from a field value for use in external search queries."""
     if not text:
@@ -273,6 +340,8 @@ def strip_latex(text):
     prev = None
     while prev != text:
         prev = text
+        for macro in _PARAM_FIRST_MACROS:
+            text = _drop_first_arg(text, macro)
         text = re.sub(r'\\[A-Za-z]+\{([^{}]*)\}', r'\1', text)
     return text.replace('{', '').replace('}', '').strip()
 
@@ -349,9 +418,15 @@ def _year_matches(item, year):
 def crossref_by_biblio(title, author_surname=None, year=None, mailto=None, timeout=15, min_similarity=0.72):
     """Fuzzy title search - unlike the DOI lookup this isn't a guaranteed
     match, so a candidate is also required to share the entry's author
-    surname and (roughly) publication year when those are known."""
+    surname and (roughly) publication year when those are known.
+
+    Callers are expected to pass plain text, but strip defensively here too:
+    every value in this module's reach comes from a BibLaTeX field, and one
+    unstripped path (work_level_title) already shipped once. strip_latex is
+    idempotent, so a caller that has stripped pays nothing."""
     if not title:
         return None
+    title = strip_latex(title)
     try:
         params = {'query.bibliographic': title, 'rows': 5}
         if mailto:
@@ -395,6 +470,8 @@ def crossref_fields(message):
 
 
 def scrapingdog_search(query, api_key, timeout=20):
+    # Stripped defensively for the same reason as crossref_by_biblio().
+    query = strip_latex(query)
     try:
         resp = requests.get(
             "https://api.scrapingdog.com/google_scholar",
