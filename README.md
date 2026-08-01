@@ -29,10 +29,10 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 1. Takes one or more PDF and/or `.webloc` files as input.
 2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from key pages (volume, issue, page range, chapter number), and embedded PDF metadata (title, author, subject, creation date). For a `.webloc` file: resolves the bookmarked URL, fetches the page, and extracts its main body text along with `citation_*`/`og:*`/JSON-LD metadata—the online equivalent of a PDF's embedded metadata.
 3. Sends all of the above to the Claude API with project guidelines and a reference template, and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` is given its `Url`/`Urldate`, since there is no PDF to file as the entry's locator instead.
-4. Strips any field the guidelines forbid (e.g. ISSN, keywords, or a `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included regardless—a structural safeguard rather than a prompt instruction alone, since the latter isn't followed reliably (a PDF whose own text states a URL, for instance, can still tempt Claude into adding one).
+4. Strips any field the guidelines forbid (ISSN, keywords, or `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included anyway. A structural safeguard, because the prompt instruction alone isn't followed reliably.
 5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude call.
-6. Audits the entry for fields that may have been filled from Claude's background/training-data recollection rather than the source text—a real failure mode with academic works Claude may "recognize."
-7. Re-checks CrossRef/Scholar for any recollection-based or still-missing container-level fields (editor, series, publisher, location, date). A conflicting external value is only ever applied automatically when it comes from CrossRef (DOI-keyed, high trust) *and* is a strict completion of the claimed value—spelling out an abbreviated first name, or adding a missing co-author—never a genuine contradiction, and never from Google Scholar's fuzzier match regardless of how confident it looks. Anything short of that is left untouched and flagged for manual review rather than silently overwritten, since a wrong field is worse than an empty one.
+6. Audits the entry for fields filled from Claude's training-data recollection rather than the source text—a genuine failure mode with academic works Claude may recognize.
+7. Re-checks CrossRef/Scholar for recollection-based or missing container-level fields (editor, publisher, date). A conflicting value is applied automatically only when it comes from CrossRef *and* strictly completes the claimed value—spelling out an initial, adding a missing co-author—never a contradiction, and never from Scholar's fuzzier match. Anything else is flagged for review rather than overwritten: a wrong field is worse than an empty one.
 8. Validates brace balance before saving.
 9. Saves the entry—with a BibDesk `bdsk-file` bookmark to the source PDF or `.webloc` file—either directly into BibDesk (if `autofile_bibdesk` is enabled) or to the staging file (`main_bib_file` in `config.yaml`). Entries with unresolved flagged fields are colored amber in BibDesk for manual review (only possible when `autofile_bibdesk` is enabled).
 10. On validation failure, saves the raw entry to `failed_bib_file` and sends a macOS notification.
@@ -107,16 +107,14 @@ failed_bib_file: "~/Desktop/biblio-failed.bib" # error file
 
 The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
 
-The optional `example_files` key loads worked-example corpora derived from the biblatex-chicago package's own documentation:
+The optional `example_files` key loads two worked-example corpora from the biblatex-chicago package's own documentation:
 
-- `notes-test.bib` — the package's annotated test suite (203 entries covering every entry type), where nearly every entry carries an `annote` explaining *why* that type and those fields were chosen. Converted here to this project's conventions: Unicode accented characters rather than LaTeX macros, and single-hyphen ranges.
-- `cms-notes-intro-guide.md` — prose derived from `cms-notes-intro.tex`, grouping entry types into categories and explaining which to choose for a given kind of source. Bracketed names are entry keys pointing at examples in `notes-test.bib`.
+- `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains *why* that type and those fields were chosen. Converted to this project's conventions: Unicode accents rather than LaTeX macros, single-hyphen ranges.
+- `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
 
-Where the field reference teaches *vocabulary* (which fields an entry type takes), these teach *classification*: what kind of thing a source is, and which of the roughly forty types therefore fits. The guide is organised by kind of source rather than by type, so it serves the initial identification, not only the later tie-breaking between confusable types — why a conference paper in a published proceedings volume is `@Inproceedings` while the same paper without proceedings is `@Unpublished`, or why an online edition of a printed book keeps its `@Book` type rather than becoming `@Online`. They add roughly 45,000 tokens to the prompt, but sit inside the cached static prefix, so the cost is paid once per run rather than per source. Comment the key out to omit them.
+Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~47,000 tokens to the cached prefix; see [Cost Estimate](#cost-estimate) before enabling them on single-file runs.
 
-Precedence is split by question rather than by file. These corpora *are* the package's documentation, so they are authoritative on what biblatex-chicago supports: which types exist, what each means, which fields it takes. `CLAUDE.md` and `biblio-template.bib` are authoritative only on presentation choices this project has made where the package permits more than one — fields to omit, when `Url`/`Urldate` may appear, title case, name format. The corpora's divergences (`url` on printed works, `keywords`, the legacy `school`/`address` aliases) are all of that stylistic kind.
-
-Note that `biblio-template.bib` covers 20 of the roughly 40 entry types, and `notes-test.bib` 32. The prompt states explicitly that neither is an allowlist: types absent from them (`@Letter`, `@CustomC`, `@Audio`, `@Artwork`, the `@Mv*` types, the legal types) remain available, with `biblatex-chicago-notes-ref.md` as the only local file enumerating all 40.
+Precedence splits by question, not by file: the corpora are authoritative on what biblatex-chicago supports, `CLAUDE.md` and `biblio-template.bib` on this project's presentation choices. Neither local file is an allowlist — `biblio-template.bib` covers 20 types, `notes-test.bib` 32, and types absent from both (`@Letter`, `@CustomC`, `@Audio`, the `@Mv*` and legal types) remain available.
 
 Set `notifications: true` to enable macOS notifications. When enabled, the agent sends notifications for batch progress updates and validation failures. Defaults to `false`.
 
@@ -225,23 +223,24 @@ Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extract
 
 ## Cost Estimate
 
-Costs are dominated by Claude API calls (`config.yaml`'s `model`, currently `claude-sonnet-4-6` at $3/$15 per 1M input/output tokens). Up to four calls happen per file, and the ~9,000 tokens of shared context (`CLAUDE.md` + `biblio-template.bib` + `biblatex-chicago-notes-ref.md`) is sent as a cached prompt prefix (`cache_control: {type: "ephemeral"}`), so only the first call in a run pays full price for it—every later call, including later files in the same batch, reads it back at a 90% discount:
+Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input and cache reads 0.1×.
 
-| Call | Runs when | Approx. cost (cache hit) |
-|---|---|---|
-| Initial extraction | always | ~$0.044 (first file in a run) / ~$0.013 (later files, context already cached) |
-| Grounding audit | always, if `enrich_missing_fields: true` (default) | ~$0.005 (doesn't use the shared context) |
-| Enrichment merge | only if required/desired fields are missing from the source | ~$0.007 |
-| Reconciliation | only if a flagged field has a CrossRef match that's a strict completion of the claimed value | ~$0.008 |
+The static prefix — `CLAUDE.md`, `biblio-template.bib`, the field reference, and both worked-example corpora — is roughly 56,000 tokens. Writing it costs about $0.21; every later call in the same run reads it back for $0.017. Three of the four per-file calls use it; the grounding audit does not.
 
-- **Best case** (clean, well-populated source): extraction + audit ≈ **$0.05/file** for the first file in a run, **~$0.02/file** for subsequent ones.
-- **Worst case** (missing fields, needs reconciliation): all four calls ≈ **$0.06/file** for the first file, **~$0.03/file** for subsequent ones.
+| Call | Runs when | First file | Later files |
+|---|---|---|---|
+| Extraction | always | $0.23 | $0.03 |
+| Grounding audit | `enrich_missing_fields: true` (default) | $0.007 | $0.007 |
+| Enrichment merge | required/desired fields missing from the source | $0.03 | $0.03 |
+| Reconciliation | a CrossRef match strictly completes a flagged value | $0.03 | $0.03 |
 
-Reconciliation is deliberately conservative: a Scholar-sourced conflict, or a CrossRef match that genuinely contradicts rather than completes the claimed value, is flagged for manual review without ever reaching this fourth call, so in practice it fires less often than the worst case above suggests.
+A clean source costs **~$0.23 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.28 and ~$0.09**. Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case is rarer than the table suggests.
 
-Since the Finder Quick Action is normally invoked on a multi-file selection in a single run (`biblio_agent.py --window --no-move <files...>`), most files in practice land in the cheaper "subsequent" tier—only the very first file pays the full cache-write price. External API costs are negligible on top of this: CrossRef is free; the Google Scholar fallback (ScrapingDog) runs at roughly $0.0004/credit on the pay-as-you-go plan ($10 for 25,000 credits), and each lookup uses only a couple of credits.
+**Batch your files.** The prefix uses the default five-minute TTL, so it does not survive between separate Quick Action invocations. Ten PDFs filed one at a time cost about $2.30; the same ten in a single selection cost about $0.60. If you prefer filing them individually, changing `cache_control` to `{"type": "ephemeral", "ttl": "1h"}` in `_cached_message_content()` doubles the write but survives the gaps, bringing that case to roughly $0.70.
 
-These figures are higher than the pipeline's original ~$0.02-$0.03/file estimate, reflecting the enrichment/audit/reconciliation calls added since—though caching claws back most of that increase for anything beyond the first file in a batch.
+Commenting out `example_files` returns the prefix to ~9,000 tokens and the first file to ~$0.05, at the cost of the entry-type classification material.
+
+External APIs are negligible: CrossRef is free, and the ScrapingDog fallback runs about $0.0004/credit at a couple of credits per lookup.
 
 ## "Ostracon"?
 
