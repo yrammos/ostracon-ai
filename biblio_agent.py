@@ -170,14 +170,22 @@ class BiblioAgent:
             # override the guidelines above.
             preamble += (
                 "\n\nThe <worked_examples> blocks are the biblatex-chicago package's own "
-                "annotated corpora. Use them to learn ENTRY-TYPE DISCRIMINATION and field "
-                "semantics - each entry's `annote` explains why that type and those fields "
-                "were chosen. They are NOT a style model: where they conflict with "
-                "<guidelines> above, the guidelines win. In particular, ignore their use of "
-                "`url` on printed works, `keywords`, `annote`, `subtitle` punctuation habits "
-                "that differ from ours, and the legacy `school`/`address` aliases (use "
-                "`institution` and `location`). Never copy an example's data into an entry: "
-                "they illustrate form, not content."
+                "annotated corpora. Use them for ENTRY-TYPE CLASSIFICATION at step 1 - "
+                "working out what kind of thing this source is and which type therefore "
+                "fits - not only as a tie-breaker between types you have already narrowed "
+                "down to. The entry-type guide is organised by kind of source, and its "
+                "\"Online materials\" section governs the access-mode question in "
+                "particular (an online edition of a printed work keeps its print-equivalent "
+                "type; only material with no print counterpart is @Online). The test "
+                "suite's `annote` fields state what each source is and why its type and "
+                "fields follow. Then use the same corpora to settle the harder boundaries "
+                "between confusable types.\n\n"
+                "They are NOT a style model: where they conflict with <guidelines> above, "
+                "the guidelines win. In particular, ignore their use of `url` on printed "
+                "works, `keywords`, `annote`, and the legacy `school`/`address` aliases "
+                "(use `institution` and `location`). Never copy an example's data into an "
+                "entry: they illustrate form, not content, and some of their URLs are "
+                "line-broken by typesetting."
             )
         return preamble + "\n\n" + "\n\n".join(parts)
 
@@ -233,7 +241,12 @@ excerpt's text won't (e.g. an embedded Author field):
 """
 
         prompt += """Please:
-1. Identify the publication type (@Book, @Article, @InCollection, etc.). Look
+1. Identify the publication type (@Book, @Article, @InCollection, etc.). Work
+   out what KIND of source this is first, consulting the <worked_examples>
+   corpora above - the entry-type guide is organised by kind of source, and
+   the test suite's `annote` fields say why each source takes the type it
+   does. Only once you have narrowed the field should you weigh the specific
+   distinctions below. Look
    for markers showing this excerpt is only PART of a larger container work -
    e.g. "Chapter 1"/"chapter one", a numbered/titled heading distinct from a
    running-header book title, or a paper within a named conference
