@@ -49,6 +49,12 @@ cache_ttl: "1h"
 window_models:
   - "claude-sonnet-4-6"
   - "claude-opus-5"
+
+# Seconds the progress window waits before the first file, so the model
+# dropdown can be changed for a batch you already know needs a stronger model.
+# The run starts on its own when the count expires - an unattended batch is
+# never left waiting. Set to 0 to start immediately.
+window_start_delay: 4
 default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
 
 # Enrichment: fill in fields the PDF itself doesn't contain (volume, issue,

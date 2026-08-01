@@ -183,7 +183,7 @@ See [Setup](#5-configure-the-automator-script) for initial configuration. To rei
 python3 install_service.py
 ```
 
-The progress window carries a **Model** dropdown listing whatever `window_models` names in `config.yaml`. Changing it applies from the next file in the batch, so if an entry comes out wrong you can switch and let the remainder run on a stronger model — the Quick Action's equivalent of `--model`, since there's no command line on that path. Switching costs little: prompt caches are per-model and coexist, so a run that alternates pays one cache write per model rather than one per switch.
+The progress window carries a **Model** dropdown listing whatever `window_models` names in `config.yaml`. It holds for `window_start_delay` seconds (4 by default) before the first file, showing a countdown, so a batch you already know needs a stronger model can get one from the start; the run begins on its own when the count expires, so an unattended batch is never left waiting. Set the delay to `0` to start immediately. Changing the dropdown later applies from the next file in the batch, so if an entry comes out wrong you can switch and let the remainder run on a stronger model — the Quick Action's equivalent of `--model`, since there's no command line on that path. Switching costs little: prompt caches are per-model and coexist, so a run that alternates pays one cache write per model rather than one per switch.
 
 Reference works (Grove, the Stanford Encyclopedia, Wikipedia) are where the stronger model earns its keep — see the operator note in `CLAUDE.md`.
 

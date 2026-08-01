@@ -1382,6 +1382,17 @@ def _run_windowed(agent, pdf_files, move_files):
     win.show()
 
     def _process():
+        # Hold briefly before the first file. The batch loop re-reads the model
+        # popup each iteration, but without this the first file would already
+        # be in flight before the window was usable, so a batch you know needs
+        # a stronger model could not get one until file two.
+        delay = agent.config.get('window_start_delay') or 0
+        if delay:
+            win.countdown(delay)
+        if win.cancelled:
+            win.finish(had_error=False)
+            return
+
         results = agent.process_batch(
             move_files=move_files,
             pdf_files=pdf_files,

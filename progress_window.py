@@ -268,19 +268,37 @@ class ProgressWindow:
         filled = int(bar_width * fraction)
         return '\u2588' * filled + '\u2591' * (bar_width - filled)
 
-    def set_progress(self, current: int, filename: str) -> None:
-        """Update the header progress line. Thread-safe."""
-        total = self._total
-        fraction = (current - 1) / total if total > 0 else 0
-        pct = int(fraction * 100)
-        bar = self._render_bar(fraction)
-        text = f"[{current}/{total}]  {filename}  {bar}  {pct}%"
+    def _set_header(self, text: str) -> None:
+        """Write the header line. Thread-safe."""
         header = self._header
 
         def _update():
             header.setStringValue_(text)
 
         _on_main(_update)
+
+    def countdown(self, seconds: int) -> None:
+        """Hold before the first file, so the model can still be changed.
+
+        Called from the worker thread: it blocks there while the main thread
+        keeps running the event loop, which is what leaves the popup live. The
+        run starts on its own when the count expires, so an unattended batch is
+        never stranded waiting for a click.
+        """
+        for remaining in range(int(seconds), 0, -1):
+            if self.cancelled:
+                return
+            plural = "" if remaining == 1 else "s"
+            self._set_header(f"Starting in {remaining} second{plural} \u2014 change model now")
+            time.sleep(1)
+
+    def set_progress(self, current: int, filename: str) -> None:
+        """Update the header progress line. Thread-safe."""
+        total = self._total
+        fraction = (current - 1) / total if total > 0 else 0
+        pct = int(fraction * 100)
+        bar = self._render_bar(fraction)
+        self._set_header(f"[{current}/{total}]  {filename}  {bar}  {pct}%")
 
     def _mark_complete(self) -> None:
         """Push the header to 100% - set_progress() only ever reflects files
@@ -288,13 +306,7 @@ class ProgressWindow:
         completion is never otherwise shown."""
         total = self._total
         bar = self._render_bar(1.0)
-        text = f"[{total}/{total}]  Done  {bar}  100%"
-        header = self._header
-
-        def _update():
-            header.setStringValue_(text)
-
-        _on_main(_update)
+        self._set_header(f"[{total}/{total}]  Done  {bar}  100%")
 
     def finish(self, had_error: bool) -> None:
         """
