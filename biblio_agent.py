@@ -1418,6 +1418,10 @@ def main():
         help='Output bib file (overrides config)'
     )
     parser.add_argument(
+        '--model',
+        help='Claude model to use (overrides config), e.g. claude-opus-5'
+    )
+    parser.add_argument(
         '--no-save',
         action='store_true',
         help='Print to stdout instead of saving'
@@ -1458,6 +1462,8 @@ def main():
         # Override config options
         if args.output:
             agent.config['main_bib_file'] = args.output
+        if args.model:
+            agent.config['model'] = args.model
         if args.quiet:
             agent.config['verbose'] = False
 
