@@ -79,6 +79,18 @@ def resolve_path(value):
     return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
 
+def response_text(message):
+    """The text of a response, ignoring any non-text blocks.
+
+    `message.content` is a list of blocks whose first element is not
+    necessarily text: models with thinking enabled put a ThinkingBlock first,
+    so indexing content[0].text raises AttributeError. Adaptive thinking is on
+    by default from Claude Sonnet 5 and Opus 4.7 onward, which makes the naive
+    access a migration tripwire rather than a theoretical one.
+    """
+    return "".join(b.text for b in message.content if b.type == "text")
+
+
 class BiblioAgent:
     def __init__(self, config_path="config.yaml"):
         """Initialize the agent with configuration."""
@@ -516,7 +528,7 @@ excerpt's text won't (e.g. an embedded Author field):
                 ]
             )
 
-            bibtex_entry = message.content[0].text
+            bibtex_entry = response_text(message)
 
             # Structural safety net: the prompt above already asks Claude not
             # to include these, but doesn't reliably follow through (e.g. a
@@ -612,7 +624,7 @@ commentary."""
                 max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
-            merged = self.clean_bibtex(message.content[0].text)
+            merged = self.clean_bibtex(response_text(message))
             valid, _ = self.validate_braces(merged)
             if not valid:
                 return entry_text
@@ -676,7 +688,7 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
             max_tokens=150,
             messages=[{"role": "user", "content": prompt}],
         )
-        response = message.content[0].text
+        response = response_text(message)
 
         ungrounded = []
         m = re.search(r'UNGROUNDED_FIELDS:\s*(.+)', response)
@@ -761,7 +773,7 @@ BibLaTeX entry, with no additional commentary."""
                 max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
-            merged = self.clean_bibtex(message.content[0].text)
+            merged = self.clean_bibtex(response_text(message))
             valid, _ = self.validate_braces(merged)
             if not valid:
                 return entry_text
