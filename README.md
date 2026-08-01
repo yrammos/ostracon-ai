@@ -172,6 +172,8 @@ python biblio_agent.py --all
 python biblio_agent.py path/to/paper.pdf --output custom.bib
 ```
 
+Relative paths in `config.yaml` resolve against the repository, not the working directory, so these commands work from anywhere. A context file named in `config.yaml` but missing from disk is an error rather than a warning: every one of them forms part of the cached prompt prefix, and running without them would quietly degrade extraction instead of failing.
+
 ## Project Structure
 
 ```

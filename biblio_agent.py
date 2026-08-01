@@ -51,6 +51,34 @@ def glob_input_files(folder):
     )
 
 
+# Config paths are written relative to the repository ("./CLAUDE.md"), so they
+# must resolve against it rather than against the working directory - otherwise
+# the tool only runs from the repo root, and the Automator wrapper's `cd
+# "$WORKDIR"` is load-bearing rather than a convenience.
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+# Config keys holding a path that should be made absolute at load time, so every
+# downstream consumer receives an absolute path without repeating this logic.
+_PATH_KEYS = (
+    'claude_md_file', 'template_file', 'ref_file',
+    'pdf_in_folder', 'pdf_out_folder',
+    'main_bib_file', 'failed_bib_file',
+)
+
+# Of those, the ones naming a file that must exist when the key is configured.
+# A missing one is fatal rather than a warning: load_context_files() would
+# otherwise substitute an empty string, and the run would silently produce
+# entries with no template, field reference, or worked examples - degraded
+# output that looks like success.
+_REQUIRED_IF_SET = ('claude_md_file', 'template_file', 'ref_file')
+
+
+def resolve_path(value):
+    """Expand ~ and anchor a relative path to the repository root."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (PROJECT_ROOT / path).resolve()
+
+
 class BiblioAgent:
     def __init__(self, config_path="config.yaml"):
         """Initialize the agent with configuration."""
@@ -66,8 +94,13 @@ class BiblioAgent:
             self._progress_callback(message, level)
 
     def load_config(self, config_path):
-        """Load configuration from YAML file."""
-        config_path = Path(config_path)
+        """Load configuration from YAML file.
+
+        Path-valued keys are resolved to absolute paths here (see
+        resolve_path), and any configured-but-missing context file is reported
+        as an error rather than silently dropped.
+        """
+        config_path = resolve_path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Config file not found: {config_path}\n"
@@ -84,40 +117,71 @@ class BiblioAgent:
                 "Get one at: https://console.anthropic.com/settings/keys"
             )
 
+        for key in _PATH_KEYS:
+            if config.get(key):
+                config[key] = str(resolve_path(config[key]))
+
+        # example_files entries are either a bare path or {path, label}.
+        resolved_examples = []
+        for spec in config.get('example_files') or []:
+            if isinstance(spec, dict):
+                spec = {**spec, 'path': str(resolve_path(spec['path']))}
+            else:
+                spec = str(resolve_path(spec))
+            resolved_examples.append(spec)
+        if resolved_examples:
+            config['example_files'] = resolved_examples
+
+        self._verify_context_files(config, config_path)
         return config
 
+    @staticmethod
+    def _verify_context_files(config, config_path):
+        """Fail loudly when a configured context file is missing.
+
+        Every one of these contributes to the cached prompt prefix. Treating an
+        absent file as a warning means a typo or a renamed file yields a full
+        run whose output is quietly worse - the failure mode this check exists
+        to prevent. A key that isn't configured at all is fine; ref_file and
+        example_files are genuinely optional.
+        """
+        missing = [
+            (key, config[key]) for key in _REQUIRED_IF_SET
+            if config.get(key) and not Path(config[key]).exists()
+        ]
+        for spec in config.get('example_files') or []:
+            path = spec['path'] if isinstance(spec, dict) else spec
+            if not Path(path).exists():
+                missing.append(('example_files', path))
+
+        if missing:
+            listed = "\n".join(f"  {key}: {path}" for key, path in missing)
+            raise FileNotFoundError(
+                f"Context files configured in {config_path} are missing:\n{listed}\n\n"
+                "These are sent to Claude as the cached prompt prefix; running "
+                "without them silently degrades extraction quality. Fix the "
+                "paths, restore the files, or remove the keys to run without them."
+            )
+
     def load_context_files(self):
-        """Load CLAUDE.md, biblio-template.bib, and optional ref file for context."""
-        context = {}
+        """Load the guidelines, template, and optional reference/example files.
 
-        # Load CLAUDE.md
-        claude_md_path = Path(self.config['claude_md_file'])
-        if claude_md_path.exists():
-            with open(claude_md_path) as f:
-                context['claude_md'] = f.read()
-        else:
-            self._log(f"⚠️  Warning: {claude_md_path} not found", 'warning')
-            context['claude_md'] = ""
+        Existence was already checked in load_config(), so a key that is set
+        here has a readable file behind it; an unset optional key yields an
+        empty string.
+        """
+        def read(key):
+            path = self.config.get(key)
+            if not path:
+                return ""
+            with open(path) as f:
+                return f.read()
 
-        # Load biblio-template.bib
-        template_path = Path(self.config['template_file'])
-        if template_path.exists():
-            with open(template_path) as f:
-                context['template'] = f.read()
-        else:
-            self._log(f"⚠️  Warning: {template_path} not found", 'warning')
-            context['template'] = ""
-
-        # Load optional reference file (e.g. biblatex-chicago-notes-ref.md)
-        ref_file = self.config.get('ref_file')
-        context['ref'] = ""
-        if ref_file:
-            ref_path = Path(ref_file)
-            if ref_path.exists():
-                with open(ref_path) as f:
-                    context['ref'] = f.read()
-            else:
-                self._log(f"⚠️  Warning: ref_file {ref_path} not found", 'warning')
+        context = {
+            'claude_md': read('claude_md_file'),
+            'template': read('template_file'),
+            'ref': read('ref_file'),
+        }
 
         # Optional worked-example corpora, in the order given. These are the
         # biblatex-chicago package's own annotated test suite and entry-type
@@ -127,11 +191,8 @@ class BiblioAgent:
         for spec in self.config.get('example_files') or []:
             path = Path(spec['path'] if isinstance(spec, dict) else spec)
             label = spec.get('label', path.name) if isinstance(spec, dict) else path.name
-            if path.exists():
-                with open(path) as f:
-                    context['examples'].append((label, f.read()))
-            else:
-                self._log(f"⚠️  Warning: example_file {path} not found", 'warning')
+            with open(path) as f:
+                context['examples'].append((label, f.read()))
 
         return context
 
