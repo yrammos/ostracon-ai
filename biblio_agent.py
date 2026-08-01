@@ -419,14 +419,22 @@ excerpt's text won't (e.g. an embedded Author field):
    a field you have no data for). Only include fields that actually apply.
 """
 
+        # The guidelines ask for date-added/date-modified stamps but have no way
+        # to obtain the current time - you cannot run `date`, and left to guess
+        # you will produce a plausible-looking but wrong timestamp. Supply it.
+        now = datetime.now().astimezone()
+        prompt += f"""11. The current date and time is {now.strftime('%Y-%m-%d %H:%M:%S %z')}.
+   Use exactly this value for both date-added and date-modified. Do not infer
+   a date from the publication itself or from anything in the source text.
+"""
+
         if content.url:
-            today = datetime.now().strftime('%Y-%m-%d')
-            prompt += f"""11. This work has no PDF; the source text above was fetched from the web
+            prompt += f"""12. This work has no PDF; the source text above was fetched from the web
    address below. Identify the publication type from the work itself as
    usual (step 1) - a webpage may still be a printable book, article, etc.
    with its own type, not necessarily @Online. Set Url to exactly this
    address: {content.url}
-   Set Urldate to {today} (today's date).
+   Set Urldate to {now.strftime('%Y-%m-%d')} (today's date).
 """
 
         prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
@@ -803,7 +811,7 @@ BibLaTeX entry, with no additional commentary."""
             self._log(f"   ⚠️  Grounding audit failed: {e}", 'warning')
             return entry_text, False
 
-        missing_container = enrich.container_fields_missing(fields)
+        missing_container = enrich.container_fields_missing(fields, entry_type)
         if not ungrounded and not missing_container:
             return entry_text, False
 

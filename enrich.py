@@ -156,7 +156,21 @@ def add_field(entry_text, field_name, value):
     last_field = lines[-2].rstrip()
     if last_field and not last_field.endswith(','):
         lines[-2] = last_field + ','
-    lines.insert(-1, f'  {field_name} = {{{value}}},')
+
+    # Match the surrounding entry's indentation and field-name casing rather
+    # than hardcoding two spaces and lowercase - an appended field otherwise
+    # stands out against Claude's tab-indented, Capitalised output. Judge the
+    # style from the FIRST field: the last one is typically date-modified,
+    # which is lowercase by BibDesk convention and would misreport the entry.
+    indent = re.match(r'\s*', lines[-2]).group(0) or '\t'
+    for line in lines[1:-1]:
+        m = re.match(r'\s*([A-Za-z][A-Za-z-]*)\s*=', line)
+        if m and '-' not in m.group(1):        # skip date-added / bdsk-* etc.
+            if m.group(1)[:1].isupper():
+                field_name = field_name[:1].upper() + field_name[1:]
+            break
+
+    lines.insert(-1, f'{indent}{field_name} = {{{value}}},')
     return '\n'.join(lines)
 
 
@@ -554,6 +568,12 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
         message = crossref_by_biblio(title, author_surname=author_surname, year=year, mailto=crossref_email)
     if message:
         for k, v in crossref_fields(message).items():
+            # CrossRef reports a publisher for journal articles too, but Chicago
+            # doesn't carry one outside book-like types - merging it produced a
+            # spurious `Publisher = {Public Library of Science (PLoS)}` on an
+            # @article. Same rule as container_fields_missing().
+            if k == 'publisher' and (entry_type or '').lower() not in _BOOKLIKE:
+                continue
             if not fields.get(k) and k not in found:
                 found[k] = v
                 field_sources[k] = 'CrossRef'
@@ -654,10 +674,26 @@ def _is_completion(field, claimed, verified):
 # would only trigger a lookup that can never actually fill them.
 _CONTAINER_FIELDS = {'editor', 'publisher', 'date'}
 
+# ...but only where the field belongs to that entry type. Filling these blindly
+# produced real errors: a journal article picked up `publisher` (Chicago
+# articles don't carry one) and `editor` (CrossRef reports the handling editor
+# who accepted the paper, not a bibliographic editor). Both are wrong on an
+# @article and neither would be obvious in a finished bibliography. 'date' is
+# universal; the other two apply only to book-like types.
+_BOOKLIKE = {
+    'book', 'mvbook', 'inbook', 'bookinbook', 'suppbook',
+    'collection', 'mvcollection', 'incollection', 'suppcollection',
+    'proceedings', 'mvproceedings', 'inproceedings',
+    'reference', 'mvreference', 'inreference',
+}
 
-def container_fields_missing(fields):
-    """Which _CONTAINER_FIELDS the entry doesn't already have a value for."""
-    return [f for f in _CONTAINER_FIELDS if not fields.get(f)]
+
+def container_fields_missing(fields, entry_type=None):
+    """Which _CONTAINER_FIELDS this entry lacks and could meaningfully take."""
+    applicable = set(_CONTAINER_FIELDS)
+    if (entry_type or '').lower() not in _BOOKLIKE:
+        applicable -= {'editor', 'publisher'}
+    return [f for f in applicable if not fields.get(f)]
 
 
 def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
