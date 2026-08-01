@@ -172,6 +172,14 @@ python3 install_service.py
 
 This builds the Automator workflow from `automator/script.sh` and installs it to `~/Library/Services/`, accepting both PDFs and `.webloc` files. Re-run it any time you modify `script.sh`.
 
+### 7. Verify the setup
+
+```bash
+python3 test_setup.py
+```
+
+Checks dependencies, `config.yaml`, the context files, OCR availability, and — since both drifted twice while this was being built — that `README.md` still names every config key, every CLI flag, and every tracked root file. Re-run it after adding a setting or a flag; it fails loudly rather than leaving the documentation quietly stale.
+
 ## Usage
 
 ### macOS Quick Action (Recommended)

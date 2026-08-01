@@ -3,8 +3,12 @@
 Test script to verify the bibliographic extractor setup.
 """
 
+import re
+import subprocess
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
 
 def test_imports():
     """Test if all required packages are installed."""
@@ -108,18 +112,83 @@ def test_ocr():
         return False
 
 def test_pdf_folder():
-    """Test if PDF folder exists."""
-    print("\nTesting PDF folder...")
-    
-    pdf_path = Path("pdf")
-    if pdf_path.exists() and pdf_path.is_dir():
-        pdf_count = len(list(pdf_path.glob("*.pdf")))
-        print(f"  ✓ pdf/ folder exists ({pdf_count} PDFs found)")
+    """Test if the batch input folder exists."""
+    print("\nTesting input folder...")
+
+    pdf_path = ROOT / "pdf-in"
+    if pdf_path.is_dir():
+        n = len(list(pdf_path.glob("*.pdf"))) + len(list(pdf_path.glob("*.webloc")))
+        print(f"  ✓ pdf-in/ exists ({n} source file(s) waiting)")
         return True
-    else:
-        print("  ⚠  pdf/ folder not found")
-        print("    Create it with: mkdir pdf")
+    print("  ⚠  pdf-in/ not found")
+    print("    Create it with: mkdir pdf-in")
+    return False
+
+
+def _documented(readme, token):
+    """A token counts as documented if the README names it anywhere."""
+    return f"`{token}`" in readme or f"\n{token}: " in readme or token in readme
+
+
+def test_documentation():
+    """Check README.md still covers every config key, CLI flag, and root file.
+
+    These drift silently: a setting added to config.yaml.example or a flag
+    added to argparse stays undocumented until someone happens to notice, and
+    the README reads as complete the whole time. Cheap to check, so check.
+    """
+    print("\nTesting documentation coverage...")
+
+    readme_path = ROOT / "README.md"
+    if not readme_path.exists():
+        print("  ⚠  README.md not found")
         return False
+    readme = readme_path.read_text(encoding="utf-8")
+    ok = True
+
+    # 1. Every config key in the template.
+    example = ROOT / "config.yaml.example"
+    if example.exists():
+        keys = sorted(set(re.findall(r"(?m)^([a-z_]+):", example.read_text(encoding="utf-8"))))
+        missing = [k for k in keys if not _documented(readme, k)]
+        if missing:
+            print(f"  ✗ config keys not in README: {', '.join(missing)}")
+            ok = False
+        else:
+            print(f"  ✓ all {len(keys)} config keys documented")
+
+    # 2. Every CLI flag argparse defines. Read from source rather than by
+    #    importing, so a missing dependency doesn't turn this into an error.
+    agent = ROOT / "biblio_agent.py"
+    if agent.exists():
+        src = agent.read_text(encoding="utf-8")
+        flags = sorted({f for call in re.findall(r"add_argument\((.*?)\)", src, re.S)
+                          for f in re.findall(r"'(--[a-z][a-z-]*)'", call)})
+        missing = [f for f in flags if f not in readme]
+        if missing:
+            print(f"  ✗ CLI flags not in README: {', '.join(missing)}")
+            ok = False
+        else:
+            print(f"  ✓ all {len(flags)} CLI flags documented")
+
+    # 3. Every tracked file at the repository root. Skipped outside a checkout.
+    try:
+        tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"],
+                                 capture_output=True, text=True, timeout=10, check=True).stdout.split()
+    except (subprocess.SubprocessError, FileNotFoundError):
+        print("  ⚠  git unavailable - skipped the file listing check")
+        return ok
+
+    boilerplate = {"LICENSE", "README.md", ".gitignore", "screenshot.png"}
+    root_files = sorted({f for f in tracked if "/" not in f} - boilerplate)
+    missing = [f for f in root_files if f not in readme]
+    if missing:
+        print(f"  ✗ files not in Project Structure: {', '.join(missing)}")
+        ok = False
+    else:
+        print(f"  ✓ all {len(root_files)} root files listed")
+
+    return ok
 
 def main():
     print("=" * 60)
@@ -131,7 +200,8 @@ def main():
         'config': test_config(),
         'project_files': test_project_files(),
         'ocr': test_ocr(),
-        'pdf_folder': test_pdf_folder()
+        'pdf_folder': test_pdf_folder(),
+        'documentation': test_documentation(),
     }
     
     print("\n" + "=" * 60)
@@ -148,7 +218,7 @@ def main():
         print("✗ Some critical requirements missing")
         print("\nPlease fix the errors above before running the agent.")
     
-    optional = ['project_files', 'ocr', 'pdf_folder']
+    optional = ['project_files', 'ocr', 'pdf_folder', 'documentation']
     if not all(results[k] for k in optional):
         print("\n⚠  Optional components missing:")
         if not results['project_files']:
@@ -156,7 +226,9 @@ def main():
         if not results['ocr']:
             print("   - Install ocrmypdf to handle scanned PDFs")
         if not results['pdf_folder']:
-            print("   - Create pdf/ folder and add your PDFs")
+            print("   - Create pdf-in/ and drop sources there for --all")
+        if not results['documentation']:
+            print("   - README.md has drifted from the code (see above)")
     
     print()
 
