@@ -22,7 +22,7 @@ A Claude-powered macOS agent for generating BibLaTeX-Chicago entries from PDF fi
 - [Troubleshooting](#troubleshooting)
 - [Cost Estimate](#cost-estimate)
   - [Batching and cache TTL](#batching-and-cache-ttl)
-- ["Ostracon"?](#ostracon)
+- [Why "Ostracon"?](#why-ostracon)
 - [License](#license)
   - [Third-party material](#third-party-material)
 
@@ -133,10 +133,10 @@ The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_
 
 The optional `example_files` key loads two worked-example corpora from the biblatex-chicago package's own documentation:
 
-- `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains *why* that type and those fields were chosen. Converted to Unicode and normalized for this project.
+- `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains _why_ that type and those fields were chosen. Converted to Unicode and normalized for this project.
 - `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `dev/extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
 
-Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the prompt prefix.
+Where the field reference teaches _vocabulary_ (which fields a type takes), these teach _classification_ — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the prompt prefix.
 
 Precedence splits by question, not by file: the corpora are authoritative on what biblatex-chicago supports, `CLAUDE.md` and `biblio-template.bib` on this project's presentation choices. Neither local file can override the package's supported types or fields.
 
@@ -145,8 +145,8 @@ Precedence splits by question, not by file: the corpora are authoritative on wha
 When a source doesn't yield every field the entry type needs, the agent queries external catalogues. Both keys are optional and the pipeline runs without them — it simply flags what it couldn't fill.
 
 ```yaml
-crossref_email: "you@example.com"  # optional; enables CrossRef's faster "polite pool"
-scrapingdog_api_key: ""            # optional; enables the Google Scholar fallback
+crossref_email: "you@example.com" # optional; enables CrossRef's faster "polite pool"
+scrapingdog_api_key: "" # optional; enables the Google Scholar fallback
 ```
 
 - **CrossRef** is free and needs no account. Supplying `crossref_email` opts you into the [polite pool](https://api.crossref.org), which is faster and more reliable than the anonymous one; the address should be one monitored by the maintainer.
@@ -154,21 +154,20 @@ scrapingdog_api_key: ""            # optional; enables the Google Scholar fallba
 
 #### Other options
 
-| Key | Default | Effect |
-|---|---|---|
-| `model` | `claude-sonnet-4-6` | Claude model. Run `dev/estimate_cost.py --model <id>` to price alternatives first. |
-| `max_tokens` | `4000` | Ceiling on each response. Entries run 400–500 tokens; the headroom absorbs longer ones. |
-| `cache_ttl` | `"1h"` | Prompt-cache lifetime. See [Cost Estimate](#cost-estimate). |
-| `enrich_missing_fields` | `true` | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but no enrichment or review of recollection-based fields. |
-| `verbose` | `true` | Progress messages on stderr. |
-| `show_window` | `false` | Show the floating progress window by default (`--window`/`--no-window` override it). |
-| `window_models` | sonnet-4-6, opus-5 | Models offered in the progress window's dropdown — see [Quick Action](#macos-quick-action-recommended). Unset hides the dropdown. |
-| `window_start_delay` | `4` | Seconds the window waits before the first file so the model can be changed; `0` starts immediately. |
-| `notifications` | `false` | macOS notifications for batch progress and validation failures. |
-| `ocr_threshold` | `100` | Words below which a PDF is treated as scanned and sent to OCR. |
-| `ocr_timeout` | `180` | Seconds allowed for `ocrmypdf` before giving up. |
-| `default_ocr_language` | `eng` | Tesseract language used when OCR runs non-interactively. |
-
+| Key                     | Default             | Effect                                                                                                                                                                                                               |
+| ----------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model`                 | `claude-sonnet-4-6` | Claude model. Run `dev/estimate_cost.py --model <id>` to price alternatives first.                                                                                                                                   |
+| `max_tokens`            | `4000`              | Ceiling on each response. Entries run 400–500 tokens; the headroom absorbs longer ones.                                                                                                                              |
+| `cache_ttl`             | `"1h"`              | Prompt-cache lifetime. See [Cost Estimate](#cost-estimate).                                                                                                                                                          |
+| `enrich_missing_fields` | `true`              | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but no enrichment or review of recollection-based fields. |
+| `verbose`               | `true`              | Progress messages on stderr.                                                                                                                                                                                         |
+| `show_window`           | `false`             | Show the floating progress window by default (`--window`/`--no-window` override it).                                                                                                                                 |
+| `window_models`         | sonnet-4-6, opus-5  | Models offered in the progress window's dropdown — see [Quick Action](#macos-quick-action-recommended). Unset hides the dropdown.                                                                                    |
+| `window_start_delay`    | `4`                 | Seconds the window waits before the first file so the model can be changed; `0` starts immediately.                                                                                                                  |
+| `notifications`         | `false`             | macOS notifications for batch progress and validation failures.                                                                                                                                                      |
+| `ocr_threshold`         | `100`               | Words below which a PDF is treated as scanned and sent to OCR.                                                                                                                                                       |
+| `ocr_timeout`           | `180`               | Seconds allowed for `ocrmypdf` before giving up.                                                                                                                                                                     |
+| `default_ocr_language`  | `eng`               | Tesseract language used when OCR runs non-interactively.                                                                                                                                                             |
 
 ### 4. Customize the Extraction Prompt
 
@@ -243,16 +242,16 @@ python3 src/biblio_agent.py path/to/entry.webloc --model claude-opus-5
 
 All flags:
 
-| Flag | Effect |
-|---|---|
-| `--all` | Process everything in `pdf_in_folder` instead of named files. |
-| `--no-save` | Print to stdout only — no staging file, no BibDesk import. |
-| `--no-move` | Leave processed files where they are (the Quick Action uses this, since your sources aren't in `pdf-in/`). |
-| `--output FILE` | Write to `FILE` instead of `main_bib_file`. |
-| `--model ID` | Use a different model for this run. |
-| `--config FILE` | Use an alternate config file. |
-| `--window` / `--no-window` | Force the progress window on or off, overriding `show_window`. |
-| `-q`, `--quiet` | Suppress status messages (sets `verbose: false`). |
+| Flag                       | Effect                                                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `--all`                    | Process everything in `pdf_in_folder` instead of named files.                                              |
+| `--no-save`                | Print to stdout only — no staging file, no BibDesk import.                                                 |
+| `--no-move`                | Leave processed files where they are (the Quick Action uses this, since your sources aren't in `pdf-in/`). |
+| `--output FILE`            | Write to `FILE` instead of `main_bib_file`.                                                                |
+| `--model ID`               | Use a different model for this run.                                                                        |
+| `--config FILE`            | Use an alternate config file.                                                                              |
+| `--window` / `--no-window` | Force the progress window on or off, overriding `show_window`.                                             |
+| `-q`, `--quiet`            | Suppress status messages (sets `verbose: false`).                                                          |
 
 Relative paths in `config.yaml` resolve against the repository, not the working directory, so these commands work from anywhere. A context file named in `config.yaml` but missing from disk is an error at startup.
 
@@ -337,12 +336,12 @@ Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/out
 
 The static prefix measures **61,879 tokens** (209,015 chars). Writing it costs $0.23; every later call in the same run reads it back for $0.019.
 
-| Call | Runs when | First file | Later files |
-|---|---|---|---|
-| Extraction | always | $0.25 | $0.03 |
-| Grounding audit | `enrich_missing_fields: true` (default) | $0.005 | $0.005 |
-| Enrichment merge | required/desired fields missing | $0.03 | $0.03 |
-| Reconciliation | a CrossRef match strictly completes a value | $0.03 | $0.03 |
+| Call             | Runs when                                   | First file | Later files |
+| ---------------- | ------------------------------------------- | ---------- | ----------- |
+| Extraction       | always                                      | $0.25      | $0.03       |
+| Grounding audit  | `enrich_missing_fields: true` (default)     | $0.005     | $0.005      |
+| Enrichment merge | required/desired fields missing             | $0.03      | $0.03       |
+| Reconciliation   | a CrossRef match strictly completes a value | $0.03      | $0.03       |
 
 A clean source costs **~$0.25 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.30 and ~$0.09**.
 
@@ -352,11 +351,11 @@ Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef val
 
 The prefix is written once per run and read thereafter, so cost turns on how often a run starts without a warm cache. At the default five-minute TTL the cache does not survive between separate Quick Action invocations.
 
-| Usage pattern | 5-minute TTL | 1-hour TTL |
-|---|---|---|
-| One batch of 10, nothing else that hour | $0.60 | $0.74 |
-| Two batches of 5, 20 minutes apart | $0.81 | $0.74 |
-| 10 single-file invocations across an hour | $2.52 | $0.74 |
+| Usage pattern                             | 5-minute TTL | 1-hour TTL |
+| ----------------------------------------- | ------------ | ---------- |
+| One batch of 10, nothing else that hour   | $0.60        | $0.74      |
+| Two batches of 5, 20 minutes apart        | $0.81        | $0.74      |
+| 10 single-file invocations across an hour | $2.52        | $0.74      |
 
 The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays the extra write immediately.
 
@@ -366,9 +365,9 @@ These figures are produced by `dev/estimate_cost.py`, which measures the real as
 
 External APIs are negligible: CrossRef is free, and the ScrapingDog fallback runs about $0.0004/credit at a couple of credits per lookup.
 
-## "Ostracon"?
+## Why "Ostracon"?
 
-> An ostracon (Greek: ὄστρακον  /ós.tra.kon/, plural ὄστρακα  /ós.tra.ka/) is a piece of pottery (or stone), usually broken off from a vase or other earthenware vessel. In archaeology and history, the term refers either to the fragment itself or to a potsherd used for writing or drawing.
+> An ostracon (Greek: ὄστρακον /ós.tra.kon/, plural ὄστρακα /ós.tra.ka/) is a piece of pottery (or stone), usually broken off from a vase or other earthenware vessel. In archaeology and history, the term refers either to the fragment itself or to a potsherd used for writing or drawing.
 
 ## License
 
@@ -378,10 +377,10 @@ Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-
 
 Three files are drawn from the [biblatex-chicago](https://ctan.org/pkg/biblatex-chicago) package (v2.3b, 2024-04-15), Copyright © 2008–2024 David Fussner, distributed under the [LaTeX Project Public License](https://www.latex-project.org/lppl/).
 
-| File | Origin | Modified |
-|---|---|---|
-| `cms-notes-intro.tex` | package `doc/` directory | no |
-| `notes-test.bib` | package `doc/` directory | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges converted to single hyphens; no bibliographic content altered |
-| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged |
+| File                       | Origin                                                       | Modified                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `cms-notes-intro.tex`      | package `doc/` directory                                     | no                                                                                                                                 |
+| `notes-test.bib`           | package `doc/` directory                                     | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges converted to single hyphens; no bibliographic content altered |
+| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged                                       |
 
 Each file records its own provenance and modifications in a header, as the LPPL requires. `dev/extract_intro.py` is included so the derivation can be reproduced or re-run against a newer upstream release.
