@@ -11,37 +11,39 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 def test_imports():
-    """Test if all required packages are installed."""
+    """Test if all required packages are installed.
+
+    Table-driven and covering every line of requirements.txt: checking only a
+    subset let a setup pass and then fail on the first .webloc source, since
+    requests and beautifulsoup4 went unverified.
+    """
     print("Testing Python package imports...")
-    
-    try:
-        import anthropic
-        print("  ✓ anthropic")
-    except ImportError:
-        print("  ✗ anthropic - Run: pip install anthropic")
-        return False
-    
-    try:
-        import pypdf
-        print("  ✓ pypdf")
-    except ImportError:
-        print("  ✗ pypdf - Run: pip install pypdf")
-        return False
-    
-    try:
-        import yaml
-        print("  ✓ pyyaml")
-    except ImportError:
-        print("  ✗ pyyaml - Run: pip install pyyaml")
-        return False
-    
-    return True
+
+    required = [
+        ("anthropic",  "anthropic",             "Claude API client"),
+        ("pypdf",      "pypdf",                 "PDF text extraction"),
+        ("yaml",       "pyyaml",                "configuration"),
+        ("requests",   "requests",              "fetching .webloc pages"),
+        ("bs4",        "beautifulsoup4",        "parsing fetched pages"),
+        ("AppKit",     "pyobjc-framework-Cocoa", "progress window, BibDesk bookmarks"),
+    ]
+
+    ok = True
+    for module, package, purpose in required:
+        try:
+            __import__(module)
+            print(f"  ✓ {package}")
+        except ImportError:
+            print(f"  ✗ {package} ({purpose}) - Run: pip install {package}")
+            ok = False
+    return ok
+
 
 def test_config():
     """Test if config file exists and is valid."""
     print("\nTesting configuration...")
     
-    config_path = Path("config.yaml")
+    config_path = ROOT / "config.yaml"
     if not config_path.exists():
         print("  ✗ config.yaml not found")
         print("    Create it from the template and add your API key")
@@ -83,13 +85,9 @@ def test_project_files():
         'cms-notes-intro-guide.md': 'Entry-type guide (example_files)',
     }
 
-    # Resolve against the repository, not the working directory, so this check
-    # agrees with how biblio_agent.py itself resolves config paths.
-    root = Path(__file__).resolve().parent
-
     all_present = True
     for filename, description in files.items():
-        path = root / filename
+        path = ROOT / filename
         if path.exists():
             print(f"  ✓ {filename} ({description})")
         else:
@@ -213,7 +211,7 @@ def main():
     
     if critical_passed:
         print("✓ Core requirements met - ready to process PDFs!")
-        print("\nTry: python biblio_agent.py pdf/your-file.pdf")
+        print("\nTry: python biblio_agent.py path/to/your-file.pdf")
     else:
         print("✗ Some critical requirements missing")
         print("\nPlease fix the errors above before running the agent.")
@@ -222,7 +220,7 @@ def main():
     if not all(results[k] for k in optional):
         print("\n⚠  Optional components missing:")
         if not results['project_files']:
-            print("   - Add CLAUDE.md and biblio-template.bib for better results")
+            print("   - Restore the missing context files (see above)")
         if not results['ocr']:
             print("   - Install ocrmypdf to handle scanned PDFs")
         if not results['pdf_folder']:
