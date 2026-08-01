@@ -144,7 +144,7 @@ def _names(readme, token):
 
 
 def test_documentation():
-    """Check README.md still covers every config key, CLI flag, and root file.
+    """Check README.md still covers every config key, CLI flag, file and directory.
 
     These drift silently: a setting added to config.yaml.example or a flag
     added to argparse stays undocumented until someone happens to notice, and
