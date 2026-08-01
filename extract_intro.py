@@ -17,6 +17,17 @@ src = src[src.index(r'\section{Standard entry types}'):]
 # Drop full-line comments.
 src = '\n'.join(l for l in src.split('\n') if not l.lstrip().startswith('%'))
 
+# Drop the trailing "The Database File" appendix: ~60 lstlisting blocks that
+# reproduce notes-test.bib entries verbatim, minus their annotations. Keeping
+# them would duplicate a file already supplied in full, and the listings' URLs
+# are broken mid-string by the original's column width (e.g.
+# "http://www.cnn.com/1999/TECH/ ptech/12/20/implant.device/"), which is
+# actively misleading as example data. The prose sections' own
+# \endnote[\value{Type}]{\cite{key}} type-to-example mappings are untouched.
+src = re.sub(r'\\begin\{lstlisting\}(\[[^\]]*\])?.*?\\end\{lstlisting\}', '',
+             src, flags=re.DOTALL)
+src = re.sub(r'\\twocolumn\[[^\]]*\]', '', src)
+
 # \endnote[\value{Type}]{\cite{key}.} and \lnbackref{Type}{key} both encode a
 # TYPE -> worked-example mapping. That is the most useful thing in the file,
 # so render it rather than stripping it.
