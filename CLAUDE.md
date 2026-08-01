@@ -13,6 +13,10 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
 - For a `.webloc` file, fetch the page it bookmarks and extract from that instead - the same recognition/formatting rules apply, source text and metadata just come from the fetched webpage (main body text and `citation_*`/`og:*`/JSON-LD metadata) rather than from PDF pages and embedded file metadata.
 - IMPORTANT: Use `biblio-template.bib` as reference for publication types and fields. Try to use the types and fields in this template.
 - Select the appropriate entry type (@Book, @Article, etc.) and populate relevant fields.
+- To choose *between* similar entry types — as distinct from knowing which fields a type takes — consult the two worked-example corpora, both loaded into the extraction prompt automatically via `example_files` in `config.yaml`:
+  - `notes-test.bib` — the biblatex-chicago package's annotated test suite. Nearly every entry carries an `annote` explaining why that type and those fields were chosen. This is the best guide to boundaries such as `@Inproceedings` vs. `@Incollection`, `@Proceedings` vs. `@Collection`, `@Thesis` vs. `@Report` vs. `@Unpublished`, and `@Reference` vs. `@Inreference`.
+  - `cms-notes-intro-guide.md` — prose grouping the entry types by the kind of source each suits, with bracketed names pointing at the corresponding examples in `notes-test.bib`.
+- Both corpora follow the biblatex-chicago package's own house style, which departs from this file's rules in several respects: they populate `url` on printed works, use `keywords` and `annote`, and use the legacy `school`/`address` aliases. Treat them as authoritative on *type and field semantics* only. **Where they conflict with this file, this file governs.** Never copy an example's bibliographic data into an entry; they illustrate form, not content.
 - Every new entry must include `date-added` and `date-modified` fields, both set to the current date, time, and timezone. Run `date "+%Y-%m-%d %H:%M:%S %z"` to get the value. Format: `date-added = {2026-03-22 14:30:00 +0200}`.
 - Do not populate the following fields:
   - ISSN
@@ -47,9 +51,18 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
 
 ## Reference Documentation
 
+In this repository (no network access needed; the last three are loaded into the extraction prompt):
+
+- `biblatex-chicago-notes-ref.md` — condensed field and entry-type reference.
+- `biblio-template.bib` — one example per entry type, in this project's own conventions. The authority for house style.
+- `notes-test.bib` — the package's annotated test suite (203 entries). The authority for type discrimination; see the note above about its divergent house style.
+- `cms-notes-intro-guide.md` — entry-type guide derived from `cms-notes-intro.tex` by `extract_intro.py`. Re-run that script to regenerate it after updating the upstream `.tex`.
+
+Upstream (consult when the local files are insufficient):
+
 - biblatex-chicago package: https://ctan.org/tex-archive/macros/latex/contrib/biblatex-contrib/biblatex-chicago.
-- Types and fields reference: https://mirrors.ctan.org/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf.
-- Examples: https://mirror.init7.net/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/cms-notes-intro.pdf.
+- Types and fields reference (the full manual, far more detailed than the condensed reference above): https://mirrors.ctan.org/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf.
+- Examples: https://mirror.init7.net/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/cms-notes-intro.pdf — the rendered form of the local `cms-notes-intro.tex`.
 
 ## Important Notes
 
