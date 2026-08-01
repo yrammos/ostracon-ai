@@ -1,0 +1,989 @@
+\documentclass[a4paper,12pt]{article}
+% \usepackage[T1]{fontenc}
+% \usepackage{textcomp}
+% \usepackage[utopia]{mathdesign}
+\usepackage{fontspec}
+\usepackage{endnotes}
+% \usepackage[latin1]{inputenc}
+\usepackage[american]{babel}
+\usepackage[autostyle]{csquotes}
+%\usepackage[document]{ragged2e}
+\usepackage[notes,strict,backend=biber,autolang=other,cmsbreakurl,%
+booklongxref=false,annotation,compresspages,formatbib=min]{biblatex-chicago}
+% \usepackage{lmodern}
+% \usepackage{gentium}
+%\renewcommand*{\rmdefault}{fgn}% The font (gentium) used for pdf
+\usepackage{ifthen}
+\usepackage{setspace}
+\usepackage{vmargin} \setpapersize{A4}
+\setmarginsrb{1in}{20pt}{1in}{.5in}{1pt}{2pt}{0pt}{6mm}
+% \usepackage{url}
+% \urlstyle{rm}
+% \appto\bibsetup{\sloppy}
+\usepackage{multicol}
+\hyphenation{tech-re-port Ap-ril}
+\protected\def\onethird{{\mbox{\scriptsize\raisebox{.7ex}{1}%
+    \hspace{-0.1em}\raisebox{.2ex}{/}\hspace{-0.03em}3}}}
+\setlength{\parindent}{0pt}
+%\setlength{\parskip}{5pt}
+\setlength{\dimen\footins}{9.5in}
+\setcounter{secnumdepth}{-1}
+\newcommand{\mycolor}{}%[1]{\textcolor[HTML]{228B22}{#1}}
+\usepackage{xr-hyper}
+\externaldocument[cms-]{biblatex-chicago}%
+\usepackage[hyperref,svgnames]{xcolor}
+\usepackage[colorlinks,filecolor=Teal,citecolor=black,
+plainpages=false,breaklinks=true,urlcolor=DarkSlateBlue,
+linkcolor=DarkSlateBlue,baseurl=biblatex-chicago.pdf\#]{hyperref}
+\setmainfont{GentiumPlus-Regular.ttf}[
+ItalicFont = GentiumPlus-Italic.ttf,
+BoldFont = GentiumPlus-Bold.ttf,
+BoldItalicFont = GentiumPlus-BoldItalic.ttf]
+\setsansfont{ClearSans-Regular.ttf}[
+BoldFont = ClearSans-Bold.ttf,
+ItalicFont = ClearSans-Italic.ttf,
+BoldItalicFont = ClearSans-BoldItalic.ttf,
+Scale = MatchLowercase]
+\setmonofont{lmmonoprop10-regular.otf}[
+BoldFont = lmmonoproplt10-bold.otf,
+HyphenChar={-}]
+\makeatletter
+\renewcommand{\@makeenmark}{\textcolor{DarkSlateGrey}{\textsf{\@theenmark}}}
+\renewcommand{\section}{\@startsection{section}{1}{\z@}%
+                                     {-3.25ex\@plus -1ex \@minus -.2ex}%
+                                     {1.5ex \@plus .2ex}%
+                                     {\normalfont\large\bfseries}}
+\makeatother
+\usepackage{cmsdocs}
+\newcommand{\cmd}[1]{\texttt{\textbackslash #1}}
+\newcommand{\mylittlespace}{\vspace{5pt}}%.5\baselineskip}}
+\addbibresource{notes-test.bib}
+%%\onehalfspacing
+%\tracingstats=2
+\begin{document}
+
+{\Large\bfseries The Chicago Notes \&\ Bibliography Specification}
+\vspace*{1.5ex}
+\begin{multicols}{2}
+  \renewcommand{\contentsname}{\textcolor{darkgray}{Contents}}
+  \footnotesize
+  \tableofcontents
+\end{multicols}
+  
+This file is intended as a brief introduction to the Chicago notes \&\
+bibliography specification (17th ed.)\autocite{chicago:manual}\ as
+implemented by \textsf{biblatex-chicago}, and falls somewhere in
+between the \enquote{Quickstart} section of
+\textsf{biblatex-chicago.pdf} and the full documentation as presented
+in section~4 \cmssecref{cms-sec:Spec} of that same document.  Please
+note that the package functionality as described here depends on using
+\textsf{biber} as your backend; if you use a different backend the
+results will inevitably be disappointing.  I've attempted to design this
+introduction for ease of cross-reference, so clicking on long-note
+citations should bring you to the bibliography entry, whence clicking
+on the entry key in the annotation should present you with the entry
+as it appears in the .bib file, where clicking on the entry type
+should return you to the long note.  If you have questions beyond the
+scope of this introduction, then the full documentation is the place
+to look next --- marginal notes here refer to section or page numbers
+there, and if you've installed the package using the standard \TeX\
+Live method then clicking on these marginal notes should take you to
+the other document.  If you can't find answers there, please write to
+me at the email address in \textsf{biblatex-chicago.pdf}.
+
+\section{Standard entry types}
+\label{sec:standard}
+
+\begin{refsection}
+  These \cmssecref{cms-sec:entrytypes} should pose no particular
+  issues to those who have used \textsc{Bib}\TeX\ or \textsf{biblatex}
+  before, but here is an example of each of the following standard
+  entry types:
+  \endnote[\value{Article}]{\cite{garaud:gatine}.},
+  \endnote[\value{Book}]{\cite{mchugh:wake}.},
+  \endnote[\value{Booklet}]{\cite{clark:mesopot}.},
+  \endnote[\value{InBook}]{\cite{ashbrook:brain}.},
+  \endnote[\value{InCollection}]{\cite{contrib:contrib}.},
+  \endnote[\value{InProceedings}]{\cite{frede:inproc}.},
+  \endnote[\value{Manual}]{\cite{dyna:browser}.},
+  \endnote[\value{MastersThesis}]{\cite{ross:thesis}.},
+  \endnote[\value{TechReport}]{\cite{herwign:office}.}, and
+  \endnote[\value{Unpublished}]{\cite{nass:address}.}.
+
+  {\renewcommand{\notesname}{\normalsize Long-Note Style} \theendnotes}
+  \printbibliography[title=\normalsize Bibliography Style (with
+  annotations)]
+\end{refsection}
+
+\section{Other entry types}
+\label{sec:other}
+
+\begin{refsection}
+
+  These \cmssecref{cms-sec:entrytypes} entry types are
+  \textsf{biblatex} innovations, designed to cater for as large a
+  range of reference needs as possible.  The list here is by no means
+  exhaustive, but rather tries to exemplify some of the more
+  complicated or (possibly) unfamiliar entry types, including:
+  \endnote[\value{Artwork}]{\cite{leo:madonna}.},
+  \endnote[\value{Audio}]{\cite{schubert:muellerin}.},
+  \endnote[\value{BookInBook}]{\cite{euripides:orestes}.},
+  \endnote[\value{Dataset}]{\cite{genbank:db}.},
+  \endnote[\value{InReference}]{\cite{wikiped:bibtex}.},
+  \endnote[\value{Letter}]{\cite{jackson:paulina:letter}.},
+  \endnote[\value{Music}]{\cite{holiday:fool}.},
+  \endnote[\value{Performance}]{\cite{hamilton:miranda}.},
+  \endnote[\value{Review}]{\cite{ratliff:review}.},
+  \endnote[\value{Standard}]{\cite{niso:bibref}.},
+  \endnote[\value{SuppBook}]{\cite{polakow:afterw}.}, and
+  \endnote[\value{Video}]{\cite{friends:leia}.}.
+
+  {\renewcommand{\notesname}{\normalsize Long-Note Style} \theendnotes}
+  \printbibliography[title=\normalsize Bibliography Style]
+\end{refsection}
+
+\section{Short notes}
+\label{sec:short}
+
+\begin{refsection}
+
+  The \cmssecref[shortauthor]{cms-sec:shortauthor} note forms we've
+  seen so far are intended to appear on the first citation of a given
+  work, while subsequent citations use a shorter form, usually merely
+  \textsf{Author}, \textsf{Title}.  Both of these fields, of course,
+  have a \textsf{short} form to allow space-saving abridgements of
+  names and titles.  You can also use the option \texttt{short} when
+  you load \textsf{biblatex-chicago} and you'll get the short form
+  from the start, something only recommended by the \emph{CMS} when
+  you have a full bibliography to clarify all the abbreviated
+  references.  (In the absence of a full bibliography, you can also
+  use the \texttt{noteref} option \cmssecref{cms-sec:noteref} to
+  provide cross-references from short notes to long ones.  Please
+  consult
+  \href{file:cms-noteref-demo.pdf}{\textsf{cms-noteref-demo.pdf}}.)
+  The following are the short forms of all the works cited in long
+  notes in previous sections:
+  \endnote[\value{Article}]{\shortcite{garaud:gatine}.},
+  \endnote[\value{Artwork}]{\shortcite{leo:madonna}.},
+  \endnote[\value{Audio}]{\shortcite{schubert:muellerin}.},
+  \endnote[\value{Book}]{\shortcite{mchugh:wake}.},
+  \endnote[\value{BookInBook}]{\shortcite{euripides:orestes}.},
+  \endnote[\value{Booklet}]{\shortcite{clark:mesopot}.},
+  \endnote[\value{Dataset}]{\shortcite{genbank:db}.},
+  \endnote[\value{InBook}]{\shortcite{ashbrook:brain}.},
+  \endnote[\value{InCollection}]{\shortcite{contrib:contrib}.},
+  \endnote[\value{InProceedings}]{\shortcite{frede:inproc}.},
+  \endnote[\value{InReference}]{\shortcite[Aristotle]{wikiped:bibtex}.},
+  \endnote[\value{Letter}]{\shortcite{jackson:paulina:letter}.},
+  \endnote[\value{Manual}]{\shortcite{dyna:browser}.},
+  \endnote[\value{MastersThesis}]{\shortcite{ross:thesis}.},
+  \endnote[\value{Music}]{\shortcite{holiday:fool}.},
+  \endnote[\value{Performance}]{\shortcite{hamilton:miranda}.},
+  \endnote[\value{Review}]{\shortcite{ratliff:review}.},
+  \endnote[\value{Standard}]{\shortcite{niso:bibref}.},
+  \endnote[\value{SuppBook}]{\shortcite{polakow:afterw}.},
+  \endnote[\value{TechReport}]{\shortcite{herwign:office}.},
+  \endnote[\value{Unpublished}]{\shortcite{nass:address}.}, and
+  \endnote[\value{Video}]{\shortcite{friends:leia}.}.
+
+  {\renewcommand{\notesname}{\normalsize Short-Note Style} \theendnotes}
+\end{refsection}
+
+\section{The \textsf{entrysubtype} field}
+\label{sec:subtype}
+
+\begin{refsection}
+  The \cmssecref[entrysubtype]{cms-sec:entrysub} Chicago notes \&\
+  bibliography style covers a wide variety of source materials, so it
+  is perhaps no surprise that even the range of entry types offered by
+  \textsf{biblatex} isn't quite sufficient.  In many cases, the
+  \textsf{entrysubtype} field can further expand the repertoire
+  available to users.  Such cases include, in particular, the
+  periodical types, where the \emph{CMS} differentiates between
+  articles and reviews in scholarly journals and those in magazines
+  and newspapers aimed at a more general readership.  For the latter
+  two sorts of source, you place the string \texttt{magazine} in the
+  \textsf{entrysubtype} field, and the citation style changes
+  accordingly:
+  \endnote[\value{Article}]{\cite{lakeforester:pushcarts}.} and
+  \endnote[\value{Review}]{\cite{bundy:macneil}.}.
+
+  \mylittlespace The \textsf{Misc} type likewise uses the
+  \textsf{entrysubtype} field as a toggle to alter the general
+  presentation of a source.  Without such a field, \textsf{Misc}
+  entries function as they do in standard \textsf{biblatex} and in
+  \textsc{Bib}\TeX, that is, as hold-alls for sources that won't
+  easily fit into other categories.  (Ideally, such entries will be
+  very rare when using \textsf{biblatex-chicago}.)  With an
+  \textsf{entrysubtype} \textsf{Misc} entries will present their
+  source as part of an unpublished archive, to be distinguished from
+  \textsf{Unpublished} entries, which usually will have a specific
+  title and won't come from a named archive:
+  \endnote[\value{Misc}]{\headlesscite{creel:house}.}.
+
+  \mylittlespace The \textsf{entrysubtype} field is, finally, also
+  useful for presenting pre-Renaissance works by their traditional
+  divisions into books, sections, lines, etc., divisions which are
+  presumed to be the same across all editions.  For such citations,
+  you put the string \texttt{classical} into the \textsf{entrysubtype}
+  field, and though this has no effect on long notes or in the
+  bibliography, it changes the punctuation in short notes, as below:
+  \endnote[\value{BookInBook}]{\shortcite[360e--361b]{plato:republic:gr}.}.
+  (Were you citing such a work by the pages in a modern edition, the
+  \textsf{entrysubtype} would be unnecessary --- see the Euripides
+  citation above.)
+
+  {\renewcommand{\notesname}{\normalsize Note Style} \theendnotes}
+  \printbibliography[title=\normalsize Bibliography Style]
+\end{refsection}
+
+\section{Abbreviated references }
+\label{sec:abbrev}
+
+\begin{refsection}
+
+  The \cmssecref[crossref]{cms-sec:crossref} \emph{CMS} suggests, as a
+  space-saving measure, that when multiple parts of a single
+  collection are present in a reference apparatus, then references
+  may, following certain rules, abbreviate the portion that refers to
+  the collection as a whole.  \textsf{Biblatex-chicago} implements
+  this recommendation using a combination of package options (both
+  entry and preamble) and the \textsf{crossref} and \textsf{xref}
+  fields.  In \textsf{InBook}, \textsf{InCollection},
+  \textsf{InProceedings}, and \textsf{Letter} entries, the option is
+  \texttt{longcrossref}, set to \texttt{false} by default, so if more
+  than one such entry cross-references the same parent entry, then the
+  abbreviated notes and bibliography entries will automatically
+  appear.  The first full note citing such a source is not
+  abbreviated, but all subsequent notes, and all bibliography entries,
+  are:\enlargethispage{-\baselineskip}
+  \endnote[\value{InCollection}]{\cite{ellet:galena}.},
+  \endnote[\value{InCollection}]{\cite{keating:dearborn}.},
+  \endnote[\value{Collection}]{\cite{prairie:state}.}.
+
+\mylittlespace The possible settings for the \texttt{longcrossref}
+option are \texttt{true} (no abbreviated references); \texttt{false}
+(abbreviated references in notes and bibliography); \texttt{notes}
+(abbreviated references only in the bibliography); \texttt{bib}
+(abbreviated references only in notes); and \texttt{none} (abbreviated
+references everywhere, including in the four entry types controlled by
+the \texttt{booklongxref} option).
+
+\mylittlespace The four entry types subject to the
+\texttt{booklongxref} option are \texttt{Book}, \texttt{BookInBook},
+\texttt{Collec\-tion}, and \texttt{Proceedings}.  The option has the
+same four settings as \texttt{longcrossref}, excluding the
+\texttt{none} switch, but it is set to \texttt{true} by default,
+because the \emph{CMS} isn't as explicit in condoning abbreviated
+references in such entry types, so you have to turn them on yourself,
+as I have in this document using \texttt{booklongxref=false} in the
+preamble when loading \texttt{biblatex-chi\-ca\-go}:
+  \endnote[\value{Collection}]{\cite{harley:ancient:cart}.},
+  \endnote[\value{Collection}]{\cite{harley:cartography}.},
+  \endnote[\value{MVCollection}]{\cite{harley:hoc}.}.
+
+  {\renewcommand{\notesname}{\normalsize Note Style} \theendnotes}
+  \printbibliography[title=\normalsize Bibliography Style]
+\end{refsection}
+
+\section{Online materials}
+\label{sec:online}
+
+\begin{refsection}
+
+  The \cmssecref[online]{cms-sec:online} 17th edition of the
+  \emph{CMS} has extended its treatment of online sources, and has
+  also somewhat altered the principles of that treatment.  Earlier
+  editions emphasized the nature of the source (book-like,
+  journal-like, etc.), rather more than how that source was accessed
+  (printed volume, online, etc.), whereas the current specification
+  places somewhat greater --- though not total --- emphasis on where
+  it was accessed, which can in many cases determine what sort of
+  entry type you need.  I have provided a quick guide to the
+  correspondences between online materials and
+  \textsf{biblatex-chicago} entry types in table~1
+  \cmstabref{cms-tab:online:types} of \textsf{biblatex-chicago.pdf},
+  and include a few examples here.  An online edition of a printed
+  book still calls for a
+  \endnote[\value{Book}]{\cite{james:ambassadors}.} entry, and the
+  rules are similar for a printed journal that has an online portal.
+  For intrinsically online sources, even if they are structured more
+  or less like a conventional printed periodical, you may (at your
+  discretion) choose to present them in an
+  \endnote[\value{Online}]{\cite{stenger:privacy}.}  entry rather than
+  an \textsf{Article} one.  Blogs lend themselves well to the
+  \endnote[\value{Article}]{\cite{ellis:blog}.} type, while a comment
+  on a blog becomes a \endnote[\value{Review}]{\cite{ac:comment}.},
+  here using the \texttt{commenton} \textsf{relatedtype}.  Social
+  media posts, by contrast, even of photographs, for example, need an
+  \endnote[\value{Online}]{\cite{souza:obama}.} entry.  For things
+  like mailing lists or less journalistic web pages, the
+  \endnote[\value{Online}]{\cite{powell:email}.} type works well, as
+  it does for short online videos
+  (\endnote[\value{Online}]{\cite{pollan:plant}.}) and for short
+  online audio pieces, too:
+  \endnote[\value{Online}]{\cite{coolidge:speech}.}.
+
+  {\renewcommand{\notesname}{\normalsize Note Style} \theendnotes}
+  \printbibliography[title=\normalsize Bibliography Style]
+\end{refsection}
+
+\section{Related entries}
+\label{sec:related}
+
+\begin{refsection}
+
+  \textsf{Biblatex} provides \cmssecref{cms-sec:related} a powerful
+  mechanism, using the \textsf{related} field, for grouping two (or
+  more) works together in a single entry in the bibliography and/or in
+  long notes, while \textsf{biblatex-chicago} offers both this
+  functionality and some Chicago-specific variants which employ
+  different means.  You can find a full discussion of this in
+  \textsf{biblatex-chicago.pdf}, but two of the entries already cited
+  in the previous section (\cmslink{coolidge:speech} \&\
+  \cmslink{ac:comment}) present the two related entries together in
+  both notes and bibliography, whereas a third example places a text
+  and its translation together, but only in the bibliography:
+  \endnote[\value{Book}]{\cite{furet:related}.}.  Another example
+  shows how to present multi-volume works with the \textsf{maintitle}
+  \emph{before} the \textsf{booktitle} using the \texttt{maintitle}
+  \textsf{relatedtype}, as is sometimes recommended by the \emph{CMS}:
+  \endnote[\value{BookInBook}]{\cite{plato:timaeus:gr}.}.  (The
+  \cmslink{plato:republic:gr} entry on page~\pageref{sec:subtype}
+  shows the more traditional presentation syntax.)
+
+  {\renewcommand{\notesname}{\normalsize Note Style} \theendnotes}
+  \printbibliography[title=\normalsize Bibliography Style]
+\end{refsection}
+
+\section{Citation commands}
+\label{sec:citation}
+
+\begin{refsection}
+
+  Although \cmssecref{cms-sec:citecommands} \cmd{autocite} will no
+  doubt be the most commonly used citation command,
+  \textsf{biblatex-chicago}, following \textsf{biblatex}, does provide
+  a range of other commands for more specialized usages.  We have
+  already seen
+  \cmd{headlesscite},\footnote[1]{\headlesscite{creel:house}.} which
+  allows you to avoid, in notes, repetition of an \textsf{author's}
+  name when it appears in the \textsf{title} as well.  We have also
+  seen \cmd{full\-cite},\footnote{\fullcite{loc:leaders}.} to
+  guarantee a long note, and
+  \cmd{shortcite},\footnote{\shortcite{coolidge:speech}.} to guarantee
+  a short one.  (You can also use \cmd{footfullcite} to get a
+  \cmd{fullcite} in a footnote.)  There are a few others that may
+  occasionally be useful:
+  \cmd{surnamecite},\footnote{\surnamecite{harley:hoc}.} for when a
+  note follows a discussion where the presence of the
+  \textsf{authors'} (or \textsf{editors'}, etc.)\ full names makes
+  their full repetition in the note unnecessary;
+  \cmd{citejournal},\footnote{\citejournal{lakeforester:pushcarts}.}
+  which provides an alternative short form when citing
+  \textsf{Articles}; and the standard \cmd{textcite}, which inserts
+  the name of an author or other \textcite{contrib:contrib} into the
+  flow of text, with a footnote below.
+
+%  {\renewcommand{\notesname}{\large Note Style} \theendnotes}
+%  \printbibliography[title=\large Bibliography Style]
+\end{refsection}
+
+\section{In conclusion}
+\label{sec:conclude}
+
+Allow me, finally, to emphasize just how multifarious are the sources
+illustrated in the \emph{CMS}, only a small selection of which have
+appeared in this introduction.  You will find significantly fuller
+guidance in \textsf{biblatex.pdf} and \textsf{biblatex-chicago.pdf},
+but the \emph{CMS} itself defines the specification and shall
+arbitrate all disputes.  If you see something in
+\textsf{biblatex-chicago} that looks wrong to you, or if the
+documentation has left you perplexed, please let me know.
+
+\printbibliography[title=\large References]
+
+\twocolumn[\Large \texttt{The Database File}]
+\vspace*{-6pt}
+\begin{lstlisting}[language=BibTeX,label=prologue]
+%% Database entries used to produce
+%% citations in this file, taken
+%% from notes-test.bib. I have
+%% removed the annotations to save
+%% room -- they can be viewed in the
+%% main text above. You can click on
+%% the entry type to return to the
+%% long-note formats, and you can
+%% click on text with a grey back-
+%% ground to switch to that entry
+%% within this .bib listing.
+
+@String{uchp = {University of Chicago Press}}
+\end{lstlisting}
+\begin{lstlisting}[language=BiBTeX,label=ac:comment]
+*\lnbackref{Review}{ac:comment}*
+  entrysubtype = {magazine},
+  author = 	 {AC},
+  eventdate = 	 {2008-07-01T10:18:00},
+  related = 	 {*\hyperlink{\getrefbykeydefault%
+    {ellis:blog}{anchor}{}}{\colorbox{Gainsboro}{ellis:blog}}*},
+  relatedtype =  {commenton},
+  url =          {http://wardsix.blogspot.com/2008
+    /06/squatters-rights.html}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=ashbrook:brain]
+*\lnbackref{InBook}{ashbrook:brain}*
+  author = 	 {Ashbrook, James~B. and Albright, Carol Rausch},
+  title = 	 {The Frontal Lobes, Intending, and a Purposeful God},
+  booktitle = 	 {The Humanizing Brain},
+  publisher = {Pilgrim Press},
+  year = 	 1997,
+  chapter = 	 7,
+  location =  {Cleveland, OH},
+  shorttitle = {The Frontal Lobes}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=bundy:macneil]
+*\lnbackref{Review}{bundy:macneil}*
+  journaltitle = {MacNeil/Lehrer NewsHour},
+  usera = 	 {PBS},
+  entrysubtype = {magazine},
+  date = 	 {1990-02-07},
+  author = 	 {Bundy, McGeorge},
+  title = 	 {interview by Robert MacNeil},
+  shorttitle = {interview}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=chicago:manual]
+*\hyperlink{Hfootnote.1}{\color{DarkBlue}@Book}*{chicago:manual,
+  title = 	 {The Chicago Manual of Style},
+  year = 	 2017,
+  author = 	 {{University of Chicago Press}},
+  publisher = uchp,
+  edition = 	 17,
+  location =  {Chicago}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=clark:mesopot]
+*\lnbackref{Booklet}{clark:mesopot}*
+  title = 	 {Mesopotamia},
+  subtitle = 	 {Between Two Rivers},
+  author = 	 {Hazel V. Clark},
+  howpublished = {End of the Commons General Store},
+  date = 	 {1957?},
+  location =     {Mesopotamia, OH}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=contrib:contrib]
+*\lnbackref{InCollection}{contrib:contrib}*
+  author = 	 {Contributor, Anna},
+  title = 	 {Contribution},
+  booktitle = 	 {Edited Volume},
+  publisher = {Publisher},
+  pubstate = 	 {forthcoming},
+  editor = 	 {Editor, Ellen},
+  location =  {Place}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=coolidge:speech]
+*\lnbackref{Online}{coolidge:speech}*
+  author = 	 {Coolidge, Calvin},
+  title = 	 {Equal Rights},
+  titleaddon =   {(speech)},
+  note = 	 {copy of an undated 78 rpm disc},
+  related = 	 {*\hyperlink{\getrefbykeydefault%
+{loc:leaders}{anchor}{}}{\colorbox{Gainsboro}{loc:leaders}}*},
+  options =      {related=true,ptitleaddon=
+    space,ctitleaddon=space,nodatebrackets,
+    nodates=false},
+  date = 	 {1920~}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=creel:house]
+*\lnbackref{Misc}{creel:house}*
+  author = 	 {Creel, George},
+  entrysubtype = {letter},
+  title = 	 {George Creel to Colonel House},
+  origdate = 	 {1918-09-25},
+  note = 	 {Edward~M. House Papers},
+  organization =  {Yale University Library}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=dyna:browser]
+*\lnbackref{Manual}{dyna:browser}*
+  title = 	 {Dynatext, Electronic Book Indexer/Browser},
+  organization = {Electronic Book Technology Inc.},
+  address = 	 {Providence, RI},
+  year = 	 1991,
+  shorttitle = {Dynatext}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=ellet:galena]
+*\lnbackref{InCollection}{ellet:galena}*
+  author = 	 {Ellet, Elizabeth~F.~L.},
+  title = 	 {By Rail and Stage to Galena},
+  crossref =  *\hyperlink{\getrefbykeydefault{prairie:state}%
+{anchor}{}}{\{\colorbox{Gainsboro}{prairie:state}\}}*,
+  pages = 	 {271--279}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=ellis:blog]
+*\lnbackref{Article}{ellis:blog}*
+  author = 	 {Ellis, Rhian},
+  title = 	 {Squatters' Rights},
+  journaltitle = {Ward Six},
+  location = 	 {blog},
+  date = 	 {2008-06-30},
+  url = 	 {http://wardsix.blogspot.com/ 2008/06/sqatters-rights.html},
+  entrysubtype = {magazine}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=euripides:orestes]
+*\lnbackref{BookInBook}{euripides:orestes}*
+  title = 	 {Orestes},
+  year = 	 1958,
+  booktitle = 	 {Euripides},
+  maintitle = 	 {The Complete Greek Tragedies},
+  nameb = 	 {Arrowsmith, William},
+  volume = 	 4,
+  author = 	 {Euripides},
+  editor = 	 {Grene, David and Lattimore, Richmond},
+  publisher = uchp,
+  pages = 	 {185--288},
+  location =  {Chicago}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=frede:inproc]
+*\lnbackref{InProceedings}{frede:inproc}*
+  author = {Dorothea Frede}, 
+  title = {\mkbibemph{Nicomachean Ethics} VII. 11--12},
+  subtitle = {Pleasure},
+  booktitle = {Aristotle},
+  booksubtitle = {\mkbibemph{Nicomachean Ethics}, Book VII},
+  series = {Symposium Aristotelicum},
+  editor = {Carlo Natali},
+  publisher = {Oxford University Press},
+  address  = {Oxford},
+  year = {2009},
+  pages = {183-207}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=friends:leia]
+*\lnbackref{Video}{friends:leia}*
+  title = 	 {The One with the Princess Leia Fantasy},
+  date = 	 2003,
+  booktitle = 	 {Friends},
+  booktitleaddon = 	 {season~3, episode~1},
+  author = 	 {Curtis, Michael and Malins, Gregory~S.},
+  eventdate = 	 {1996-09-19},
+  editor = 	 {Mancuso, Gail},
+  editortype = 	 {director},
+  publisher = {Warner Home Video},
+  type = 	 {DVD},
+  address = 	 {Burbank, CA}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=furet:passing:eng]
+*\hyperlink{Hendnote.\csuse{cms@id@furet:related}}{\color{DarkBlue}@Book}*{furet:passing:eng,
+  title = 	 {The Passing of an Illusion},
+  year = 	 1999,
+  author = 	 {Furet, Fran*\c{c}*ois},
+  userf = 	 {furet:passing:fr},
+  translator = 	 {Furet, Deborah},
+  publisher = uchp,
+  location =  {Chicago}
+}
+\end{lstlisting}%\enlargethispage{-\baselineskip}
+\begin{lstlisting}[language=BibTeX,label=furet:related]
+*\lnbackref{Book}{furet:related}*
+  title = 	 {Le pass*\'e* d'une illusion},
+  year = 	 1995,
+  related = 	 {*\hyperlink{\getrefbykeydefault%
+{furet:passing:eng}{anchor}{}}{\colorbox{Gainsboro}{furet:passing:eng}}*},
+  relatedtype =  {bytranslator},
+  author = 	 {Furet, Fran*\c{c}*ois},
+  publisher = {*\'E*ditions Robert Laffont},
+  location =  {Paris}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=garaud:gatine]
+*\lnbackref{Article}{garaud:gatine}*
+  author =	 {Garaud, Marcel},
+  title =	 {Recherches sur les d*\'e*frichements dans la G*\^a*tine poitevine aux XIe et XIIe si*\`e*cles},
+  journaltitle = {Bulletin de la Soci*\'e*t*\'e* des antiquaires de l'Ouest},
+  year =	 1967,
+  volume =	 9,
+  series =	 4,
+  pages =	 {11--27},
+  shorttitle =	 {Recherches sur les d*\'e*frichements}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=genbank:db]
+*\lnbackref{Dataset}{genbank:db}*
+  author = 	 {GenBank},
+  title = 	 {for RP11-322N14 BAC},
+  number = 	 {AC087526.3},
+  type = 	 {accession number},
+  url = 	 {http://www.ncbi.nlm.nih
+      .gov/nuccore/19683167},
+  urldate = 	 {2016-04-06}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=hamilton:miranda]
+*\lnbackref{Performance}{hamilton:miranda}*
+  editor = 	 {Miranda, Lin-Manuel},
+  editortype = 	 {music and lyrics by},
+  editoratype =  {director},
+  editorbtype =  {choreographer},
+  editora = 	 {Kail, Thomas},
+  editorb = 	 {Blakenbuehler, Andy},
+  venue = 	 {Richard Rodgers Theatre},
+  title = 	 {Hamilton},
+  date = 	 {2016-02-02},
+  options = 	 {useeditor=false},
+  location =     {New York, NY}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=harley:ancient:cart]
+*\lnbackref{Collection}{harley:ancient:cart}*
+  title = 	 {Cartography in Prehistoric, Ancient, and Medieval Europe and the Mediterranean},
+  crossref = 	 *\hyperlink{\getrefbykeydefault{harley:hoc}%
+{anchor}{}}{\{\colorbox{Gainsboro}{harley:hoc}\}}*,
+  date = 	 {1987},
+  volume = 	 1
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=harley:cartography]
+*\lnbackref{Collection}{harley:cartography}*
+  title =	 {Cartography in the Traditional East and Southeast Asian Societies},
+  year =	 1994,
+  crossref = 	 *\hyperlink{\getrefbykeydefault{harley:hoc}%
+{anchor}{}}{\{\colorbox{Gainsboro}{harley:hoc}\}}*,
+  volume =	 {2},
+  part = 	 {2},
+  shorttitle =	 {Cartography in East and Southeast Asia}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=harley:hoc]
+*\hyperlink{Hendnote.554}{\color{DarkBlue}@MVCollection}*{harley:hoc,
+  title = 	 {The History of Cartography},
+  date = 	 {1987/},
+  editor = 	 {Harley, J.~B. and Woodward, David},
+  volumes = 	 {3},
+  publisher = uchp,
+  location =  {Chicago}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=herwign:office]
+*\lnbackref{TechReport}{herwign:office}*
+  options = 	 {useprefix=true},
+  author = 	 {{van} Herwijnen, Eric},
+  title = 	 {Future Office Systems Requirements},
+  institution =  {CERN DD internal note},
+  date = 	 {1988-11}
+}
+\end{lstlisting}%\enlargethispage{-\baselineskip}
+\begin{lstlisting}[language=BibTeX,label=holiday:fool]
+*\lnbackref{Music}{holiday:fool}*
+  title = 	 {I'm a Fool to Want You},
+  eventdate = 	 {1958-02-20},
+  date = 	 {1960},
+  booktitle = 	 {Lady in Satin},
+  author = 	 {Herron, Joel and Sinatra, Frank and Wolf, Jack},
+  editor = 	 {Holiday, Billie},
+  editortype = 	 {vocalist},
+  chapter =      1,
+  number = 	 {CL 1157},
+  publisher = {Columbia},
+  type = 	 {33\onethird~rpm},
+  note = 	 {with Ray Ellis},
+  options = 	 {useauthor=false}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=jackson:paulina:letter]
+*\lnbackref{Letter}{jackson:paulina:letter}*
+  author =	 {Jackson, Paulina},
+  title =        {Paulina Jackson to John Pepys Junior},
+  booktitle =    {The Letters of Samuel Pepys and His Family Circle},
+  origdate = 	 {1676-10-03},
+  publisher =	 {Clarendon Press},
+  year =	 1955,
+  editor =	 {Heath, Helen Truesdell},
+  shorttitle =   {to John Pepys Junior},
+  pages =	 {\bibstring{number} 42},
+  location =	 {Oxford}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=james:ambassadors]
+*\lnbackref{Book}{james:ambassadors}*
+  title = 	 {The Ambassadors},
+  year = 	 1996,
+  origdate = 	 1909,
+  author = 	 {James, Henry},
+  publisher = {Project Gutenberg},
+  url = 	 {ftp://ibiblio.org/pub/docs/ books/gutenberg/etext96/ ambas10.txt}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=keating:dearborn]
+*\lnbackref{InCollection}{keating:dearborn}*
+  author = 	 {Keating, William~H.},
+  title = 	 {Fort Dearborn and Chicago},
+  crossref =  *\hyperlink{\getrefbykeydefault{prairie:state}%
+{anchor}{}}{\{\colorbox{Gainsboro}{prairie:state}\}}*,
+  pages = 	 {84--87}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=lakeforester:pushcarts]
+*\lnbackref{Article}{lakeforester:pushcarts}*
+  journaltitle = {Lake Forester},
+  date = 	 {2000-03-23},
+  entrysubtype = {magazine},
+  title = 	 {Pushcarts Evolve to Trendy Kiosks},
+  location =  {Lake Forest, IL},
+  shorttitle = {Pushcarts Evolve}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=leo:madonna]
+*\lnbackref{Artwork}{leo:madonna}*
+  author = 	 {{Leonardo da Vinci}},
+  shortauthor =  {Leonardo},
+  title = 	 {Madonna of the Rocks},
+  type = 	 {oil on canvas},
+  institution =  {Louvre},
+  date = 	 {148X},
+  note = 	 {78 x 48.5 in\adddot},
+  location =  {Paris}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=loc:leaders]
+*\hyperlink{Hendnote.\csuse{cms@id@coolidge:speech}}{\color{DarkBlue}@Online}*{loc:leaders,
+  author = 	 {Library of Congress},
+  title = 	 {American Leaders Speak},
+  subtitle = 	 {Recordings from World War I and the 1920 Election, 1918--1920},
+  url = 	 {http://memory.loc.gov/ammem/ nfhtml/nforSpeakers01.html},
+  note = 	 {RealAudio and WAV formats},
+  options = 	 {skipbib}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=mchugh:wake]
+*\lnbackref{Book}{mchugh:wake}*
+  title = 	 {Annotations to \mkbibquote{Finnegans Wake}},
+  year = 	 1980,
+  author = 	 {McHugh, Roland},
+  publisher = {Johns Hopkins University Press},
+  location =  {Baltimore}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=nass:address]
+*\lnbackref{Unpublished}{nass:address}*
+  author = 	 {Nass, Clifford},
+  title = 	 {Why Researchers Treat On-Line Journals Like Real People},
+  note =         {keynote address},
+  eventtitle =   {annual meeting of the Council of Science Editors},
+  location = 	 {San Antonio, TX},
+  eventdate = 	 {2000-05-06/2000-05-09}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=niso:bibref]
+*\lnbackref{Standard}{niso:bibref}*
+  title = 	 {Bibliographic References},
+  organization = {National Information Standards Organization},
+  userd = 	 {approved},
+  howpublished = {reaffirmed},
+  eventdate =    {2010-05-13},
+  date = 	 {2005-06-09},
+  series = 	 {ANSI/NISO},
+  number =       {Z39.29-2005},
+  publisher =    {NISO},
+  location =     {Bethesda, MD}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=plato:republic:gr]
+*\hyperlink{Hendnote.448}{\color{DarkBlue}@BookInBook}*{plato:republic:gr,
+  title = 	 {Republic},
+  entrysubtype = {classical},
+  year = 	 1902,
+  volume = 	 4,
+  author = 	 {Plato},
+  editor = 	 {Burnet, J.},
+  booktitle = 	 {Clitopho, Res Publica, Timaeus, Critias},
+  maintitle = 	 {Opera},
+  publisher = {Clarendon Press},
+  series = {Oxford Classical Texts},
+  pages = 	 {327--621},
+  location =  {Oxford}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=plato:timaeus:gr]
+*\lnbackref{BookInBook}{plato:timaeus:gr}*
+  title = 	 {Timaeus},
+  date = 	 1902,
+  related = 	 {*\hyperlink{\getrefbykeydefault%
+{plato:total}{anchor}{}}{\colorbox{Gainsboro}{plato:total}}*},
+  relatedtype =  {maintitle},
+  pages = 	 {17--105},
+  author = 	 {Plato},
+  entrysubtype = {classical}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=plato:tomeiv]
+*\hyperlink{Hendnote.764}{\color{DarkBlue}@Book}*{plato:tomeiv,
+  title = 	 {Clitopho, Res Publica, Timaeus, Critias},
+  date = 	 1902,
+  maintitle = 	 {Opera},
+  volume = 	 4,
+  author = 	 {Plato},
+  editor = 	 {Burnet, J.},
+  publisher =    {Clarendon Press},
+  location =     {Oxford}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=plato:total]
+*\hyperlink{Hendnote.764}{\color{DarkBlue}@MVBook}*{plato:total,
+  author = 	 {Plato},
+  title = 	 {Opera},
+  year = 	 1902,
+  related = 	 {*\hyperlink{\getrefbykeydefault%
+{plato:tomeiv}{anchor}{}}{\colorbox{Gainsboro}{plato:tomeiv}}*},
+  editor = 	 {Burnet, J.},
+  relatedtype =  {maintitle},
+  volumes = 	 5,
+  options = 	 {hidevolumes=false},
+  series = 	 {Oxford Classical Texts},
+  publisher =    {Clarendon Press},
+  location =     {Oxford}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=polakow:afterw]
+*\lnbackref{SuppBook}{polakow:afterw}*
+  author =	 {Polakow, Valerie},
+  title =	 {Lives on the Edge},
+  subtitle = {Single Mothers and Their Children in the Other America},
+  pages = 	 {175--184},
+  afterword =	 {yes},
+  year =	 1993,
+  publisher =	 uchp,
+  location =	 {Chicago}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=pollan:plant]
+*\lnbackref{Online}{pollan:plant}*
+  author = 	 {Pollan, Michael},
+  title = {Michael Pollan Gives a Plant's-Eye View},
+  organization = {TED video, 17:31},
+  titleaddon =   {filmed March 2007},
+  url = 	 {http://www.ted.com/index.php
+        /talks/michael_pollan_gives_a
+        _plant_s_eye_view.html},
+  urldate = 	 {2008-02},
+  userd = 	 {posted}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=powell:email]
+*\lnbackref{Online}{powell:email}*
+  author = 	 {Powell, John},
+  date = 	 {1998-04-23},
+  titleaddon =   {Grapevine digest mailing list archives},
+  organization = {Electric Editors},
+  title =        {Pattern Matching},
+  url =          {http://www.electriceditors.net
+       /grapevine/archives.php},
+  shorttitle =   {\autocap{e}-mail to Grapevine mailing list}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=prairie:state]
+*\hyperlink{Hendnote.551}{\color{DarkBlue}@Collection}*{prairie:state,
+  title = {Prairie State},
+  subtitle = {Impressions of Illinois, 1673--1967, by Travelers and Other Observers},
+  year = 1968,
+  editor = {Angle, Paul~M.},
+  publisher = uchp,
+  location = {Chicago}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=ratliff:review]
+*\lnbackref{Review}{ratliff:review}*
+  author =	 {Ratliff, Ben},
+  title =	 {\bibstring{reviewof} \mkbibemph{The Mystery of
+         Samba: Popular Music and
+         National Identity in Brazil},
+         \bibstring{by} Hermano Vianna,
+         \parteditandtrans John Charles
+         Chasteen},
+  journaltitle = {Lingua Franca},
+  date = 	 {1999-04},
+  volume =	 9,
+  pages =	 {B13--B14},
+  shorttitle =	 {\bibstring{reviewof} \mkbibemph{The Mystery of Samba}}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=ross:thesis]
+*\lnbackref{MastersThesis}{ross:thesis}*
+  author = 	 {Ross, Dorothy},
+  title = 	 {The Irish-Catholic Immigrant, 1880--1900},
+  subtitle = 	 {A Study in Social Mobility},
+  school = 	 {Columbia University},
+  year = 	 {\bibstring{nodate}}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=schubert:muellerin]
+*\lnbackref{Audio}{schubert:muellerin}*
+  title = 	 {Das Wandern (Wandering)},
+  date = 	 1895,
+  shorttitle = 	 {Das Wandern},
+  booktitle = 	 {Die sch\"one M\"ullerin (The Maid of the Mill)},
+  maintitle = 	 {First Vocal Album},
+  maintitleaddon = {(for high voice)},
+  options =      {ctitleaddon=space},
+  author = 	 {Schubert, Franz},
+  publisher = {G.~Schirmer},
+  address = 	 {New York}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=souza:obama]
+*\lnbackref{Online}{souza:obama}*
+  author = 	 {Souza, Pete},
+  title = 	 {President Obama bids farewell
+         to President Xi of China at the
+         conclusion of the Nuclear
+         Security Summit},
+  date = 	 {2016-04-01},
+  shorttitle = 	 {President Obama},
+  nameaddon = 	 {(@petesouza)},
+  url = 	 {https://www.instagram.com/p
+       /BDrmfXTtNCt/},
+  organization = {Instagram photo}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=stenger:privacy]
+*\lnbackref{Online}{stenger:privacy}*
+  organization = {CNN.com},
+  date = 	 {1999-12-20},
+  author = 	 {Stenger, Richard},
+  title = 	 {Tiny Human-Borne Monitoring Device Sparks Privacy Fears},
+  url = 	 {http://www.cnn.com/1999/TECH/ ptech/12/20/implant.device/},
+  shorttitle = {Tiny Human-Borne Monitoring Device}
+}
+\end{lstlisting}
+\begin{lstlisting}[language=BibTeX,label=wikiped:bibtex]
+*\lnbackref{InReference}{wikiped:bibtex}*
+  title = 	 {Wikipedia},
+  lista = {BibTeX},
+  entrysubtype = {online},
+  url = 	 {http://en.wikipedia.org
+       /wiki/BibTeX},
+  urldate = 	 {2019-11-15T20:59:00},
+  userd = 	 {last edited}
+}
+\end{lstlisting}
+
+%% \printshorthands
+
+\end{document}
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-trailer-start: "^[^%\n]*\\\\printshorthands"
+%%% TeX-engine: luatex
+%%% End:

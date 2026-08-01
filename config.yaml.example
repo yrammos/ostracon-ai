@@ -15,6 +15,18 @@ template_file: "./biblio-template.bib"
 claude_md_file: "./CLAUDE.md"
 ref_file: "./biblatex-chicago-notes-ref.md"  # Optional: condensed biblatex-chicago field reference
 
+# Optional worked-example corpora, cached as part of the static prompt prefix.
+# These teach entry-TYPE discrimination (why @Inproceedings and not
+# @Incollection) rather than field vocabulary. Both are derived from the
+# biblatex-chicago package's own documentation; notes-test.bib carries an
+# `annote` on nearly every entry explaining the choice of type and fields.
+# Comment out to reduce the cached prefix size.
+example_files:
+  - path: "./notes-test.bib"
+    label: "biblatex-chicago annotated test suite"
+  - path: "./cms-notes-intro-guide.md"
+    label: "biblatex-chicago entry-type guide"
+
 # Processing options
 ocr_threshold: 100 # Minimum words extracted before OCR is attempted on key pages
 ocr_timeout: 180 # Seconds to allow ocrmypdf on the extracted page subset before giving up

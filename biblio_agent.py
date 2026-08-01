@@ -119,6 +119,20 @@ class BiblioAgent:
             else:
                 self._log(f"⚠️  Warning: ref_file {ref_path} not found", 'warning')
 
+        # Optional worked-example corpora, in the order given. These are the
+        # biblatex-chicago package's own annotated test suite and entry-type
+        # guide: they teach TYPE DISCRIMINATION (why a source is @Inproceedings
+        # rather than @Incollection) in a way the field manifests above can't.
+        context['examples'] = []
+        for spec in self.config.get('example_files') or []:
+            path = Path(spec['path'] if isinstance(spec, dict) else spec)
+            label = spec.get('label', path.name) if isinstance(spec, dict) else path.name
+            if path.exists():
+                with open(path) as f:
+                    context['examples'].append((label, f.read()))
+            else:
+                self._log(f"⚠️  Warning: example_file {path} not found", 'warning')
+
         return context
 
     def _static_context_block(self, context):
@@ -135,12 +149,37 @@ class BiblioAgent:
             parts.append(f"<reference_template>\n{context['template']}\n</reference_template>")
         if context['ref']:
             parts.append(f"<biblatex_chicago_reference>\n{context['ref']}\n</biblatex_chicago_reference>")
+
+        for label, text in context.get('examples') or []:
+            parts.append(f'<worked_examples source="{label}">\n{text}\n</worked_examples>')
+
         if not parts:
             return None
-        return (
+
+        preamble = (
             "Project guidelines, reference template, and biblatex-chicago field "
-            "reference for BibLaTeX-Chicago entries:\n\n" + "\n\n".join(parts)
+            "reference for BibLaTeX-Chicago entries:"
         )
+        if context.get('examples'):
+            # The upstream corpora follow the package's own house style, which
+            # diverges from this project's on several points (they split
+            # title/subtitle - which we now also do - but they also carry
+            # `url` on print entries, `keywords`, `annote`, and the legacy
+            # `school`/`address` aliases). Without this precedence note their
+            # 200+ worked entries read as authoritative and would quietly
+            # override the guidelines above.
+            preamble += (
+                "\n\nThe <worked_examples> blocks are the biblatex-chicago package's own "
+                "annotated corpora. Use them to learn ENTRY-TYPE DISCRIMINATION and field "
+                "semantics - each entry's `annote` explains why that type and those fields "
+                "were chosen. They are NOT a style model: where they conflict with "
+                "<guidelines> above, the guidelines win. In particular, ignore their use of "
+                "`url` on printed works, `keywords`, `annote`, `subtitle` punctuation habits "
+                "that differ from ours, and the legacy `school`/`address` aliases (use "
+                "`institution` and `location`). Never copy an example's data into an entry: "
+                "they illustrate form, not content."
+            )
+        return preamble + "\n\n" + "\n\n".join(parts)
 
     def _cached_message_content(self, context, dynamic_text):
         """Build a messages[].content value, marking the shared static
@@ -207,7 +246,13 @@ excerpt's text won't (e.g. an embedded Author field):
      volume, distinct from this chapter's Author).
    - Use @Inproceedings if it's one paper within a conference proceedings
      volume (Booktitle = the proceedings volume, Booktitleaddon = the
-     conference name/location if given).
+     conference name/location if given). The discriminator against
+     @Incollection is a genuinely published proceedings volume with its own
+     title (often "Proceedings of..." or naming the conference) - not merely
+     that the piece originated as a conference talk. If the paper was
+     presented at a conference but was NEVER collected into a published
+     proceedings volume, it is @Unpublished instead, not @Inproceedings (see
+     the guidelines for the Note field convention this requires).
    - In all these cases, set Title to the SPECIFIC piece's own title (e.g.
      "Manifesto"), and Booktitle to the overall container's title (often
      visible in a running header, distinct from the piece's own heading) -
@@ -221,29 +266,66 @@ excerpt's text won't (e.g. an embedded Author field):
      Bookauthor (or Editor/Editora) distinguishing the book's real author
      from the supplement's Author. Only use @Inbook/@Incollection when the
      piece has its own distinct title.
+   If instead the whole source IS the complete work (not one part of a
+   larger container) and it has editor(s) but no single author of its own -
+   e.g. an edited volume's own landing page, credited "Edited by X and Y"
+   with no Author - use @Collection (or @MvCollection/@Reference as
+   appropriate), with the editor(s) in the Editor field taking the primary
+   name role. Do NOT put editor names into Author in this case. Use
+   @Proceedings instead of @Collection specifically when the volume itself
+   is a published conference proceedings (same discriminator as
+   @Inproceedings vs @Incollection above - a named conference/proceedings
+   title, not just an edited-volume structure).
+   For unpublished academic work, distinguish @Thesis (a dissertation
+   submitted to a degree-granting institution - Type = {\bibstring{phdthesis}}
+   or {\bibstring{mastersthesis}}, Institution = the institution), @Report (an
+   institutional/technical/research report NOT submitted for a degree - Type
+   = {\bibstring{techreport}} or a similarly descriptive bibstring), and
+   @Unpublished (anything else unpublished, including a conference paper with
+   no proceedings volume - see the guidelines for the required Note field).
+   For a review of another work (rather than a standalone article), use
+   @Review and encode the reviewed work's title/author directly into Title
+   per the convention in the guidelines and demonstrated in
+   biblio-template.bib's Dunsby1997 entry - do not use a generic @Article for
+   a review.
 2. Extract all relevant bibliographic fields
-3. Pay special attention to volume, issue/number, page range, and chapter number.
+3. Split a colon-separated title into Title (before the colon) and Subtitle
+   (after it), omitting the colon itself - biblatex-chicago supplies it. Same
+   for Booktitle/Booksubtitle and Maintitle/Mainsubtitle. Do NOT split when the
+   colon sits inside a quoted/emphasised sub-phrase (e.g. a reviewed work's
+   title in an @Review entry) rather than at this entry's own title boundary,
+   nor when the two halves are joined by a question mark or full stop instead
+   of a colon - in those cases keep the title whole and use Shorttitle.
+4. Pay special attention to volume, issue/number, page range, and chapter number.
    These are frequently printed in running headers or footers rather than in the
    main body text - check the "HEADERS/FOOTERS FROM KEY PAGES" section above (if
    present) in addition to the BEGINNING/END sections, since this information can
    appear on any of the first few or last few pages, not just the very first or
    very last page.
-4. Format as a single BibLaTeX entry using biblatex-chicago standards
-5. Use a citation key in the format: AuthorYEAR (e.g., Smith2023)
-6. Use single hyphens (-) for all ranges (pages, dates, etc.)
-7. Do NOT include these fields: ISSN, ISBN, keywords, reference, devonthink
-8. Omit any field you cannot populate from the given text/metadata entirely -
+5. For Location (place of publication, required for @Book/@Collection/@Inbook/
+   @Incollection/etc.), look for the publisher's imprint line, typically on the
+   title page or copyright page - e.g. "Cambridge, MA: MIT Press" or "New York:
+   Oxford University Press". Use the first city given if more than one is listed.
+   Do not guess a city from the publisher's name alone; only use a city actually
+   printed on the page. If genuinely not stated anywhere in the given text, omit
+   the field rather than inventing one.
+6. Format as a single BibLaTeX entry using biblatex-chicago standards
+7. Use a citation key in the format: AuthorYEAR (e.g., Smith2023)
+8. Use single hyphens (-) for all ranges (pages, dates, etc.)
+9. Do NOT include these fields: ISSN, ISBN, keywords, reference, devonthink
+10. Omit any field you cannot populate from the given text/metadata entirely -
    do not include it with an empty value (e.g. do not write `Langid = {}` for
    a field you have no data for). Only include fields that actually apply.
 """
 
         if content.url:
             today = datetime.now().strftime('%Y-%m-%d')
-            prompt += f"""9. This work has no PDF and is only available online. Set Url to exactly
-   this address: {content.url}
-   Set Urldate to {today} (today's date). This is a source-specific exception
-   to any general rule against populating Url - it applies here because there
-   is no PDF to file as the locator instead.
+            prompt += f"""11. This work has no PDF; the source text above was fetched from the web
+   address below. Identify the publication type from the work itself as
+   usual (step 1) - a webpage may still be a printable book, article, etc.
+   with its own type, not necessarily @Online. Set Url to exactly this
+   address: {content.url}
+   Set Urldate to {today} (today's date).
 """
 
         prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
@@ -332,7 +414,7 @@ excerpt's text won't (e.g. an embedded Author field):
             # PDF whose own body text states a URL can still get a Url field
             # despite the instruction against it) - so strip them here rather
             # than trusting prompt compliance alone.
-            bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry, allow_url=bool(content.url))
+            bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry)
             if stripped:
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
@@ -596,9 +678,9 @@ BibLaTeX entry, with no additional commentary."""
         given source text/metadata (i.e. likely drawn from its own background
         knowledge), then attempt to confirm or refute those specific fields
         via CrossRef/Google Scholar. The same lookup also fills in a few
-        container-level fields (Editor, Series, Publisher, Location) when the
-        entry is missing them entirely - e.g. an edited collection's Editor,
-        which is otherwise never sourced anywhere else in this pipeline.
+        container-level fields (Editor, Publisher, Date) when the entry is
+        missing them entirely - e.g. an edited collection's Editor, which is
+        otherwise never sourced anywhere else in this pipeline.
 
         Fields whose claimed value differs from a verified external record are
         only auto-reconciled (via a second, narrowly-scoped Claude call - see

@@ -28,8 +28,8 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 
 1. Takes one or more PDF and/or `.webloc` files as input.
 2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from key pages (volume, issue, page range, chapter number), and embedded PDF metadata (title, author, subject, creation date). For a `.webloc` file: resolves the bookmarked URL, fetches the page, and extracts its main body text along with `citation_*`/`og:*`/JSON-LD metadata—the online equivalent of a PDF's embedded metadata.
-3. Sends all of the above to the Claude API with project guidelines and a reference template, and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` populates `Url`/`Urldate`—the one case the guidelines allow this, since there is no PDF to file as the entry's locator instead.
-4. Strips any field the guidelines forbid (e.g. ISSN, keywords, or a `Url` on a PDF-sourced entry) that Claude included regardless—a structural safeguard rather than a prompt instruction alone, since the latter isn't followed reliably (a PDF whose own text states a URL, for instance, can still tempt Claude into adding one).
+3. Sends all of the above to the Claude API with project guidelines and a reference template, and returns a BibLaTeX-Chicago entry. An entry sourced from a `.webloc` is given its `Url`/`Urldate`, since there is no PDF to file as the entry's locator instead.
+4. Strips any field the guidelines forbid (e.g. ISSN, keywords, or a `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included regardless—a structural safeguard rather than a prompt instruction alone, since the latter isn't followed reliably (a PDF whose own text states a URL, for instance, can still tempt Claude into adding one).
 5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude call.
 6. Audits the entry for fields that may have been filled from Claude's background/training-data recollection rather than the source text—a real failure mode with academic works Claude may "recognize."
 7. Re-checks CrossRef/Scholar for any recollection-based or still-missing container-level fields (editor, series, publisher, location, date). A conflicting external value is only ever applied automatically when it comes from CrossRef (DOI-keyed, high trust) *and* is a strict completion of the claimed value—spelling out an abbreviated first name, or adding a missing co-author—never a genuine contradiction, and never from Google Scholar's fuzzier match regardless of how confident it looks. Anything short of that is left untouched and flagged for manual review rather than silently overwritten, since a wrong field is worse than an empty one.
@@ -107,13 +107,22 @@ failed_bib_file: "~/Desktop/biblio-failed.bib" # error file
 
 The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
 
+The optional `example_files` key loads worked-example corpora derived from the biblatex-chicago package's own documentation:
+
+- `notes-test.bib` — the package's annotated test suite (203 entries covering every entry type), where nearly every entry carries an `annote` explaining *why* that type and those fields were chosen. Converted here to this project's conventions: Unicode accented characters rather than LaTeX macros, and single-hyphen ranges.
+- `cms-notes-intro-guide.md` — prose derived from `cms-notes-intro.tex`, grouping entry types into categories and explaining which to choose for a given kind of source. Bracketed names are entry keys pointing at examples in `notes-test.bib`.
+
+Where the field reference teaches *vocabulary* (which fields an entry type takes), these teach *discrimination* — why a conference paper in a published proceedings volume is `@Inproceedings` while the same paper without proceedings is `@Unpublished`. They add roughly 45,000 tokens to the prompt, but sit inside the cached static prefix, so the cost is paid once per run rather than per source. Comment the key out to omit them.
+
+These corpora follow the package's own house style, which departs from this project's on several points (`url` on printed works, `keywords`, the legacy `school`/`address` aliases). The prompt states explicitly that `CLAUDE.md` takes precedence where they conflict.
+
 Set `notifications: true` to enable macOS notifications. When enabled, the agent sends notifications for batch progress updates and validation failures. Defaults to `false`.
 
 ### 4. Customize the Extraction Prompt
 
 Edit `CLAUDE.md` to match your bibliographic conventions. At minimum, review:
 
-- The output format and field exclusions (e.g. which fields to omit), including the `.webloc`-only exception that allows `Url`/`Urldate`.
+- The output format and field exclusions (e.g. which fields to omit), including the `@Online`/undated-entry exception that allows `Url`/`Urldate`.
 - Title-case rules for any languages you work with.
 - Any domain-specific entry types or fields you rely on.
 
@@ -239,3 +248,15 @@ These figures are higher than the pipeline's original ~$0.02-$0.03/file estimate
 ## License
 
 Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Free for personal use; attribution requested for forks and modifications; commercial use prohibited.
+
+### Third-party material
+
+Three files are drawn from the [biblatex-chicago](https://ctan.org/pkg/biblatex-chicago) package (v2.3b, 2024-04-15), Copyright © 2008–2024 David Fussner, distributed under the [LaTeX Project Public License v1.3](https://www.latex-project.org/lppl/). They are redistributed here under that licence, not under this project's CC BY-NC terms:
+
+| File | Origin | Modified |
+|---|---|---|
+| `cms-notes-intro.tex` | package `doc/` directory | no |
+| `notes-test.bib` | package `doc/` directory | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges converted to single hyphens; no bibliographic content altered |
+| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged |
+
+Each file records its own provenance and modifications in a header, as the LPPL requires. `extract_intro.py` is included so the derivation can be reproduced or re-run against a newer upstream release.

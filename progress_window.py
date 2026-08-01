@@ -201,14 +201,32 @@ class ProgressWindow:
 
         _on_main(_append)
 
+    def _render_bar(self, fraction: float) -> str:
+        bar_width = 18
+        filled = int(bar_width * fraction)
+        return '\u2588' * filled + '\u2591' * (bar_width - filled)
+
     def set_progress(self, current: int, filename: str) -> None:
         """Update the header progress line. Thread-safe."""
         total = self._total
-        pct = int((current - 1) / total * 100) if total > 0 else 0
-        bar_width = 18
-        filled = int(bar_width * (current - 1) / total) if total > 0 else 0
-        bar = '\u2588' * filled + '\u2591' * (bar_width - filled)
+        fraction = (current - 1) / total if total > 0 else 0
+        pct = int(fraction * 100)
+        bar = self._render_bar(fraction)
         text = f"[{current}/{total}]  {filename}  {bar}  {pct}%"
+        header = self._header
+
+        def _update():
+            header.setStringValue_(text)
+
+        _on_main(_update)
+
+    def _mark_complete(self) -> None:
+        """Push the header to 100% - set_progress() only ever reflects files
+        completed *before* the one currently in flight, so the last file's
+        completion is never otherwise shown."""
+        total = self._total
+        bar = self._render_bar(1.0)
+        text = f"[{total}/{total}]  Done  {bar}  100%"
         header = self._header
 
         def _update():
@@ -222,6 +240,8 @@ class ProgressWindow:
         either way - the user closes it manually - so the log is never lost
         to an auto-close before it's been read.
         """
+        if not self.cancelled:
+            self._mark_complete()
         if had_error:
             self.log("\u2717 Finished with errors. Close this window when done.", 'error')
         else:

@@ -31,6 +31,7 @@ TEXT_WORD_BUDGET = 600
 CITATION_META_FIELDS = {
     'citation_title': 'Title',
     'citation_author': 'Author',
+    'citation_editor': 'Editor',
     'citation_journal_title': 'Journal',
     'citation_publisher': 'Publisher',
     'citation_doi': 'Doi',
@@ -126,7 +127,15 @@ def _page_metadata(soup):
 
 def _page_text(soup):
     """Visible body text, stripped of chrome, capped to TEXT_WORD_BUDGET words."""
-    for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
+    # <noscript> matters here beyond the obvious: JS-rendered (Vue/Nuxt etc.)
+    # publisher sites often ship a full no-JS fallback site map inside it -
+    # e.g. Cambridge Core's book pages embed their entire subject/partner/
+    # services navigation tree (thousands of words) in a <noscript> block
+    # that appears before the real page content in document order. A real
+    # browser never renders it, but BeautifulSoup's get_text() doesn't know
+    # that, so left unstripped it can consume the whole TEXT_WORD_BUDGET
+    # before extraction ever reaches the actual title/author/abstract text.
+    for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'noscript']):
         tag.decompose()
     text = soup.get_text(separator=' ', strip=True)
     text = ' '.join(text.split())

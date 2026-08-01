@@ -83,17 +83,40 @@ def missing_fields(entry_type, fields):
     return required, desired
 
 
+def join_subtitle(main, sub):
+    """Recombine a split title for comparison against external records.
+
+    Entries store colon-separated titles across Title/Subtitle (biblatex
+    supplies the colon at render time), but CrossRef and Google Scholar both
+    return the whole title as one string. Comparing a bare main title against
+    a full external title would otherwise read as a mismatch - and worse, as a
+    *completion* ("Recent Schenker" is a substring of "Recent Schenker: The
+    Poetic Power of..."), which would let auto-reconciliation overwrite Title
+    with the recombined form and silently undo the split.
+    """
+    main = (main or '').strip()
+    sub = (sub or '').strip()
+    if main and sub:
+        return f"{main}: {sub}"
+    return main or sub
+
+
 def work_level_title(entry_type, fields):
     """
     The title to use when verifying the whole *work* this entry belongs to,
     as opposed to a possibly too-generic chapter/article title - e.g. a
     chapter titled "Introduction" or "Manifesto" is useless to search on, but
     the book it's part of is usually far more distinctive.
+
+    Subtitles are rejoined so external searches see the full title the
+    indexes actually hold.
     """
     entry_type = (entry_type or '').lower()
     if entry_type in ('incollection', 'inbook', 'inproceedings'):
-        return fields.get('booktitle') or fields.get('title', '')
-    return fields.get('title', '')
+        booktitle = join_subtitle(fields.get('booktitle'), fields.get('booksubtitle'))
+        if booktitle:
+            return booktitle
+    return join_subtitle(fields.get('title'), fields.get('subtitle'))
 
 
 def set_field(entry_text, field_name, new_value):
@@ -187,24 +210,24 @@ def remove_field(entry_text, field_name):
 
 
 FORBIDDEN_FIELDS_ALWAYS = {'issn', 'isbn', 'keywords', 'reference', 'devonthink'}
-URL_RESTRICTED_TYPES = {'article', 'book', 'collection', 'incollection', 'inbook'}
 
 
-def strip_forbidden_fields(entry_text, allow_url):
+def strip_forbidden_fields(entry_text):
     """
     Remove fields CLAUDE.md forbids from a raw BibLaTeX entry, structurally -
     the initial extraction prompt already asks Claude not to include these,
-    but doesn't reliably follow through (e.g. a PDF whose own body text
-    states a URL can still get a Url field despite the instruction against
-    it for PDF-sourced @article/@book/@collection/@incollection/@inbook
-    entries).
+    but doesn't reliably follow through (e.g. a PDF that's actually a
+    printout of an online-only page can get typed as something other than
+    @Online, or a PDF whose own body text states a URL can still get a Url
+    field despite the instruction against it).
 
-    Args:
-        entry_text: The raw BibLaTeX entry
-        allow_url: True for webloc-sourced entries (Url/Urldate are the
-            entry's only locator and should stay); False for PDF-sourced
-            entries (Url is redundant with the filed PDF and forbidden for
-            the types in URL_RESTRICTED_TYPES).
+    Url/Urldate are kept only when either is true - regardless of whether
+    the entry was sourced from a PDF or a webloc:
+    - the entry is typed @Online, the one type with no other locator to
+      fall back on; or
+    - the entry has no Date, in which case Urldate is the only dating
+      evidence available and Url its necessary companion.
+    Otherwise both are stripped.
 
     Returns (entry_text, stripped_field_names).
     """
@@ -212,7 +235,8 @@ def strip_forbidden_fields(entry_text, allow_url):
     fields = parse_bibtex_fields(entry_text)
 
     to_strip = [f for f in FORBIDDEN_FIELDS_ALWAYS if fields.get(f)]
-    if not allow_url and entry_type in URL_RESTRICTED_TYPES:
+    keep_url = entry_type == 'online' or not fields.get('date')
+    if not keep_url:
         to_strip += [f for f in ('url', 'urldate') if fields.get(f)]
 
     for field in to_strip:
@@ -622,7 +646,13 @@ def _is_completion(field, claimed, verified):
 # source it at all. 'date' is included because a chapter excerpt often has no
 # reliable date anywhere in its own text/metadata, but the containing book's
 # publication date is exactly the kind of fact a work-level lookup can supply.
-_CONTAINER_FIELDS = {'editor', 'series', 'publisher', 'location', 'date'}
+#
+# 'series' and 'location' are deliberately excluded, even though they're also
+# container-level facts: neither CrossRef nor Google Scholar's Cite API
+# reliably supplies them (confirmed empirically - CrossRef's `publisher-location`
+# is unpopulated even for well-cataloged book DOIs), so including them here
+# would only trigger a lookup that can never actually fill them.
+_CONTAINER_FIELDS = {'editor', 'publisher', 'date'}
 
 
 def container_fields_missing(fields):
@@ -635,10 +665,10 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
     """
     Attempt to confirm or refute entry fields Claude flagged as sourced from
     its own background knowledge of the work rather than the PDF text/metadata,
-    and separately fill in a few container-level fields (Editor, Series,
-    Publisher, Location) from the same lookup when the entry doesn't already
-    have them - useful for e.g. an edited collection's Editor, which is
-    otherwise never sourced anywhere else in this pipeline.
+    and separately fill in a few container-level fields (Editor, Publisher,
+    Date) from the same lookup when the entry doesn't already have them -
+    useful for e.g. an edited collection's Editor, which is otherwise never
+    sourced anywhere else in this pipeline.
 
     Tries CrossRef first, searching by `work_title` alone (deliberately NOT
     gated on the entry's claimed author - that's exactly the field that may
@@ -775,6 +805,10 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
 
     for field in relevant:
         claimed = entry_fields.get(field, '')
+        if field == 'title':
+            # Compare the recombined Title+Subtitle against the external
+            # record's single full-title string - see join_subtitle().
+            claimed = join_subtitle(claimed, entry_fields.get('subtitle'))
         if field in _LIST_FIELDS:
             names = verified_lists.get(field)
             if not names:

@@ -41,11 +41,14 @@
 	Publisher = {\foreignlanguage{french}{Éditions du Seuil}},
 }
 
-% --- PDF example with `Shorttitle` field. Note that `Shorttitle` consists of the title up to the colon.
+% --- Title/Subtitle split. The colon-separated subtitle goes in its own
+% Subtitle field, WITHOUT the colon - biblatex-chicago supplies the colon and
+% applies Chicago capitalisation to each part separately. No Shorttitle is
+% needed: short notes fall back to Title, which now excludes the subtitle. ---
 @article{Dunsby1999,
 	Author = {Dunsby, Jonathan},
-	Title = {Recent Schenker: The Poetic Power of Intelligent Calculation (or, the Emperor's Second Set of New Clothes)},
-	Shorttitle = {Recent Schenker},
+	Title = {Recent Schenker},
+	Subtitle = {The Poetic Power of Intelligent Calculation (or, the Emperor's Second Set of New Clothes)},
 	Journaltitle = {Music Analysis},
 	Date = {1999},
 	Volume = {18},
@@ -84,19 +87,22 @@
 	Abstract = Xxxxx,
 }
 
-% --- Generic collection type ---
-% Fields: date, editor, location, maintitle, publisher, series, title, volume, volumes
+% --- @Collection vs @Proceedings (see Torsello2009 below): a general edited
+% anthology, not a conference volume - same discriminator as @Incollection
+% vs @Inproceedings, applied to the whole-volume case. Also demonstrates
+% citing one volume of a multi-volume edited work via Maintitle/Volume/
+% Volumes rather than a separate @MvCollection entry - Title holds this
+% volume's own title, Maintitle the overall multi-volume work's title. ---
 @collection{Bent1994,
-	Title = Xxxxx,
-	Maintitle = Xxxxx,
-	Editor = Xxxxx,
-	Volume = Xxxxx,
-	Volumes = Xxxxx,
-	Series = Xxxxx,
-	Date = Xxxxx,
-	Location = Xxxxx,
-	Publisher = Xxxxx,
-	Keywords = Xxxxx,
+	Title = {Fugue, Form and Style},
+	Maintitle = {Music Analysis in the Nineteenth Century},
+	Editor = {Bent, Ian},
+	Volume = {1},
+	Volumes = {2},
+	Series = {Cambridge Readings in the Literature of Music},
+	Date = {1994},
+	Location = {Cambridge},
+	Publisher = {Cambridge University Press},
 }
 
 % --- Generic inbook type ---
@@ -117,41 +123,49 @@
 	Read = Xxxxx,
 }
 
-% --- Generic incollection type ---
-% Fields: author, booktitle, chapter, date, editor, location, publisher, read, series, shorttitle, title, translator
+% --- @Incollection vs @Inproceedings (see the discriminator note on
+% Kretschmer2008 below): a reprinted essay in a general edited anthology (a
+% "Library of Essays" reprint series), with no named conference behind it -
+% an edited container alone doesn't make it @Inproceedings. ---
 @incollection{Dreyfus2011,
-	Author = Xxxxx,
-	Title = Xxxxx,
-	Shorttitle = Xxxxx,
-	Booktitle = Xxxxx,
-	Editor = Xxxxx,
-	Translator = Xxxxx,
-	Series = Xxxxx,
-	Chapter = Xxxxx,
-	Date = Xxxxx,
-	Location = Xxxxx,
-	Publisher = Xxxxx,
-	Keywords = Xxxxx,
-	Read = Xxxxx,
+	Author = {Dreyfus, Laurence},
+	Title = {Early Music Defended Against Its Devotees},
+	Subtitle = {A Theory of Historical Performance in the Twentieth Century},
+	Booktitle = {Baroque Music},
+	Editor = {Walls, Peter},
+	Translator = {Weber, Samuel and Weber, Shierry},
+	Series = {The Library of Essays in Music Performance Practice},
+	Chapter = {29},
+	Date = {2011},
+	Location = {Abingdon},
+	Publisher = {Routledge},
 }
 
-% --- Generic inproceedings type ---
-% Fields: author, booktitle, booktitleaddon, date, editor, langid, location, number, pages, publisher, series, shorttitle, title
+% --- @Inproceedings vs @Incollection discriminator: this paper was presented
+% at a named conference (5. Kongress der Gesellschaft für Musiktheorie,
+% Hamburg 2005) AND collected into a titled, published proceedings volume
+% (Booktitle = the volume's own title, Booktitleaddon = the conference name/
+% location) - that published proceedings volume is what makes it
+% @Inproceedings rather than @Incollection. Compare to Dreyfus2011 above,
+% a chapter in a general edited anthology with no named conference behind it.
+% ALSO a Title/Subtitle COUNTEREXAMPLE: the two halves are joined by the
+% quoted question's own question mark, not a colon. Splitting them would make
+% biblatex insert a colon that isn't in the source, so the title stays whole
+% and Shorttitle is retained to abbreviate it. ---
 @inproceedings{Kretschmer2008,
-	Author = Xxxxx,
-	Title = Xxxxx,
-	Shorttitle = Xxxxx,
-	Booktitle = Xxxxx,
-	Booktitleaddon = Xxxxx,
-	Editor = Xxxxx,
-	Number = Xxxxx,
-	Series = Xxxxx,
-	Pages = Xxxxx,
-	Date = Xxxxx,
-	Location = Xxxxx,
-	Publisher = Xxxxx,
-	Keywords = Xxxxx,
-	Langid = Xxxxx,
+	Author = {Kretschmer, Hans-Ulrich},
+	Title = {\foreignlanguage{ngerman}{\mkbibquote{Phänomenologie oder abstraktes Eigenleben einer Idee?} Schenker-Analyse versus harmonische Schichtenreduktion}},
+	Shorttitle = {\foreignlanguage{ngerman}{Schenker-Analyse versus harmonische Schichtenreduktion}},
+	Booktitle = {\foreignlanguage{ngerman}{Musiktheorie im Kontext}},
+	Booktitleaddon = {\foreignlanguage{ngerman}{5. Kongress der Gesellschaft für Musiktheorie, Hamburg 2005}},
+	Editor = {Sprick, Jan Philipp and Bahr, Reinhard and Troschke, Michael von},
+	Number = {9},
+	Series = {Musik und},
+	Pages = {85-98},
+	Date = {2008},
+	Location = {Berlin},
+	Publisher = {Weidler},
+	Langid = {ngerman},
 }
 
 % --- Generic inreference type ---
@@ -223,16 +237,16 @@
 	Keywords = Xxxxx,
 }
 
-% --- Generic proceedings type ---
-% Fields: date, editor, location, publisher, title, titleaddon
+% --- @Proceedings vs @Collection discriminator (compare Bent1994 above): a
+% named conference/workshop volume (Titleaddon = the event name/location),
+% not a general edited anthology. ---
 @proceedings{Torsello2009,
-	Title = Xxxxx,
-	Titleaddon = Xxxxx,
-	Editor = Xxxxx,
-	Date = Xxxxx,
-	Location = Xxxxx,
-	Publisher = Xxxxx,
-	Keywords = Xxxxx,
+	Title = {Graph-Based Representations in Pattern Recognition},
+	Titleaddon = {7th IAPR-TC-15 International Workshop, Venice, Italy},
+	Editor = {Torsello, Andrea and Escolano, Francisco and Brun, Luc},
+	Date = {2009},
+	Location = {Berlin},
+	Publisher = {Springer},
 }
 
 % --- Generic reference type ---
@@ -248,24 +262,29 @@
 	Sortkey = Xxxxx,
 }
 
-% --- Generic report type ---
-% Fields: author, date, institution, location, number, shorttitle, title, type
+% --- @Report vs @Thesis vs @Unpublished (see Best1988 below for the @Thesis
+% comparison): an institutional technical report, not a degree submission -
+% Type = {\bibstring{techreport}} (or bare `techreport`) uses the package's
+% auto-detected bibstring rather than a literal English phrase, per its
+% type-field auto-detection for manual/patent/report/thesis entries. ---
 @report{Kassler1975,
-	Author = Xxxxx,
-	Title = Xxxxx,
-	Shorttitle = Xxxxx,
-	Type = Xxxxx,
-	Number = Xxxxx,
-	Date = Xxxxx,
-	Institution = Xxxxx,
-	Location = Xxxxx,
-	Keywords = Xxxxx,
+	Author = {Kassler, Michael},
+	Title = {Proving Musical Theorems I},
+	Subtitle = {The Middleground of Heinrich Schenker's Theory of Tonality},
+	Type = {\bibstring{techreport}},
+	Number = {103},
+	Date = {1975},
+	Institution = {Basser Dept.\ of Computer Science, School of Physics, The University of Sydney},
+	Location = {Sydney},
 }
 
 
 % --- Example book review type ---
 % Fields: author, date, doi, journaltitle, number, pages, shorttitle, title, url, volume
 % Note the use of \bibstring{reviewof} followed by the title of the reviewed book within `\mkbibemph{...}`, followed by comma, followed by `\bibstring{by}`, followed by the name of the book author (not the review author).
+% Title/Subtitle COUNTEREXAMPLE: the colon here belongs to the REVIEWED work's
+% title, inside \mkbibemph{}. It is not this entry's own title/subtitle
+% boundary, so it must not be split out into a Subtitle field.
 @review{Dunsby1997,
 	Author = {Dunsby, Jonathan},
 	Title = {\bibstring{reviewof} \mkbibemph{Authenticities: Philosophical Reflections on Musical Performance}, \bibstring{by} Peter Kivy},
@@ -310,33 +329,40 @@
 	Keywords = Xxxxx,
 }
 
-% --- Generic thesis type ---
-% Fields: address, author, date, institution, langid, title, type
+% --- @Thesis vs @Report (see Kassler1975 above) vs @Unpublished (see
+% Ingenious1973b below): a dissertation submitted to a degree-granting
+% institution. Type = {\bibstring{phdthesis}} - the package's paired
+% identifier for a doctoral thesis (mirroring the @phdthesis entry-type
+% alias); use \bibstring{mastersthesis} for an MA/MSc thesis, not a literal
+% English phrase. Institution holds the degree-granting university; do NOT
+% add Address/Location for a thesis (Chicago cites "PhD diss., University X,
+% year" with no separate city). NB `address` is an alias for `location` (a
+% city), NOT for `institution` - and `school` is the legacy BibTeX alias for
+% `institution`. This project uses `institution` and `location` only. ---
 @thesis{Best1988,
-	Author = Xxxxx,
-	Title = Xxxxx,
-	Type = Xxxxx,
-	Date = Xxxxx,
-	Institution = Xxxxx,
-	Address = Xxxxx,
-	Keywords = Xxxxx,
-	Langid = Xxxxx,
+	Author = {Best, Walther},
+	Title = {\foreignlanguage{ngerman}{Die Romanzen Robert Schumanns}},
+	Type = {\bibstring{phdthesis}},
+	Date = {1988},
+	Institution = {Universität Hamburg},
+	Langid = {ngerman},
 }
 
-% --- Generic unpublished type ---
-% Fields: author, date, edition, editor, langid, note, read, title, translator
-@unpublished{Golubovskaya1973b,
-	Author = Xxxxx,
-	Title = Xxxxx,
-	Editor = Xxxxx,
-	Translator = Xxxxx,
-	Date = Xxxxx,
-	Edition = Xxxxx,
-	Keywords = Xxxxx,
-	Langid = Xxxxx,
-	Note = Xxxxx,
-	Rating = Xxxxx,
-	Read = Xxxxx,
+% --- @Unpublished vs @Thesis/@Report (see Best1988/Kassler1975 above): a
+% forthcoming, not-yet-published work - names substituted for
+% confidentiality. NB the "forthcoming" state is encoded here via Note
+% rather than the package's own `pubstate = {forthcoming}` field; confirm
+% whether that's a deliberate convention before treating it as the pattern
+% to follow elsewhere. ---
+@unpublished{Ingenious1973b,
+	Author = {Ingenious, N.~A.},
+	Title = {The Art of Pedaling},
+	Editor = {Author, Some},
+	Translator = {Lingual, Multi},
+	Date = {1973},
+	Edition = {2},
+	Langid = {english},
+	Note = {\autocap{f}orthcoming},
 }
 
 % --- Generic video type ---

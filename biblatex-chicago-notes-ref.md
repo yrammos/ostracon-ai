@@ -209,8 +209,8 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 | Field | Description |
 |---|---|
 | `doi` | Digital Object Identifier (without the `https://doi.org/` prefix). |
-| `url` | URL. Omit for @Article, @Book, @Collection, @Incollection, @Inbook types per project guidelines. |
-| `urldate` | Date the URL was last accessed (format: `YYYY-MM-DD`). |
+| `url` | URL. Package-legal on any entry type, but per project guidelines populate only when the entry is `@Online` or has no `date` (see note below). |
+| `urldate` | Date the URL was last accessed (format: `YYYY-MM-DD`). An access-date-only `urldate` (no `userd`) does not stand in for `date` in citations - Chicago still prints "n.d." there; `urldate` is recorded as separate access evidence, not a substitute headline date. This is standard, documented behavior for undated online material, not a workaround. |
 | `eprint` | Eprint identifier (e.g. arXiv ID). |
 | `eprinttype` | Eprint archive type (e.g. `arxiv`). |
 | `eprintclass` | Subject class within the eprint archive. |
@@ -253,7 +253,11 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 
 ## Fields to Omit (per project guidelines)
 
-Do **not** populate: `isbn`, `issn`, `keywords`, `url` (in @Article, @Book, @Collection, @Incollection, @Inbook).
+Do **not** populate: `isbn`, `issn`, `keywords`. `url`/`urldate` are populated only for `@Online` entries or entries with no `date`; omit otherwise, regardless of entry type.
+
+## Choosing @Online vs. a Print-Equivalent Type
+
+Per the package doc's Table 1 ("Online materials and notes & bibliography entry types"): for an online edition of traditionally published matter, **use the same entry type you would choose from a printed source** (`@Book`, `@Article`, etc.), not `@Online` - `@Online` is reserved for material that "does not have (and never had) a printed counterpart." A `.webloc` bookmark to, say, a publisher's book landing page is still a `@Book`; only genuinely online-native material (a blog post, a social-media post, a website with no print analogue) is `@Online`. Entry type follows the nature of the work, not how it was sourced (PDF vs. `.webloc`).
 
 ---
 
