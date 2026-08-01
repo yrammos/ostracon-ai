@@ -55,7 +55,8 @@ def glob_input_files(folder):
 # must resolve against it rather than against the working directory - otherwise
 # the tool only runs from the repo root, and the Automator wrapper's `cd
 # "$WORKDIR"` is load-bearing rather than a convenience.
-PROJECT_ROOT = Path(__file__).resolve().parent
+# This module lives in src/, so the repository root is one level up.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Config keys holding a path that should be made absolute at load time, so every
 # downstream consumer receives an absolute path without repeating this logic.

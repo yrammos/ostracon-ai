@@ -9,10 +9,10 @@ context block and the same extraction prompt that biblio_agent.py sends, counts
 their tokens with the API's own tokenizer, and prints the current numbers.
 
 Usage:
-    python3 estimate_cost.py                 # summary for the configured model
-    python3 estimate_cost.py --markdown      # paste-ready tables for the README
-    python3 estimate_cost.py --model claude-opus-5    # price a different model
-    python3 estimate_cost.py --no-api        # rough estimate, no network/key
+    python3 dev/estimate_cost.py                 # summary for the configured model
+    python3 dev/estimate_cost.py --markdown      # paste-ready tables for the README
+    python3 dev/estimate_cost.py --model claude-opus-5    # price a different model
+    python3 dev/estimate_cost.py --no-api        # rough estimate, no network/key
 
 Token counting uses /v1/messages/count_tokens, which is free and consumes no
 rate-limit quota - but it does need a valid API key, so --no-api falls back to a
@@ -22,6 +22,11 @@ punctuation-dense) and is only there for a quick offline sanity check.
 import argparse
 import sys
 from pathlib import Path
+
+# biblio_agent lives in src/ and this script in dev/, so it is not importable
+# by default. Prepend rather than append: a stray biblio_agent.py on the
+# PYTHONPATH should not win over the one this repository ships.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import biblio_agent as ba
 

@@ -54,12 +54,12 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
 
 ## Reference Documentation
 
-In this repository (no network access needed; the last three are loaded into the extraction prompt):
+In this repository, all four under `prompt-context/` (no network access needed; the last three are loaded into the extraction prompt):
 
 - `biblatex-chicago-notes-ref.md` — condensed field and entry-type reference. The only local file listing all 40 entry types.
 - `biblio-template.bib` — this project's house style, covering the 20 types used so far. Authoritative on presentation, not on which types exist.
 - `notes-test.bib` — the package's annotated test suite (203 entries, 32 types). Authoritative on type and field semantics; see the precedence note above.
-- `cms-notes-intro-guide.md` — entry-type guide derived from `cms-notes-intro.tex` by `extract_intro.py`. Re-run that script to regenerate it after updating the upstream `.tex`.
+- `cms-notes-intro-guide.md` — entry-type guide derived from `cms-notes-intro.tex` by `dev/extract_intro.py`. Re-run that script to regenerate it after updating the upstream `.tex`.
 
 Upstream (consult when the local files are insufficient):
 
@@ -78,4 +78,4 @@ Upstream (consult when the local files are insufficient):
 
 Reference works — Grove Music Online, the Stanford Encyclopedia, Wikipedia and the like — are the hardest sources here, because a correct entry has to put the *work* in `Title` and the *article* in `Lista`, add `Entrysubtype = {online}` where there is no print counterpart, and prefer a stated revision date in `Urldate` qualified by `Userd` over a bare access date. Comparison runs on `plato.stanford.edu` and Grove showed `claude-sonnet-4-6` getting parts of this wrong (article name in `Title`) and `claude-sonnet-5` fabricating a publisher and a date, while `claude-opus-5` produced the full correct form including the `Urldate`/`Userd` revision-date pairing.
 
-For a batch of reference works, run with `--model claude-opus-5`; the flag overrides `config.yaml` for that invocation only. It roughly doubles the cost — Opus prices at $5/$25 per 1M tokens against Sonnet's $3/$15, and its tokenizer makes the cached prefix about 27% larger — so it is worth reaching for on awkward sources rather than by default. `estimate_cost.py --model claude-opus-5` prices it before you commit.
+For a batch of reference works, run with `--model claude-opus-5`; the flag overrides `config.yaml` for that invocation only. It roughly doubles the cost — Opus prices at $5/$25 per 1M tokens against Sonnet's $3/$15, and its tokenizer makes the cached prefix about 27% larger — so it is worth reaching for on awkward sources rather than by default. `dev/estimate_cost.py --model claude-opus-5` prices it before you commit.

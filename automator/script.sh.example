@@ -7,14 +7,14 @@ cd "$WORKDIR"
 # that form the cached prompt prefix. Silent when everything is in order.
 # Without it a broken environment surfaces as a Python traceback in an alert,
 # after the progress window has already opened.
-if ! preflight=$("$PYTHON" test_setup.py --preflight 2>&1); then
+if ! preflight=$("$PYTHON" dev/test_setup.py --preflight 2>&1); then
     osascript -e "display alert \"Ostracon AI - Setup Problem\" message \"${preflight}\" as critical"
     exit 1
 fi
 
 # Pass all selected files in a single invocation so the progress window
 # can display overall progress across the whole batch.
-result=$("$PYTHON" biblio_agent.py --window --no-move "$@" 2>&1)
+result=$("$PYTHON" src/biblio_agent.py --window --no-move "$@" 2>&1)
 exit_code=$?
 
 if [ $exit_code -ne 0 ] && [ -n "$result" ]; then

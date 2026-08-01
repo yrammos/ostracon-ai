@@ -9,7 +9,7 @@ brew install ocrmypdf                   # OCR support (optional)
 pip install -r requirements.txt         # Python dependencies
 cp config.yaml.example config.yaml     # then set anthropic_api_key within
 cp automator/script.sh.example automator/script.sh  # then edit PYTHON and WORKDIR within
-python3 install_service.py              # install the Finder quick action (optional, recommended)
+python3 dev/install_service.py          # install the Finder quick action (optional, recommended)
 ```
 
 Then right-click any PDF or `.webloc` file in Finder and choose **Extract BibLaTeX-Chicago Bibliography (via Claude)**. See [Setup](#setup) for full configuration details.
@@ -105,12 +105,12 @@ main_bib_file: "~/Desktop/biblio-staging.bib" # output file ("staging output")
 failed_bib_file: "~/Desktop/biblio-failed.bib" # error file
 ```
 
-The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
+The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_file`) can be left untouched or adjusted to your setup. The optional `ref_file` key (set to `prompt-context/biblatex-chicago-notes-ref.md` by default) loads a condensed biblatex-chicago field reference into the Claude prompt to improve extraction quality; remove or comment it out to omit it.
 
 The optional `example_files` key loads two worked-example corpora from the biblatex-chicago package's own documentation:
 
 - `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains *why* that type and those fields were chosen. Converted to this project's conventions: Unicode accents rather than LaTeX macros, single-hyphen ranges.
-- `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
+- `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `dev/extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
 
 Where the field reference teaches *vocabulary* (which fields a type takes), these teach *classification* — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the cached prefix; see [Cost Estimate](#cost-estimate) before enabling them on single-file runs.
 
@@ -132,7 +132,7 @@ scrapingdog_api_key: ""            # optional; enables the Google Scholar fallba
 
 | Key | Default | Effect |
 |---|---|---|
-| `model` | `claude-sonnet-4-6` | Claude model. Run `estimate_cost.py --model <id>` to price alternatives first. |
+| `model` | `claude-sonnet-4-6` | Claude model. Run `dev/estimate_cost.py --model <id>` to price alternatives first. |
 | `max_tokens` | `4000` | Ceiling on each response. Entries run 400–500 tokens; the headroom absorbs longer ones. |
 | `cache_ttl` | `"1h"` | Prompt-cache lifetime. See [Cost Estimate](#cost-estimate). |
 | `enrich_missing_fields` | `true` | Enables the CrossRef/Scholar lookups, the grounding audit, and reconciliation. Setting it `false` leaves only the initial extraction — cheaper and faster, but nothing verifies the result. |
@@ -167,7 +167,7 @@ Edit `automator/script.sh` and set `PYTHON` to the path of your Python executabl
 ### 6. Install the macOS Quick Action
 
 ```bash
-python3 install_service.py
+python3 dev/install_service.py
 ```
 
 This builds the Automator workflow from `automator/script.sh` and installs it to `~/Library/Services/`, accepting both PDFs and `.webloc` files. Re-run it any time you modify `script.sh`.
@@ -175,12 +175,12 @@ This builds the Automator workflow from `automator/script.sh` and installs it to
 ### 7. Verify the setup
 
 ```bash
-python3 test_setup.py
+python3 dev/test_setup.py
 ```
 
-Checks dependencies, `config.yaml`, the context files, OCR availability, and — since both drifted twice while this was being built — that `README.md` still names every config key, every CLI flag, and every tracked root file. Re-run it after adding a setting or a flag; it fails loudly rather than leaving the documentation quietly stale.
+Checks dependencies, `config.yaml`, the context files, OCR availability, and — since both drifted twice while this was being built — that `README.md` still names every config key, every CLI flag, and every tracked file and source directory. Re-run it after adding a setting, a flag, or a file; it fails loudly rather than leaving the documentation quietly stale. The name match is token-based, so a near-miss in the structure tree counts as missing rather than passing on a substring.
 
-The Quick Action runs `test_setup.py --preflight` before each batch — a fast subset covering dependencies, config, and the context files. It is silent when everything is in order, and aborts with an alert naming the problem when it isn't, rather than letting a broken environment surface as a Python traceback after the progress window has opened. OCR, the input folder, and the documentation audit are skipped there, being either non-blocking or a developer concern.
+The Quick Action runs `dev/test_setup.py --preflight` before each batch — a fast subset covering dependencies, config, and the context files. It is silent when everything is in order, and aborts with an alert naming the problem when it isn't, rather than letting a broken environment surface as a Python traceback after the progress window has opened. OCR, the input folder, and the documentation audit are skipped there, being either non-blocking or a developer concern.
 
 ## Usage
 
@@ -191,7 +191,7 @@ Right-click any PDF or `.webloc` file (or a mixed selection of both) in Finder a
 See [Setup](#5-configure-the-automator-script) for initial configuration. To reinstall after changes to `automator/script.sh`:
 
 ```bash
-python3 install_service.py
+python3 dev/install_service.py
 ```
 
 The progress window carries a **Model** dropdown listing whatever `window_models` names in `config.yaml`. It holds for `window_start_delay` seconds (4 by default) before the first file, showing a countdown, so a batch you already know needs a stronger model can get one from the start; the run begins on its own when the count expires, so an unattended batch is never left waiting. Set the delay to `0` to start immediately. Changing the dropdown later applies from the next file in the batch, so if an entry comes out wrong you can switch and let the remainder run on a stronger model — the Quick Action's equivalent of `--model`, since there's no command line on that path. Switching costs little: prompt caches are per-model and coexist, so a run that alternates pays one cache write per model rather than one per switch.
@@ -202,19 +202,19 @@ Reference works (Grove, the Stanford Encyclopedia, Wikipedia) are where the stro
 
 ```bash
 # Process one or more PDFs and/or .webloc files
-python biblio_agent.py path/to/paper.pdf path/to/bookmark.webloc
+python3 src/biblio_agent.py path/to/paper.pdf path/to/bookmark.webloc
 
 # Process without saving (print to stdout only)
-python biblio_agent.py path/to/paper.pdf --no-save
+python3 src/biblio_agent.py path/to/paper.pdf --no-save
 
 # Process all PDFs and .webloc files in pdf-in/ and move them to pdf-out/
-python biblio_agent.py --all
+python3 src/biblio_agent.py --all
 
 # Write to a custom output file
-python biblio_agent.py path/to/paper.pdf --output custom.bib
+python3 src/biblio_agent.py path/to/paper.pdf --output custom.bib
 
 # Use a different model for one run (overrides config.yaml)
-python biblio_agent.py path/to/entry.webloc --model claude-opus-5
+python3 src/biblio_agent.py path/to/entry.webloc --model claude-opus-5
 ```
 
 All flags:
@@ -236,26 +236,32 @@ Relative paths in `config.yaml` resolve against the repository, not the working 
 
 ```
 ostracon-ai/
-├── biblio_agent.py       # Main orchestrator
-├── extract_pages.py      # PDF text extraction with OCR fallback; the shared SourceContent shape
-├── web_source.py         # Fetches and extracts bibliographic content from a .webloc's bookmarked page
-├── enrich.py             # CrossRef/Google Scholar enrichment and reconciliation, BibTeX field utilities
-├── progress_window.py    # Native macOS floating progress window (--window)
-├── install_service.py    # Builds and installs the macOS Quick Action
-├── estimate_cost.py      # Measures the current prompt-cache cost profile
-├── extract_intro.py      # Regenerates cms-notes-intro-guide.md from the upstream .tex
-├── test_setup.py         # Checks dependencies, config, and API connectivity
+├── CLAUDE.md             # Bibliographic extraction guidelines — the house style, and the
+│                         #   first file in the cached prompt prefix. Stays at the root:
+│                         #   Claude Code looks for it there.
 ├── config.yaml.example   # Configuration template (copy to config.yaml)
 ├── config.yaml           # Your configuration (gitignored — contains the API key)
 ├── requirements.txt      # Python dependencies
 │
-│   # Sent to Claude as the cached prompt prefix:
-├── CLAUDE.md             # Bibliographic extraction guidelines — the house style
-├── biblio-template.bib   # One worked example per entry type, in this project's conventions
-├── biblatex-chicago-notes-ref.md  # Condensed biblatex-chicago field and entry-type reference
-├── notes-test.bib        # The package's annotated test suite (203 entries) — see Third-party material
-├── cms-notes-intro-guide.md       # Entry-type guide derived from cms-notes-intro.tex
-├── cms-notes-intro.tex   # Upstream source for the guide above (not sent to Claude)
+├── src/                  # The pipeline itself
+│   ├── biblio_agent.py   # Main orchestrator; run this
+│   ├── extract_pages.py  # PDF text extraction with OCR fallback; the shared SourceContent shape
+│   ├── web_source.py     # Fetches and extracts bibliographic content from a .webloc's bookmarked page
+│   ├── enrich.py         # CrossRef/Google Scholar enrichment and reconciliation, BibTeX field utilities
+│   └── progress_window.py # Native macOS floating progress window (--window)
+│
+├── prompt-context/       # Reference material sent to Claude as the cached prompt prefix
+│   ├── biblio-template.bib # One worked example per entry type, in this project's conventions
+│   ├── biblatex-chicago-notes-ref.md  # Condensed biblatex-chicago field and entry-type reference
+│   ├── notes-test.bib    # The package's annotated test suite (203 entries) — see Third-party material
+│   ├── cms-notes-intro-guide.md       # Entry-type guide derived from cms-notes-intro.tex
+│   └── cms-notes-intro.tex # Upstream source for the guide above (not sent to Claude)
+│
+├── dev/                  # Developer tooling; nothing here runs during extraction
+│   ├── test_setup.py     # Checks dependencies, config, context files, and documentation drift
+│   ├── estimate_cost.py  # Measures the current prompt-cache cost profile
+│   ├── extract_intro.py  # Regenerates cms-notes-intro-guide.md from the upstream .tex
+│   └── install_service.py # Builds and installs the macOS Quick Action
 │
 ├── automator/
 │   ├── script.sh.example # Shell script template (copy to script.sh and edit)
@@ -286,7 +292,7 @@ Make sure `pyobjc-framework-Cocoa` is installed in the Python environment used b
 
 **Quick Action not appearing in Finder.**
 
-Run `python3 install_service.py` and check System Settings → General → Login Items & Extensions to confirm the action is enabled.
+Run `python3 dev/install_service.py` and check System Settings → General → Login Items & Extensions to confirm the action is enabled.
 
 **Startup fails with "Context files configured in config.yaml are missing".**
 
@@ -327,7 +333,7 @@ The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more pe
 
 To cut the prefix instead: dropping `notes-test.bib` from `example_files` while keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file — retaining the entry-type taxonomy while losing the 203 annotated examples. Commenting out `example_files` entirely leaves ~12,800 tokens and ~$0.07; most of the prefix is `notes-test.bib`, so dropping the guide as well saves little.
 
-These figures are produced by `estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 estimate_cost.py --markdown`) after changing the context files, the prompt, or the model; `--model` prices a different one.
+These figures are produced by `dev/estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 dev/estimate_cost.py --markdown`) after changing the context files, the prompt, or the model; `--model` prices a different one.
 
 External APIs are negligible: CrossRef is free, and the ScrapingDog fallback runs about $0.0004/credit at a couple of credits per lookup.
 
@@ -347,6 +353,6 @@ Three files are drawn from the [biblatex-chicago](https://ctan.org/pkg/biblatex-
 |---|---|---|
 | `cms-notes-intro.tex` | package `doc/` directory | no |
 | `notes-test.bib` | package `doc/` directory | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges converted to single hyphens; no bibliographic content altered |
-| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged |
+| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged |
 
-Each file records its own provenance and modifications in a header, as the LPPL requires. `extract_intro.py` is included so the derivation can be reproduced or re-run against a newer upstream release.
+Each file records its own provenance and modifications in a header, as the LPPL requires. `dev/extract_intro.py` is included so the derivation can be reproduced or re-run against a newer upstream release.

@@ -11,9 +11,9 @@ pdf_in_folder: "./pdf-in" # Incoming PDFs to process
 pdf_out_folder: "./pdf-out" # Processed PDFs moved here
 main_bib_file: "~/Desktop/biblio-staging.bib"
 failed_bib_file: "~/Desktop/biblio-failed.bib"
-template_file: "./biblio-template.bib"
+template_file: "./prompt-context/biblio-template.bib"
 claude_md_file: "./CLAUDE.md"
-ref_file: "./biblatex-chicago-notes-ref.md"  # Optional: condensed biblatex-chicago field reference
+ref_file: "./prompt-context/biblatex-chicago-notes-ref.md"  # Optional: condensed biblatex-chicago field reference
 
 # Optional worked-example corpora, cached as part of the static prompt prefix.
 # These teach entry-TYPE discrimination (why @Inproceedings and not
@@ -22,9 +22,9 @@ ref_file: "./biblatex-chicago-notes-ref.md"  # Optional: condensed biblatex-chic
 # `annote` on nearly every entry explaining the choice of type and fields.
 # Comment out to reduce the cached prefix size.
 example_files:
-  - path: "./notes-test.bib"
+  - path: "./prompt-context/notes-test.bib"
     label: "biblatex-chicago annotated test suite"
-  - path: "./cms-notes-intro-guide.md"
+  - path: "./prompt-context/cms-notes-intro-guide.md"
     label: "biblatex-chicago entry-type guide"
 
 # Processing options

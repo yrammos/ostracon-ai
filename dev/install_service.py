@@ -10,7 +10,8 @@ from pathlib import Path
 SERVICE_NAME = "Extract BibLaTeX-Chicago Bibliography (via Claude)"
 WORKFLOW_NAME = f"{SERVICE_NAME}.workflow"
 SERVICES_DIR = Path.home() / "Library" / "Services"
-SCRIPT_PATH = Path(__file__).parent / "automator" / "script.sh"
+# This script lives in dev/, so the repository root is one level up.
+SCRIPT_PATH = Path(__file__).resolve().parent.parent / "automator" / "script.sh"
 
 
 def build_info_plist() -> dict:

@@ -8,7 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+# This script lives in dev/, so the repository root is one level up.
+ROOT = Path(__file__).resolve().parent.parent
 
 def test_imports():
     """Test if all required packages are installed.
@@ -79,10 +80,10 @@ def test_project_files():
     
     files = {
         'CLAUDE.md': 'Project guidelines',
-        'biblio-template.bib': 'Reference template',
-        'biblatex-chicago-notes-ref.md': 'Field reference',
-        'notes-test.bib': 'Annotated test suite (example_files)',
-        'cms-notes-intro-guide.md': 'Entry-type guide (example_files)',
+        'prompt-context/biblio-template.bib': 'Reference template',
+        'prompt-context/biblatex-chicago-notes-ref.md': 'Field reference',
+        'prompt-context/notes-test.bib': 'Annotated test suite (example_files)',
+        'prompt-context/cms-notes-intro-guide.md': 'Entry-type guide (example_files)',
     }
 
     all_present = True
@@ -93,7 +94,7 @@ def test_project_files():
         else:
             print(f"  ⚠  {filename} not found ({description})")
             all_present = False
-    
+
     return all_present
 
 def test_ocr():
@@ -128,6 +129,20 @@ def _documented(readme, token):
     return f"`{token}`" in readme or f"\n{token}: " in readme or token in readme
 
 
+def _names(readme, token):
+    """Whether the README names `token` as a token, not as a substring.
+
+    A plain `token in readme` test passes on any longer name that happens to
+    contain it - a stray `XXweb_source.py` in the structure tree counted as
+    documenting `web_source.py`, so the audit reported a clean run against a
+    README that named no such file. A leading path segment must still count,
+    though, since the README writes `dev/test_setup.py` in prose and
+    `test_setup.py` in the tree: `/` is a boundary, word characters and
+    hyphens are not.
+    """
+    return re.search(rf"(?<![\w-]){re.escape(token)}(?![\w-])", readme) is not None
+
+
 def test_documentation():
     """Check README.md still covers every config key, CLI flag, and root file.
 
@@ -157,19 +172,23 @@ def test_documentation():
 
     # 2. Every CLI flag argparse defines. Read from source rather than by
     #    importing, so a missing dependency doesn't turn this into an error.
-    agent = ROOT / "biblio_agent.py"
+    agent = ROOT / "src" / "biblio_agent.py"
     if agent.exists():
         src = agent.read_text(encoding="utf-8")
         flags = sorted({f for call in re.findall(r"add_argument\((.*?)\)", src, re.S)
                           for f in re.findall(r"'(--[a-z][a-z-]*)'", call)})
-        missing = [f for f in flags if f not in readme]
+        missing = [f for f in flags if not _names(readme, f)]
         if missing:
             print(f"  ✗ CLI flags not in README: {', '.join(missing)}")
             ok = False
         else:
             print(f"  ✓ all {len(flags)} CLI flags documented")
 
-    # 3. Every tracked file at the repository root. Skipped outside a checkout.
+    # 3. Every tracked file, wherever it sits, plus every directory holding
+    #    one. Checking only the repository root would be vacuous now that the
+    #    tree is a hierarchy: three files remain at the top level, so a
+    #    root-only audit would pass while src/, dev/ and prompt-context/ went
+    #    entirely unchecked. Skipped outside a checkout.
     try:
         tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"],
                                  capture_output=True, text=True, timeout=10, check=True).stdout.split()
@@ -177,14 +196,28 @@ def test_documentation():
         print("  ⚠  git unavailable - skipped the file listing check")
         return ok
 
-    boilerplate = {"LICENSE", "README.md", ".gitignore", "screenshot.png"}
-    root_files = sorted({f for f in tracked if "/" not in f} - boilerplate)
-    missing = [f for f in root_files if f not in readme]
+    # Boilerplate documents itself; images are referenced by markup, not named
+    # in the structure tree.
+    boilerplate = {"LICENSE", "README.md", ".gitignore"}
+    paths = [Path(f) for f in tracked
+             if Path(f).name not in boilerplate and Path(f).suffix != ".png"]
+
+    # The tree names files by basename under a directory node, so match on the
+    # basename and check the directory separately.
+    missing = sorted({p.name for p in paths if not _names(readme, p.name)})
     if missing:
         print(f"  ✗ files not in Project Structure: {', '.join(missing)}")
         ok = False
     else:
-        print(f"  ✓ all {len(root_files)} root files listed")
+        print(f"  ✓ all {len(paths)} tracked files listed")
+
+    dirs = sorted({p.parts[0] for p in paths if len(p.parts) > 1})
+    missing_dirs = [d for d in dirs if not _names(readme, f"{d}/")]
+    if missing_dirs:
+        print(f"  ✗ directories not in Project Structure: {', '.join(missing_dirs)}")
+        ok = False
+    else:
+        print(f"  ✓ all {len(dirs)} source directories listed")
 
     return ok
 
@@ -215,7 +248,7 @@ def preflight():
     if problems:
         print("Setup check failed - the batch was not started.\n")
         print("\n\n".join(problems))
-        print("\nRun test_setup.py for the full report.")
+        print("\nRun dev/test_setup.py for the full report.")
         return 1
     return 0
 
@@ -243,7 +276,7 @@ def main():
     
     if critical_passed:
         print("✓ Core requirements met - ready to process PDFs!")
-        print("\nTry: python biblio_agent.py path/to/your-file.pdf")
+        print("\nTry: python3 src/biblio_agent.py path/to/your-file.pdf")
     else:
         print("✗ Some critical requirements missing")
         print("\nPlease fix the errors above before running the agent.")
