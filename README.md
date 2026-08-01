@@ -183,6 +183,8 @@ ostracon-ai/
 ├── web_source.py         # Fetches and extracts bibliographic content from a .webloc's bookmarked page
 ├── enrich.py             # CrossRef/Google Scholar enrichment and reconciliation, BibTeX field utilities
 ├── install_service.py    # Builds and installs the macOS Quick Action
+├── estimate_cost.py      # Measures the current prompt-cache cost profile
+├── extract_intro.py      # Regenerates cms-notes-intro-guide.md from the upstream .tex
 ├── config.yaml           # Configuration (API key, paths, model)
 ├── requirements.txt      # Python dependencies
 ├── CLAUDE.md             # Bibliographic extraction guidelines for Claude
@@ -227,16 +229,18 @@ Install `ocrmypdf` via Homebrew. The agent will fall back to direct text extract
 
 Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input at the default five-minute TTL, 2× at one hour, and cache reads 0.1×.
 
-The static prefix — `CLAUDE.md`, `biblio-template.bib`, the field reference, and both worked-example corpora — measures **61,879 tokens** (via `count_tokens`), of which `notes-test.bib` alone is 46,353. Writing it costs $0.23; every later call in the same run reads it back for $0.019. Three of the four per-file calls use it; the grounding audit does not.
+The static prefix measures **61,879 tokens** (209,015 chars). Writing it costs $0.23; every later call in the same run reads it back for $0.019.
 
 | Call | Runs when | First file | Later files |
 |---|---|---|---|
 | Extraction | always | $0.25 | $0.03 |
-| Grounding audit | `enrich_missing_fields: true` (default) | $0.007 | $0.007 |
-| Enrichment merge | required/desired fields missing from the source | $0.03 | $0.03 |
-| Reconciliation | a CrossRef match strictly completes a flagged value | $0.03 | $0.03 |
+| Grounding audit | `enrich_missing_fields: true` (default) | $0.005 | $0.005 |
+| Enrichment merge | required/desired fields missing | $0.03 | $0.03 |
+| Reconciliation | a CrossRef match strictly completes a value | $0.03 | $0.03 |
 
-A clean source costs **~$0.25 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.31 and ~$0.09**. Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case is rarer than the table suggests.
+A clean source costs **~$0.25 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.30 and ~$0.09**.
+
+Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case is rarer than the table suggests. Three of the four calls use the cached prefix; the grounding audit does not.
 
 ### Batching and cache TTL
 
@@ -244,13 +248,15 @@ The prefix is written once per run and read thereafter, so cost turns on how oft
 
 | Usage pattern | 5-minute TTL | 1-hour TTL |
 |---|---|---|
-| One batch of 10, nothing else that hour | **$0.60** | $0.74 |
-| Two batches of 5, 20 minutes apart | $0.82 | **$0.74** |
-| 10 single-file invocations across an hour | $2.53 | **$0.74** |
+| One batch of 10, nothing else that hour | $0.60 | $0.74 |
+| Two batches of 5, 20 minutes apart | $0.81 | $0.74 |
+| 10 single-file invocations across an hour | $2.52 | $0.74 |
 
-The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays it. To switch, set `cache_control` to `{"type": "ephemeral", "ttl": "1h"}` in `_cached_message_content()`.
+The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays it, which is why `cache_ttl` defaults to `"1h"`; set it to `"5m"` in `config.yaml` if you always process files in one large batch.
 
 To cut the prefix instead: dropping `notes-test.bib` from `example_files` but keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file, retaining the entry-type taxonomy while losing the 203 annotated examples. Commenting out `example_files` entirely returns it to ~9,000 tokens and ~$0.05.
+
+These figures are produced by `estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 estimate_cost.py --markdown`) after changing the context files, the prompt, or the model; `--model` prices a different one.
 
 External APIs are negligible: CrossRef is free, and the ScrapingDog fallback runs about $0.0004/credit at a couple of credits per lookup.
 
