@@ -1298,6 +1298,13 @@ end tell'''
 
             if progress_window:
                 progress_window.set_progress(i, pdf_path.name)
+                # Re-read the window's model popup before each file, so a
+                # change made mid-batch takes effect from the next item. Cheap:
+                # caches are per-model and coexist, so alternating costs one
+                # write per model for the whole run, not one per switch.
+                chosen = getattr(progress_window, 'selected_model', None)
+                if chosen and chosen != self.config['model']:
+                    self.config['model'] = chosen
 
             self.notify_progress(f"[{i}/{total}] {pdf_path.name}", subtitle="Extracting bibliography")
 
@@ -1366,7 +1373,11 @@ def _run_windowed(agent, pdf_files, move_files):
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
-    win = ProgressWindow(total_files=len(pdf_files))
+    win = ProgressWindow(
+        total_files=len(pdf_files),
+        models=agent.config.get('window_models') or [agent.config['model']],
+        current_model=agent.config['model'],
+    )
     agent._progress_callback = win.make_callback()
     win.show()
 

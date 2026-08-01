@@ -183,6 +183,10 @@ See [Setup](#5-configure-the-automator-script) for initial configuration. To rei
 python3 install_service.py
 ```
 
+The progress window carries a **Model** dropdown listing whatever `window_models` names in `config.yaml`. Changing it applies from the next file in the batch, so if an entry comes out wrong you can switch and let the remainder run on a stronger model — the Quick Action's equivalent of `--model`, since there's no command line on that path. Switching costs little: prompt caches are per-model and coexist, so a run that alternates pays one cache write per model rather than one per switch.
+
+Reference works (Grove, the Stanford Encyclopedia, Wikipedia) are where the stronger model earns its keep — see the operator note in `CLAUDE.md`.
+
 ### Command Line
 
 ```bash

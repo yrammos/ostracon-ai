@@ -8,6 +8,7 @@ import time
 import objc
 from AppKit import (
     NSApplication, NSApp, NSPanel, NSTextView, NSScrollView, NSTextField,
+    NSPopUpButton,
     NSColor, NSFont, NSAttributedString,
     NSForegroundColorAttributeName, NSFontAttributeName,
     NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
@@ -39,16 +40,23 @@ def _wake_run_loop():
 # ── window delegate ───────────────────────────────────────────────────────────
 
 class _WindowDelegate(NSObject):
-    """Handles window close events."""
+    """Handles window close events and the model popup's selection."""
 
     @objc.python_method
-    def setup(self, cancel_event):
+    def setup(self, cancel_event, on_model_change=None):
         self._cancel_event = cancel_event
+        self._on_model_change = on_model_change
 
     def windowWillClose_(self, notification):
         self._cancel_event.set()
         NSApp.stop_(None)
         _wake_run_loop()
+
+    def modelChanged_(self, sender):
+        # Fires on the main thread; hands the new value to a plain Python
+        # attribute the worker thread can read without touching AppKit.
+        if self._on_model_change:
+            self._on_model_change(str(sender.titleOfSelectedItem()))
 
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -65,14 +73,28 @@ class ProgressWindow:
         NSApp.run()         # blocks until finish() triggers auto-close or user closes
     """
 
-    def __init__(self, total_files: int) -> None:
+    def __init__(self, total_files: int, models=None, current_model=None) -> None:
         self._total = total_files
         self._cancel_event = threading.Event()
         self._panel = None
         self._tv = None
         self._header = None
         self._delegate = None
+        # Read by the worker thread between files. Switching models mid-batch
+        # is cheap: prompt caches are per-model and coexist, so alternating
+        # pays one write per model for the whole run, not one per switch.
+        self._models = list(models or [])
+        self._selected_model = current_model
         self._build_window()
+
+    def _set_selected_model(self, value):
+        self._selected_model = value
+        self.log(f"\u2699 Model switched to {value} (from the next file)", 'info')
+
+    @property
+    def selected_model(self):
+        """The model currently chosen in the popup (None if no popup)."""
+        return self._selected_model
 
     # ── construction ─────────────────────────────────────────────────────────
 
@@ -90,7 +112,7 @@ class ProgressWindow:
         self._font_body   = NSFont.fontWithName_size_("Menlo", 11.0) or NSFont.systemFontOfSize_(11.0)
         self._font_header = NSFont.boldSystemFontOfSize_(12.0)
 
-        W, H = 580, 340
+        W, H = 580, 372
 
         style = (
             NSWindowStyleMaskTitled
@@ -129,8 +151,45 @@ class ProgressWindow:
         header.setStringValue_("Preparing…")
         content.addSubview_(header)
 
+        # ── model popup ──────────────────────────────────────────────────────
+        # Live, not start-only: the worker re-reads selected_model before each
+        # file, so a change applies from the next item onward.
+        row_y = H - HEADER_H - 36
+        if self._models:
+            label = NSTextField.alloc().initWithFrame_(NSMakeRect(12, row_y + 2, 48, 18))
+            label.setEditable_(False)
+            label.setSelectable_(False)
+            label.setBordered_(False)
+            label.setDrawsBackground_(False)
+            label.setFont_(NSFont.systemFontOfSize_(11.0))
+            label.setTextColor_(self._colors['dim'])
+            label.setStringValue_("Model:")
+            content.addSubview_(label)
+
+            popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(58, row_y - 2, 240, 26), False
+            )
+            popup.addItemsWithTitles_(self._models)
+            if self._selected_model in self._models:
+                popup.selectItemWithTitle_(self._selected_model)
+            else:
+                self._selected_model = str(popup.titleOfSelectedItem())
+            popup.setFont_(NSFont.systemFontOfSize_(11.0))
+            content.addSubview_(popup)
+            self._popup = popup
+
+            hint = NSTextField.alloc().initWithFrame_(NSMakeRect(306, row_y + 2, W - 318, 18))
+            hint.setEditable_(False)
+            hint.setSelectable_(False)
+            hint.setBordered_(False)
+            hint.setDrawsBackground_(False)
+            hint.setFont_(NSFont.systemFontOfSize_(10.0))
+            hint.setTextColor_(self._colors['dim'])
+            hint.setStringValue_("applies from the next file")
+            content.addSubview_(hint)
+
         # ── separator line ───────────────────────────────────────────────────
-        sep_y = H - HEADER_H - 20
+        sep_y = H - HEADER_H - (48 if self._models else 20)
         sep = NSTextField.alloc().initWithFrame_(NSMakeRect(0, sep_y, W, 1))
         sep.setEditable_(False)
         sep.setBordered_(False)
@@ -166,8 +225,11 @@ class ProgressWindow:
 
         # ── delegate ─────────────────────────────────────────────────────────
         delegate = _WindowDelegate.alloc().init()
-        delegate.setup(self._cancel_event)
+        delegate.setup(self._cancel_event, self._set_selected_model)
         panel.setDelegate_(delegate)
+        if self._models:
+            self._popup.setTarget_(delegate)
+            self._popup.setAction_("modelChanged:")
 
         self._panel    = panel
         self._tv       = tv

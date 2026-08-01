@@ -39,6 +39,16 @@ model: "claude-sonnet-4-20250514" # Claude model to use
 # process files in one large batch. Set to "5m" for the short tier, or to an
 # empty value to use the API default.
 cache_ttl: "1h"
+
+# Models offered in the progress window's dropdown, so the Finder Quick Action
+# can reach a stronger model without a command line. The first entry is only a
+# default if `model` above is absent from the list. Switching mid-batch applies
+# from the next file and is inexpensive - prompt caches are per-model and
+# coexist, so a run that alternates pays one cache write per model, not one per
+# switch. See the README's Cost Estimate section.
+window_models:
+  - "claude-sonnet-4-6"
+  - "claude-opus-5"
 default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
 
 # Enrichment: fill in fields the PDF itself doesn't contain (volume, issue,
