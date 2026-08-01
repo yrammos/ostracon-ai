@@ -279,6 +279,16 @@ def strip_forbidden_fields(entry_text):
 # have to be handled before it runs.
 _PARAM_FIRST_MACROS = ('foreignlanguage', 'hyphenation')
 
+# Macros contributing no searchable text at all. \bibstring{reviewof} renders
+# as a localized "Review of" and \bibstring{by} as "by": bibliographic
+# apparatus the style supplies, not words from the source's own title. In a
+# @Review entry the title is built as
+#   \bibstring{reviewof} \mkbibemph{<work>}, \bibstring{by} <author>
+# so keeping them sends "reviewof <work>, by <author>" to the indexes, where
+# the two stray tokens can only dilute the match. Dropped whole - argument
+# included - unlike _PARAM_FIRST_MACROS, which keep their text group.
+_DROP_MACROS = ('bibstring',)
+
 
 def _matching_brace(text, start):
     """Index of the `}` closing the `{` at `start`, or None if unbalanced."""
@@ -333,6 +343,26 @@ def _drop_first_arg(text, macro):
         i = end2 + 1
 
 
+def _drop_whole(text, macro):
+    r"""Remove `\macro{...}`, argument included, brace-aware."""
+    token = '\\' + macro
+    out, i = [], 0
+    while True:
+        j = text.find(token, i)
+        if j == -1:
+            out.append(text[i:])
+            return ''.join(out)
+        out.append(text[i:j])
+        k = j + len(token)
+        while k < len(text) and text[k].isspace():
+            k += 1
+        end = _matching_brace(text, k) if k < len(text) and text[k] == '{' else None
+        if end is None:                       # bare macro, no argument
+            i = k
+            continue
+        i = end + 1
+
+
 def strip_latex(text):
     """Strip LaTeX markup from a field value for use in external search queries."""
     if not text:
@@ -342,8 +372,14 @@ def strip_latex(text):
         prev = text
         for macro in _PARAM_FIRST_MACROS:
             text = _drop_first_arg(text, macro)
+        for macro in _DROP_MACROS:
+            text = _drop_whole(text, macro)
         text = re.sub(r'\\[A-Za-z]+\{([^{}]*)\}', r'\1', text)
-    return text.replace('{', '').replace('}', '').strip()
+    text = text.replace('{', '').replace('}', '')
+    # Removing macros leaves the gaps they occupied, so a title can come out
+    # as "  Music Analysis,   Ian Bent". Collapse before handing it to a query
+    # or a similarity comparison.
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def extract_doi(text):
