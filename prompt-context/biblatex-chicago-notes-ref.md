@@ -126,9 +126,10 @@ Condensed reference for the notes-and-bibliography variant. Source: biblatex-chi
 | `namea`, `nameb`, `namec` | Supplemental name fields; role set via `nameatype` etc. |
 | `annotator` | Author of annotations. |
 | `commentator` | Author of a commentary. |
-| `foreword` | Author of a foreword. |
-| `introduction` | Author of an introduction. |
-| `afterword` | Author of an afterword. |
+| `foreword` | Author of a foreword — **except** in `@SuppBook`/`@SuppCollection`, where biblatex-chicago tests only whether the field is *present* and prints "Foreword to" accordingly; the value itself is never printed. `notes-test.bib` uses `afterword = {yes}` for this (`polakow:afterw`). Deleting the field costs both the label and the full stop after the author. |
+| `introduction` | Author of an introduction — same presence-flag behaviour in `@SuppBook`/`@SuppCollection` as `foreword`. |
+| `afterword` | Author of an afterword — same presence-flag behaviour in `@SuppBook`/`@SuppCollection` as `foreword`. |
+| *(alternative)* | Instead of the flag, put the label and its preposition in `type`, lowercased: `type = {introduction to}`, `type = {glossary in}`. See `prose:intro` in `notes-test.bib`, whose `annote` describes this as the alternative mechanism. |
 | `holder` | Patent holder. |
 | `shortauthor` | Abbreviated author name for short citations. |
 | `shorteditor` | Abbreviated editor name for short citations. |
@@ -209,7 +210,7 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 | Field | Description |
 |---|---|
 | `doi` | Digital Object Identifier (without the `https://doi.org/` prefix). |
-| `url` | URL. Package-legal on any entry type, but per project guidelines populate only when the entry is `@Online` or has no `date` (see note below). |
+| `url` | URL. Package-legal on any entry type, but per project guidelines populate only when the entry is `@Online`, is an online reference work, has no `date`, or carries no `doi` (see note below). |
 | `urldate` | Date the URL was last accessed (format: `YYYY-MM-DD`). An access-date-only `urldate` (no `userd`) does not stand in for `date` in citations - Chicago still prints "n.d." there; `urldate` is recorded as separate access evidence, not a substitute headline date. This is standard, documented behavior for undated online material, not a workaround. |
 | `eprint` | Eprint identifier (e.g. arXiv ID). |
 | `eprinttype` | Eprint archive type (e.g. `arxiv`). |
@@ -253,7 +254,7 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 
 ## Fields to Omit (per project guidelines)
 
-Do **not** populate: `isbn`, `issn`, `keywords`. `url`/`urldate` are populated only for `@Online` entries or entries with no `date`; omit otherwise, regardless of entry type.
+Do **not** populate: `isbn`, `issn`, `keywords`. `url`/`urldate` are populated for `@Online` entries, online reference works, entries with no `date`, and entries carrying no `doi`; omit otherwise. The principle is one canonical locator per entry - Chicago prefers a DOI to a URL, so a `url` beside a `doi` is redundant, while an entry with no DOI keeps its `url` whatever its type.
 
 ## Choosing @Online vs. a Print-Equivalent Type
 
