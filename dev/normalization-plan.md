@@ -6,8 +6,9 @@ Bringing a legacy `.bib` file into the shape this workflow produces today.
 out of scope: types are assumed correct and are never rewritten, though
 suspected mismatches are reported (see Risks).
 
-**Status.** Design only. Nothing here has been implemented, and step zero
-below is deliberately the only part worth building until its results are in.
+**Status.** Tier A applied to `~/Documents/Bibdesk/biblio.bib` on 2026-08-01
+(6,736 edits, 2,772 of 5,746 entries). Tier B not started. Tier C was found
+already clean and dropped.
 
 ---
 
@@ -44,6 +45,251 @@ The last is a heuristic and belongs in the report, not in any rewrite.
 **Decision gate.** The violation distribution determines whether this is an
 afternoon or a project. Do not commit to the rest of the plan before seeing
 it.
+
+### Results, 2026-08-01 — `dev/bib_audit.py`
+
+Target: `~/Documents/Bibdesk/biblio.bib`, 17 MB, 5,746 entries, 21 types.
+Round-trip byte equality **passes**, so every count below is trustworthy.
+
+| Rule | Count |
+|---|---|
+| `keywords` present | 5,508 |
+| Unsplit `Title` | 2,043 |
+| `Url` on a dated non-`@Online` entry | 702 |
+| Redundant `Shorttitle` | 499 |
+| Non-ASCII title, no `Langid` | 269 |
+| Unsplit `Booktitle` | 216 |
+| `Shorttitle` ≠ pre-colon segment | 175 |
+| No `Date` at all | 84 |
+| Range punctuation, series division, ISBN/ISSN | 51 combined |
+| Missing stamps, field-name casing, duplicated `Number` | **0** |
+
+Tier C is already clean, so it earns nothing and can be dropped.
+
+**One structural constraint the original draft missed.** The file must never
+be re-serialized. BibDesk's on-disk form — tab indent, alphabetical fields
+with `bdsk-*` forced last, the closing `}}` glued to the final field, multi-KB
+base64 in `bdsk-file-*` — is not incidental, and two `@comment` blocks hold
+the entire static/smart group hierarchy as an embedded plist. A generic parser
+(`bibtexparser`, `pybtex`) would reorder, re-wrap and possibly drop those. The
+decisive argument is reviewability, not purity: surgical span edits give a
+diff a maintainer can skim, whereas reserialization gives a 103k-line diff
+nobody can review — which destroys the safety net exactly when the pass runs
+unattended. So: locate each field's brace-balanced extent, rewrite only that
+span, treat `@comment` as opaque, and assert byte equality before trusting
+anything.
+
+### Maintainer decisions taken, 2026-08-01
+
+- **`keywords` stays.** All 5,508. The house rule governs new entries; it is
+  not licence to strip a decade of tagging. Verified first that no smart group
+  keys off it — the sole smart group filters on `Date-Modified`, and static
+  groups key on citekeys, which are never rewritten.
+- **Tier A only** this pass, re-audit before considering Tier B.
+- **`Shorttitle` belongs only to genuinely unsplittable titles.** A merely
+  colonless title has no subtitle to hoist and needs none, which drops the
+  "missing shorttitle" rule from 1,280 to nil.
+- **`bdsk-url-*`, `rating`, `read` are protected** alongside the named fields.
+- **The `Url` policy was relaxed, and `CLAUDE.md` amended to match.** The rule
+  is now one canonical locator per entry: Chicago cites a DOI in preference to
+  a URL, so a `Url` beside a `Doi` is redundant and goes (440 entries), while
+  an entry with no DOI keeps its `Url` whatever its type (319 entries), because
+  there the address is the only locator the style has to print. This is a
+  better bibliographic rule than the blanket type-based one, not merely a
+  gentler one. Checked first that no `url` field anywhere carries a decoded
+  `x-devonthink://` URI — all 759 are http/https or malformed, and the 12,322
+  DEVONthink URIs all sit correctly in `remote-url`/`bdsk-url`.
+
+### Tier A pass — `dev/bib_normalize.py`
+
+6,736 edits across 2,772 entries. Seven gates must pass before it will write:
+output re-scans byte-accounted; entry count and citekey order unchanged;
+`@comment` blocks byte-identical; no protected field altered; idempotent;
+length arithmetic exact; utf-8 round trip the identity. It also refuses to
+write while BibDesk is running, since BibDesk would overwrite from its
+in-memory copy and a save can trigger autofile.
+
+The last two gates exist because the first five share a blind spot: they are
+all built on the scanner, so they validate the scanner's own parse and
+structurally cannot catch a byte moving somewhere no rule claimed to touch.
+The arithmetic gate — output length must equal input length plus the summed
+edit deltas — is independent of it. The utf-8 gate closes a subtler hole:
+Python's text mode translates line endings on read *and* write, so a file
+with any CRLF would come back all-LF with every other gate still green. The
+file is read as bytes, proved to survive decode/encode unchanged, and written
+back as bytes.
+
+### Correction: terminal punctuation *is* a splittable boundary
+
+`CLAUDE.md` states that a title whose halves are joined by a question mark or
+full stop must not be split, "biblatex would insert a colon the source
+doesn't have." **That is factually wrong about the package**, and by
+`CLAUDE.md`'s own precedence rule — the corpora govern on what biblatex-chicago
+actually does — the package wins. `chicago-notes.cbx` defines:
+
+```latex
+\renewcommand*{\subtitlepunct}{% Follows CMS16 spec.
+  \ifboolexpr{ test {\ifterm} and not test {\ifcsdef{@cmsst}} }%
+    {\addspace}%          <- terminal punctuation: NO colon
+    {\addcolon\addspace}} <- otherwise: ": "
+```
+
+`\ifterm` resolves to `\ifcapital`, which reads TeX's spacefactor — 3000
+after `.`, `!`, `?`. So the colon is suppressed automatically. The package's
+test suite says the same in prose: `batson` carries
+`title = {How Social Is the Animal?}` beside
+`subtitle = {The Human Capacity for Caring}`, annotated "you no longer need
+to include the subtitle in the title field when the latter ends in a question
+mark... This also means that you no longer necessarily need a shorttitle
+field in such entries."
+
+Consequences for the pass:
+
+- **`?` and `!` boundaries are now split** (57 entries), with the mark kept on
+  the title. Their `Shorttitle` then falls away like any other split.
+- **Titles with more than one top-level `?`/`!` are reported, not split**
+  (3 entries). `Aesthetics---What? Why? and Wherefore?` is one continuous
+  rhetorical construction, not a title plus a subtitle; splitting at the first
+  mark mis-models it. Same guard, same reasoning as multi-colon titles.
+- **`.` boundaries are reported, not split** (4 entries). TeX's spacefactor
+  rule reads a period after a capital as an abbreviation, and the splitter
+  must do the same or it would cut "J.\,S. Bach", "Op.\,110" and
+  "Pitch vs. Timbre" in half. Checked against all 164 titles in the file
+  carrying an abbreviation-shaped period: **zero false positives**. Two
+  guards do the work independently — the pattern demands a capital or a
+  backslash after the space (so "Op. 110" cannot match), and an abbreviation
+  list catches the rest. Deciding where a period ends a title rather than an
+  initial is judgment; the renderer cannot make it on our behalf.
+
+Two bugs the dry run caught, both of which would have damaged records at
+scale and left the result looking tidy:
+
+1. Span helpers walked backwards for the field's leading newline, but the
+   parser already includes `\n\t` at the *front* of each field span. 2,754
+   edits silently became "unparsable layout" — a **fail-safe** miss.
+2. The redundancy rule would have stripped 194 earned `Shorttitle` values:
+   79 of the `Kretschmer2008` shape (halves joined by `?` or `.`, so the
+   title cannot be split) plus every `@Review`, whose `Shorttitle` is the
+   compressed `\bibstring{reviewof}` form. A **fail-dangerous** miss, and
+   the reason the rule-grouped dry run is not optional.
+
+Left untouched and reported, never rewritten:
+
+| Bucket | Count | Why it is judgment, not mechanics |
+|---|---|---|
+| `colon-inside-macro-NOT-SPLIT` | 142 | Colon sealed inside `\foreignlanguage{…}` or `\mkbibquote{…}`; not an entry-level boundary |
+| `shorttitle-earned-KEPT` | 139 | Title genuinely unsplittable, so the `Shorttitle` is doing work |
+| `skipped-multi-colon` | 10 | Two top-level colons; which one is the boundary is a decision |
+| `series-division-REVIEW` | 7 | Splitting `Series` from its division needs the imprint page |
+| `skipped-review-title` | 6 | `@Review` with a top-level colon; the title encodes the reviewed work |
+| `full-stop-boundary-REVIEW` | 4 | A `.` that may end the title or may abbreviate a name |
+| `url-malformed-REVIEW` | 8 | `hps://`, a ligature-mangled `hĴp://`, bare hostnames, one bare DOI |
+| `multi-terminal-mark-REVIEW` | 3 | Multi-part rhetorical title, not a title plus subtitle |
+| `url-sole-copy-KEPT` | 2 | Only copy of the URL — one has curly quotes, one's `http` is mangled to `hĴp` by a ligature |
+| `subtitle-exists-but-parent-still-split` | 1 | `Richter2020` has a `Subtitle` *and* a colon still in `Title` — pre-existing, not caused here. Its `Shorttitle` is now dropped on the maintainer's instruction; the `Title`/`Subtitle` disagreement is left for a human. |
+
+The macro-sealed 142 matter for honesty about scope: they are titles that
+*contain* a colon and are nonetheless not split. "Title splitting is done"
+would overstate coverage without them, so they are counted rather than
+silently dropped.
+
+### Applied, 2026-08-01
+
+Written after BibDesk was quit. Post-write verification against the file on
+disk, independent of the run that produced it:
+
+| Check | Result |
+|---|---|
+| Round-trip byte equality | PASS |
+| Entries | 5,746, unchanged |
+| `@comment` blocks (BibDesk groups) | 2, byte-identical |
+| `Subtitle` | 6 → 2,098 |
+| `Booksubtitle` | 0 → 219 |
+| `Mainsubtitle` | 0 → 6 |
+| `keywords` | 5,508 → 5,508, untouched |
+| Entries with both `Subtitle` and `Shorttitle` | 0 |
+| Re-running the pass | proposes 0 edits — idempotent on disk |
+
+Diff shape: 4,659 insertions, 4,419 deletions over 9,078 of 103,352 lines.
+Under 5% of the file moved, which is what makes the change reviewable — the
+whole reason for surgical span edits over reserialization.
+
+**Versioning is by filename suffix, not git.** The target directory is synced
+to iCloud, where a `.git` object database is liable to be corrupted by the
+sync client, and the multi-KB base64 in `bdsk-file-*` defeats textual diffing
+anyway. `bib_normalize.py --apply` therefore writes a verified snapshot of the
+current bytes to `biblio_<date>_pre-<label>.bib` before touching anything, and
+prints the single `cp` that reverts to it. `--no-snapshot` opts out.
+
+Restore points in `~/Documents/Bibdesk/`:
+
+| File | State |
+|---|---|
+| `biblio_backup.bib` | Pre-normalization, the maintainer's own backup |
+| `biblio_2026-08-01_post-tier-a.bib` | Immediately after Tier A, before BibDesk re-serialized |
+| `biblio_normalized_fixed.bib` | Tier A + the Cutler2008 repair — **installed as `biblio.bib`** |
+| `biblio_unnormalized_fixed.bib` | Backup + the Cutler2008 repair, if the normalization is ever unwanted |
+| `biblio.bib` | Live |
+
+---
+
+## Postscript: the BibDesk 98-field crash, 2026-08-02
+
+Reopening the library crashed BibDesk — **and so did the untouched backup**,
+which cleared the normalization of blame and redirected the search.
+
+`bibtool` parsed both files identically, so the file was valid BibTeX and no
+static check would ever find it. Bisecting instead — write a subset, open it,
+watch whether the process survives (`dev/bib_bisect.py`) — found one entry in
+13 rounds: `Cutler2008`, 111 fields.
+
+**The bug is in BibDesk 1.9.12 itself.** A synthetic entry of 98 fields named
+`field001`…`field098` with values `{v1}`…`{v98}` — 1,873 bytes, no bookmarks,
+nothing exotic — crashes it on open. 97 fields is fine. Content is irrelevant;
+the ceiling is the field count. Worth reporting upstream.
+
+How the entry got there: the bulk pass of 2026-07-29 that stamped 5,265
+entries added a `devonthink*` field per linked DEVONthink record. `Cutler2008`
+travels with 25 Finale musical examples, so it gained 28 fields at once,
+crossing from 83 to 111. It did not crash for three days because the fault is
+in the *parser*, not the data model — BibDesk will happily hold and even write
+a 111-field entry, it just cannot read one back. The first cold start since
+that bulk pass was the one this work prompted.
+
+The repair, on the maintainer's instruction: the 26 attachments (the PDF plus
+25 `.mus` examples) all live in one DEVONthink group, so a single reference to
+that group replaces every per-file link — 111 fields down to 20. The two
+attachments *outside* the group, a Markdown bibliography note and a PNG
+screenshot, are kept, because the group URI does not cover them. Verified by
+opening the result in BibDesk, not merely by parsing it.
+
+Largest entry in the library now: 62 fields.
+
+### Two follow-up corrections, 2026-08-02
+
+Both were mine, and both were caused by rules that were wrong rather than by
+code that misfired:
+
+1. **Date ranges take a solidus.** `CLAUDE.md` asked for a single hyphen on
+   every range; biblatex parses date fields as ISO 8601-2, where `-` is the
+   year-month delimiter and `/` the range separator, so `2012-13` reads as
+   month 13. `Marvin2012a` (`2012--13` → now `2012/2013`) and `Jonas1989`
+   (`origdate 1937--1938` → now `1937/1938`) were the only two affected. The
+   normalizer now routes date-type fields through a separate rule that emits
+   `/`, and `CLAUDE.md` records the exception. This is the third instance of
+   the same pattern: a house rule contradicting what the package accepts, with
+   the package winning under `CLAUDE.md`'s own precedence clause.
+2. **French typography strands a tie.** `Migliore2022` reads
+   `…{AudioSculpt}~: chronique…`, the non-breaking space French sets before a
+   colon. Dropping the colon left the `~` dangling at the end of `Title`. The
+   splitter now absorbs a trailing `~`, `\,`, `\ ` or whitespace along with
+   the colon. Of the ten titles in the file with whitespace before a colon,
+   three were split and only this one had a tie rather than a plain space.
+
+Still outstanding, and **pre-existing rather than introduced here**: two date
+fields carry the same invalid shape, `Mackay2022-23` (`date = {2022-23}`) and
+`Wlodarczyk2020-22` (`date = {2020-21}`). Left untouched — whether those mean
+academic years is a question for the maintainer.
 
 ---
 
@@ -84,8 +330,9 @@ Four constraints, each answering a specific failure mode.
    must reproduce. Write it before writing the rules, not after.
 
 Sequence: audit → ground-truth sample → Tier A rules → dry run → apply →
-re-audit → repeat for Tier B. The file goes under version control first, and
-the first pass changes nothing at all.
+re-audit → repeat for Tier B. A suffixed snapshot is taken before each apply
+(see below — not git; the directory is iCloud-synced), and the first pass
+changes nothing at all.
 
 ---
 
