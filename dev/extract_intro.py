@@ -22,6 +22,10 @@ src = open(sys.argv[1], encoding='utf-8').read()
 # Body starts at the first real section.
 src = src[src.index(r'\section{Standard entry types}'):]
 
+# Discretionary hyphens (`Collec\-tion`, `biblatex-chi\-ca\-go`) are line-break
+# hints, not content. Strip before anything else so the words read whole.
+src = src.replace('\\-', '')
+
 # Drop full-line comments.
 src = '\n'.join(l for l in src.split('\n') if not l.lstrip().startswith('%'))
 
@@ -45,8 +49,22 @@ src = re.sub(r'\\twocolumn\[[^\]]*\]', '', src)
 # -- so emitting a newline and a bullet tore sentences in half and left the
 # governing rules unreadable. Inline, the list contexts still read correctly,
 # because the source already separates them with commas.
-src = re.sub(r'\\endnote\[\\value\{([A-Za-z]+)\}\]\{\\cite\{([^}]*)\}\.?\}',
-             r'@\1 [\2]', src)
+#
+# The inner command is NOT always \cite. The "Short notes" section uses
+# \shortcite throughout, and matching only \cite here cost 24 worked-example
+# keys: the rule below fell through to the generic \endnote strip at line ~57,
+# whose non-greedy `\{.*?\}` stops at the FIRST closing brace -- the one closing
+# \shortcite{garaud:gatine} -- and left the outer `}` stranded in the prose. The
+# section rendered as "the short forms ... : }, }, }, }, ..." for 22 works.
+# The optional argument matters: `\shortcite[Aristotle]{wikiped:bibtex}` names a
+# sub-entry, and without `(?:\[..\])*` here that one InReference example was the
+# last `}` left stranded in the Short-notes list.
+CITECMD = r'(?:short|auto|full|headless|surname|journal)?cite\*?(?:\[[^\]]*\])*'
+src = re.sub(r'\\endnote\[\\value\{([A-Za-z]+)\}\]\{\\' + CITECMD +
+             r'\{([^}]*)\}\.?\}', r'@\1 [\2]', src)
+# Same shape without the \value{} type label: still a worked example, so keep
+# the key even though the type has to be read from the surrounding sentence.
+src = re.sub(r'\\endnote\{\\' + CITECMD + r'\{([^}]*)\}\.?\}', r'[\1]', src)
 src = re.sub(r'\\lnbackref\{([A-Za-z]+)\}\{([^}]*)\}', r'\1: [\2]', src)
 
 # Remaining plumbing has no informational content.
@@ -57,11 +75,34 @@ src = re.sub(r'\\(?:hyperlink|getrefbykeydefault|colorbox|color)\{[^}]*\}(\{[^}]
 src = re.sub(r'\\endnote(\[[^\]]*\])?\{.*?\}\.?,?', '', src, flags=re.DOTALL)
 
 # Section headings -> markdown.
-src = re.sub(r'\\section\{(.*?)\}', lambda m: '\n\n## ' + m.group(1).strip() + '\n', src)
+def _headings(text):
+    r'''`\section{...}` -> `## ...`, matching the brace rather than the first `}`.
+
+    `\section{The \texttt{entrysubtype} field}` contains a nested group, so a
+    non-greedy `\{(.*?)\}` captured only "The \texttt{entrysubtype" and spilled
+    "field}" into the prose as a stray line.
+    '''
+    out, i = [], 0
+    while True:
+        m = re.compile(r'\\section\{').search(text, i)
+        if not m:
+            out.append(text[i:])
+            return ''.join(out)
+        j, depth = m.end(), 1
+        while j < len(text) and depth:
+            if text[j] == '{': depth += 1
+            elif text[j] == '}': depth -= 1
+            j += 1
+        inner = re.sub(r'\\[a-zA-Z]+\{([^{}]*)\}', r'\1', text[m.end():j - 1])
+        out.append(text[i:m.start()] + '\n\n## ' + inner.strip() + '\n')
+        i = j
+
+src = _headings(src)
 
 # Citation keys are worth keeping: they name examples in notes-test.bib.
 src = re.sub(r'\\(?:auto)?cite\*?(?:\[[^\]]*\])*\{([^}]*)\}', r'[\1]', src)
 src = re.sub(r'\\cmslink\{([^}]*)\}', r'[\1]', src)
+src = re.sub(r'\\href\{[^}]*\}\{([^}]*)\}', r'\1', src)
 
 # Cross-references into biblatex-chicago.pdf: keep the field/topic name only.
 src = re.sub(r'\\cmssecref\[([^\]]*)\]\{[^}]*\}', r'', src)
@@ -74,7 +115,9 @@ for _ in range(4):
 
 # Environments and layout noise.
 src = re.sub(r'\\(?:begin|end)\{[^}]*\}(\[[^\]]*\])?', '', src)
-src = re.sub(r'\\(?:label|index|hypertarget|phantomsection)\{[^}]*\}', '', src)
+# `\pageref`/`\ref` point at page numbers in the rendered PDF, which mean
+# nothing in the extracted guide; the sentences read correctly without them.
+src = re.sub(r'\\(?:label|index|hypertarget|phantomsection|pageref|ref)\{[^}]*\}', '', src)
 src = re.sub(r'\\(?:mylittlespace|noindent|newpage|clearpage|bigskip|medskip|smallskip|par)\b', '', src)
 src = re.sub(r'\\cmd\{([^}]*)\}', r'\\\1', src)
 
@@ -91,6 +134,7 @@ def drop_cmd(text, names, keep_arg=False):
             i += 1
         text = text[:m.start()] + (text[m.end():i-1] if keep_arg else '') + text[i:]
 
+src = re.sub(r'\\footnote\[[^\]]*\]', r'\\footnote', src)   # \footnote[1]{..} -> \footnote{..}
 src = drop_cmd(src, ['footnote', 'vspace', 'twocolumn', 'enlargethispage'])
 src = drop_cmd(src, ['headlesscite', 'fullcite', 'citejournal', 'textcite',
                      'surnamecite', 'shortcite', 'textsc'], keep_arg=True)
@@ -111,6 +155,8 @@ src = re.sub(r'\\(?:autocap|bibstring)\{([^}]*)\}', r'\1', src)
 src = (src.replace(r'\&', '&').replace(r'\%', '%').replace(r'\_', '_')
           .replace(r'\#', '#').replace('~', ' ').replace('---', '—').replace('--', '-'))
 src = re.sub(r'\\ (?=\w)', ' ', src)
+src = re.sub(r'\\ ', ' ', src)
+src = re.sub(r'^\s*%\s*$', '', src, flags=re.M)
 src = re.sub(r'\\\\', '\n', src)
 
 # Whitespace normalisation: collapse runs, keep paragraph breaks.
