@@ -12,299 +12,48 @@ NB this reflects the package's own house style, which departs from this
 project's conventions in places; CLAUDE.md takes precedence.
 ## Standard entry types
 
-These should pose no particular
-issues to those who have used BibTeX or biblatex
-before, but here is an example of each of the following standard
-entry types:
-
-- Article: [garaud:gatine],
-
-- Book: [mchugh:wake],
-
-- Booklet: [clark:mesopot],
-
-- InBook: [ashbrook:brain],
-
-- InCollection: [contrib:contrib],
-
-- InProceedings: [frede:inproc],
-
-- Manual: [dyna:browser],
-
-- MastersThesis: [ross:thesis],
-
-- TechReport: [herwign:office], and
-
-- Unpublished: [nass:address].
+These should pose no particular issues to those who have used BibTeX or biblatex before, but here is an example of each of the following standard entry types: @Article [garaud:gatine], @Book [mchugh:wake], @Booklet [clark:mesopot], @InBook [ashbrook:brain], @InCollection [contrib:contrib], @InProceedings [frede:inproc], @Manual [dyna:browser], @MastersThesis [ross:thesis], @TechReport [herwign:office], and @Unpublished [nass:address].
 
 ## Other entry types
 
-These entry types are
-biblatex innovations, designed to cater for as large a
-range of reference needs as possible. The list here is by no means
-exhaustive, but rather tries to exemplify some of the more
-complicated or (possibly) unfamiliar entry types, including:
-
-- Artwork: [leo:madonna],
-
-- Audio: [schubert:muellerin],
-
-- BookInBook: [euripides:orestes],
-
-- Dataset: [genbank:db],
-
-- InReference: [wikiped:bibtex],
-
-- Letter: [jackson:paulina:letter],
-
-- Music: [holiday:fool],
-
-- Performance: [hamilton:miranda],
-
-- Review: [ratliff:review],
-
-- Standard: [niso:bibref],
-
-- SuppBook: [polakow:afterw], and
-
-- Video: [friends:leia].
+These entry types are biblatex innovations, designed to cater for as large a range of reference needs as possible. The list here is by no means exhaustive, but rather tries to exemplify some of the more complicated or (possibly) unfamiliar entry types, including: @Artwork [leo:madonna], @Audio [schubert:muellerin], @BookInBook [euripides:orestes], @Dataset [genbank:db], @InReference [wikiped:bibtex], @Letter [jackson:paulina:letter], @Music [holiday:fool], @Performance [hamilton:miranda], @Review [ratliff:review], @Standard [niso:bibref], @SuppBook [polakow:afterw], and @Video [friends:leia].
 
 ## Short notes
 
-The note forms we've
-seen so far are intended to appear on the first citation of a given
-work, while subsequent citations use a shorter form, usually merely
-Author, Title. Both of these fields, of course,
-have a short form to allow space-saving abridgements of
-names and titles. You can also use the option short when
-you load biblatex-chicago and you'll get the short form
-from the start, something only recommended by the CMS when
-you have a full bibliography to clarify all the abbreviated
-references. (In the absence of a full bibliography, you can also
-use the noteref option to
-provide cross-references from short notes to long ones. Please
-consult
-\href{file:cms-noteref-demo.pdf}{cms-noteref-demo.pdf}.)
-The following are the short forms of all the works cited in long
-notes in previous sections:
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-},
-}, and
-}.
+The note forms we've seen so far are intended to appear on the first citation of a given work, while subsequent citations use a shorter form, usually merely Author, Title. Both of these fields, of course, have a short form to allow space-saving abridgements of names and titles. You can also use the option short when you load biblatex-chicago and you'll get the short form from the start, something only recommended by the CMS when you have a full bibliography to clarify all the abbreviated references. (In the absence of a full bibliography, you can also use the noteref option to provide cross-references from short notes to long ones. Please consult \href{file:cms-noteref-demo.pdf}{cms-noteref-demo.pdf}.) The following are the short forms of all the works cited in long notes in previous sections: }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, }, and }.
 
 ## The entrysubtype
 field
 
-The Chicago notes &\
-bibliography style covers a wide variety of source materials, so it
-is perhaps no surprise that even the range of entry types offered by
-biblatex isn't quite sufficient. In many cases, the
-entrysubtype field can further expand the repertoire
-available to users. Such cases include, in particular, the
-periodical types, where the CMS differentiates between
-articles and reviews in scholarly journals and those in magazines
-and newspapers aimed at a more general readership. For the latter
-two sorts of source, you place the string magazine in the
-entrysubtype field, and the citation style changes
-accordingly:
+The Chicago notes &\ bibliography style covers a wide variety of source materials, so it is perhaps no surprise that even the range of entry types offered by biblatex isn't quite sufficient. In many cases, the entrysubtype field can further expand the repertoire available to users. Such cases include, in particular, the periodical types, where the CMS differentiates between articles and reviews in scholarly journals and those in magazines and newspapers aimed at a more general readership. For the latter two sorts of source, you place the string magazine in the entrysubtype field, and the citation style changes accordingly: @Article [lakeforester:pushcarts] and @Review [bundy:macneil].
 
-- Article: [lakeforester:pushcarts] and
+The Misc type likewise uses the entrysubtype field as a toggle to alter the general presentation of a source. Without such a field, Misc entries function as they do in standard biblatex and in BibTeX, that is, as hold-alls for sources that won't easily fit into other categories. (Ideally, such entries will be very rare when using biblatex-chicago.) With an entrysubtype Misc entries will present their source as part of an unpublished archive, to be distinguished from Unpublished entries, which usually will have a specific title and won't come from a named archive: }.
 
-- Review: [bundy:macneil].
-
-The Misc type likewise uses the
-entrysubtype field as a toggle to alter the general
-presentation of a source. Without such a field, Misc
-entries function as they do in standard biblatex and in
-BibTeX, that is, as hold-alls for sources that won't
-easily fit into other categories. (Ideally, such entries will be
-very rare when using biblatex-chicago.) With an
-entrysubtype Misc entries will present their
-source as part of an unpublished archive, to be distinguished from
-Unpublished entries, which usually will have a specific
-title and won't come from a named archive:
-}.
-
-The entrysubtype field is, finally, also
-useful for presenting pre-Renaissance works by their traditional
-divisions into books, sections, lines, etc., divisions which are
-presumed to be the same across all editions. For such citations,
-you put the string classical into the entrysubtype
-field, and though this has no effect on long notes or in the
-bibliography, it changes the punctuation in short notes, as below:
-}.
-(Were you citing such a work by the pages in a modern edition, the
-entrysubtype would be unnecessary — see the Euripides
-citation above.)
+The entrysubtype field is, finally, also useful for presenting pre-Renaissance works by their traditional divisions into books, sections, lines, etc., divisions which are presumed to be the same across all editions. For such citations, you put the string classical into the entrysubtype field, and though this has no effect on long notes or in the bibliography, it changes the punctuation in short notes, as below: }. (Were you citing such a work by the pages in a modern edition, the entrysubtype would be unnecessary — see the Euripides citation above.)
 
 ## Abbreviated references
 
-The CMS suggests, as a
-space-saving measure, that when multiple parts of a single
-collection are present in a reference apparatus, then references
-may, following certain rules, abbreviate the portion that refers to
-the collection as a whole. Biblatex-chicago implements
-this recommendation using a combination of package options (both
-entry and preamble) and the crossref and xref
-fields. In InBook, InCollection,
-InProceedings, and Letter entries, the option is
-longcrossref, set to false by default, so if more
-than one such entry cross-references the same parent entry, then the
-abbreviated notes and bibliography entries will automatically
-appear. The first full note citing such a source is not
-abbreviated, but all subsequent notes, and all bibliography entries,
-are:
+The CMS suggests, as a space-saving measure, that when multiple parts of a single collection are present in a reference apparatus, then references may, following certain rules, abbreviate the portion that refers to the collection as a whole. Biblatex-chicago implements this recommendation using a combination of package options (both entry and preamble) and the crossref and xref fields. In InBook, InCollection, InProceedings, and Letter entries, the option is longcrossref, set to false by default, so if more than one such entry cross-references the same parent entry, then the abbreviated notes and bibliography entries will automatically appear. The first full note citing such a source is not abbreviated, but all subsequent notes, and all bibliography entries, are: @InCollection [ellet:galena], @InCollection [keating:dearborn], @Collection [prairie:state].
 
-- InCollection: [ellet:galena],
+The possible settings for the longcrossref option are true (no abbreviated references); false (abbreviated references in notes and bibliography); notes (abbreviated references only in the bibliography); bib (abbreviated references only in notes); and none (abbreviated references everywhere, including in the four entry types controlled by the booklongxref option).
 
-- InCollection: [keating:dearborn],
-
-- Collection: [prairie:state].
-
-The possible settings for the longcrossref
-option are true (no abbreviated references); false
-(abbreviated references in notes and bibliography); notes
-(abbreviated references only in the bibliography); bib
-(abbreviated references only in notes); and none (abbreviated
-references everywhere, including in the four entry types controlled by
-the booklongxref option).
-
-The four entry types subject to the
-booklongxref option are Book, BookInBook,
-Collec\-tion, and Proceedings. The option has the
-same four settings as longcrossref, excluding the
-none switch, but it is set to true by default,
-because the CMS isn't as explicit in condoning abbreviated
-references in such entry types, so you have to turn them on yourself,
-as I have in this document using booklongxref=false in the
-preamble when loading biblatex-chi\-ca\-go:
-
-- Collection: [harley:ancient:cart],
-
-- Collection: [harley:cartography],
-
-- MVCollection: [harley:hoc].
+The four entry types subject to the booklongxref option are Book, BookInBook, Collec\-tion, and Proceedings. The option has the same four settings as longcrossref, excluding the none switch, but it is set to true by default, because the CMS isn't as explicit in condoning abbreviated references in such entry types, so you have to turn them on yourself, as I have in this document using booklongxref=false in the preamble when loading biblatex-chi\-ca\-go: @Collection [harley:ancient:cart], @Collection [harley:cartography], @MVCollection [harley:hoc].
 
 ## Online materials
 
-The 17th edition of the
-CMS has extended its treatment of online sources, and has
-also somewhat altered the principles of that treatment. Earlier
-editions emphasized the nature of the source (book-like,
-journal-like, etc.), rather more than how that source was accessed
-(printed volume, online, etc.), whereas the current specification
-places somewhat greater — though not total — emphasis on where
-it was accessed, which can in many cases determine what sort of
-entry type you need. I have provided a quick guide to the
-correspondences between online materials and
-biblatex-chicago entry types in table 1
-of biblatex-chicago.pdf,
-and include a few examples here. An online edition of a printed
-book still calls for a
-
-- Book: [james:ambassadors] entry, and the
-rules are similar for a printed journal that has an online portal.
-For intrinsically online sources, even if they are structured more
-or less like a conventional printed periodical, you may (at your
-discretion) choose to present them in an
-
-- Online: [stenger:privacy] entry rather than
-an Article one. Blogs lend themselves well to the
-
-- Article: [ellis:blog] type, while a comment
-on a blog becomes a
-- Review: [ac:comment],
-here using the commenton relatedtype. Social
-media posts, by contrast, even of photographs, for example, need an
-
-- Online: [souza:obama] entry. For things
-like mailing lists or less journalistic web pages, the
-
-- Online: [powell:email] type works well, as
-it does for short online videos
-(
-- Online: [pollan:plant]) and for short
-online audio pieces, too:
-
-- Online: [coolidge:speech].
+The 17th edition of the CMS has extended its treatment of online sources, and has also somewhat altered the principles of that treatment. Earlier editions emphasized the nature of the source (book-like, journal-like, etc.), rather more than how that source was accessed (printed volume, online, etc.), whereas the current specification places somewhat greater — though not total — emphasis on where it was accessed, which can in many cases determine what sort of entry type you need. I have provided a quick guide to the correspondences between online materials and biblatex-chicago entry types in table 1 of biblatex-chicago.pdf, and include a few examples here. An online edition of a printed book still calls for a @Book [james:ambassadors] entry, and the rules are similar for a printed journal that has an online portal. For intrinsically online sources, even if they are structured more or less like a conventional printed periodical, you may (at your discretion) choose to present them in an @Online [stenger:privacy] entry rather than an Article one. Blogs lend themselves well to the @Article [ellis:blog] type, while a comment on a blog becomes a @Review [ac:comment], here using the commenton relatedtype. Social media posts, by contrast, even of photographs, for example, need an @Online [souza:obama] entry. For things like mailing lists or less journalistic web pages, the @Online [powell:email] type works well, as it does for short online videos (@Online [pollan:plant]) and for short online audio pieces, too: @Online [coolidge:speech].
 
 ## Related entries
 
-Biblatex provides a powerful
-mechanism, using the related field, for grouping two (or
-more) works together in a single entry in the bibliography and/or in
-long notes, while biblatex-chicago offers both this
-functionality and some Chicago-specific variants which employ
-different means. You can find a full discussion of this in
-biblatex-chicago.pdf, but two of the entries already cited
-in the previous section ([coolidge:speech] &\
-[ac:comment]) present the two related entries together in
-both notes and bibliography, whereas a third example places a text
-and its translation together, but only in the bibliography:
-
-- Book: [furet:related]. Another example
-shows how to present multi-volume works with the maintitle
-before the booktitle using the maintitle
-relatedtype, as is sometimes recommended by the CMS:
-
-- BookInBook: [plato:timaeus:gr]. (The
-[plato:republic:gr] entry on page \pageref{sec:subtype}
-shows the more traditional presentation syntax.)
+Biblatex provides a powerful mechanism, using the related field, for grouping two (or more) works together in a single entry in the bibliography and/or in long notes, while biblatex-chicago offers both this functionality and some Chicago-specific variants which employ different means. You can find a full discussion of this in biblatex-chicago.pdf, but two of the entries already cited in the previous section ([coolidge:speech] &\ [ac:comment]) present the two related entries together in both notes and bibliography, whereas a third example places a text and its translation together, but only in the bibliography: @Book [furet:related]. Another example shows how to present multi-volume works with the maintitle before the booktitle using the maintitle relatedtype, as is sometimes recommended by the CMS: @BookInBook [plato:timaeus:gr]. (The [plato:republic:gr] entry on page \pageref{sec:subtype} shows the more traditional presentation syntax.)
 
 ## Citation commands
 
-Although \autocite will no
-doubt be the most commonly used citation command,
-biblatex-chicago, following biblatex, does provide
-a range of other commands for more specialized usages. We have
-already seen
-\headlesscite,\footnote[1]{creel:house.} which
-allows you to avoid, in notes, repetition of an author's
-name when it appears in the title as well. We have also
-seen \full\-cite, to
-guarantee a long note, and
-\shortcite, to guarantee
-a short one. (You can also use \footfullcite to get a
-\fullcite in a footnote.) There are a few others that may
-occasionally be useful:
-\surnamecite, for when a
-note follows a discussion where the presence of the
-authors' (or editors', etc.) full names makes
-their full repetition in the note unnecessary;
-\citejournal,
-which provides an alternative short form when citing
-Articles; and the standard \textcite, which inserts
-the name of an author or other contrib:contrib into the
-flow of text, with a footnote below.
+Although \autocite will no doubt be the most commonly used citation command, biblatex-chicago, following biblatex, does provide a range of other commands for more specialized usages. We have already seen \headlesscite,\footnote[1]{creel:house.} which allows you to avoid, in notes, repetition of an author's name when it appears in the title as well. We have also seen \full\-cite, to guarantee a long note, and \shortcite, to guarantee a short one. (You can also use \footfullcite to get a \fullcite in a footnote.) There are a few others that may occasionally be useful: \surnamecite, for when a note follows a discussion where the presence of the authors' (or editors', etc.) full names makes their full repetition in the note unnecessary; \citejournal, which provides an alternative short form when citing Articles; and the standard \textcite, which inserts the name of an author or other contrib:contrib into the flow of text, with a footnote below.
 
 ## In conclusion
 
-Allow me, finally, to emphasize just how multifarious are the sources
-illustrated in the CMS, only a small selection of which have
-appeared in this introduction. You will find significantly fuller
-guidance in biblatex.pdf and biblatex-chicago.pdf,
-but the CMS itself defines the specification and shall
-arbitrate all disputes. If you see something in
-biblatex-chicago that looks wrong to you, or if the
-documentation has left you perplexed, please let me know.
+Allow me, finally, to emphasize just how multifarious are the sources illustrated in the CMS, only a small selection of which have appeared in this introduction. You will find significantly fuller guidance in biblatex.pdf and biblatex-chicago.pdf, but the CMS itself defines the specification and shall arbitrate all disputes. If you see something in biblatex-chicago that looks wrong to you, or if the documentation has left you perplexed, please let me know.
 
 %
 

@@ -5,6 +5,14 @@ Keeps the section structure and the entry keys (which point at examples in
 notes-test.bib), drops LaTeX scaffolding, endnote plumbing, and the
 \\printbibliography calls whose output comes from notes-test.bib's annote
 fields anyway.
+
+The input is not vendored here -- it ships with the package, and the generated
+guide is what this project actually consumes. Upstream drift shows up as a diff
+in that guide when the script is re-run, which is the artifact that matters:
+
+    python3 dev/extract_intro.py \\
+      /usr/local/texlive/2025/texmf-dist/doc/latex/biblatex-chicago/cms-notes-intro.tex \\
+      prompt-context/cms-notes-intro-guide.md
 """
 import re
 import sys
@@ -31,8 +39,14 @@ src = re.sub(r'\\twocolumn\[[^\]]*\]', '', src)
 # \endnote[\value{Type}]{\cite{key}.} and \lnbackref{Type}{key} both encode a
 # TYPE -> worked-example mapping. That is the most useful thing in the file,
 # so render it rather than stripping it.
+#
+# Render INLINE. These appear mid-sentence as often as in lists -- "An online
+# edition of a printed book still calls for a \endnote[\value{Book}]{...} entry"
+# -- so emitting a newline and a bullet tore sentences in half and left the
+# governing rules unreadable. Inline, the list contexts still read correctly,
+# because the source already separates them with commas.
 src = re.sub(r'\\endnote\[\\value\{([A-Za-z]+)\}\]\{\\cite\{([^}]*)\}\.?\}',
-             r'\n- \1: [\2]', src)
+             r'@\1 [\2]', src)
 src = re.sub(r'\\lnbackref\{([A-Za-z]+)\}\{([^}]*)\}', r'\1: [\2]', src)
 
 # Remaining plumbing has no informational content.
@@ -117,5 +131,23 @@ header = (
     "NB this reflects the package's own house style, which departs from this\n"
     "project's conventions in places; CLAUDE.md takes precedence.\n"
 )
+# Reflow. The .tex hard-wraps at ~70 columns, which is a typesetting artifact,
+# not content: preserved verbatim it leaves every rule split across lines and so
+# unfindable by a plain search. Join lines within a paragraph, keeping blank
+# lines as paragraph boundaries and leaving headings alone.
+def reflow(text):
+    out = []
+    for block in re.split(r'\n\s*\n', text):
+        block = block.strip()
+        if not block:
+            continue
+        if block.startswith('#'):
+            out.append(block)
+        else:
+            out.append(re.sub(r'\s*\n\s*', ' ', block))
+    return '\n\n'.join(out)
+
+src = reflow(src)
+
 open(sys.argv[2], 'w', encoding='utf-8').write(header + src.strip() + '\n')
 print(f"wrote {sys.argv[2]}")

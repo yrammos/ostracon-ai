@@ -14,3 +14,6 @@ CLAUDE_md_ltex.json
 
 # Machine-specific Automator script (copy from automator/script.sh.example)
 automator/script.sh
+
+# LaTeX build artifacts from template test compiles
+prompt-context/out/
