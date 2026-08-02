@@ -134,7 +134,7 @@ The other paths (`pdf_in_folder`, `pdf_out_folder`, `template_file`, `claude_md_
 The optional `example_files` key loads two worked-example corpora from the biblatex-chicago package's own documentation:
 
 - `notes-test.bib` — the package's annotated test suite (203 entries, 32 of the ~40 entry types), where nearly every entry's `annote` explains _why_ that type and those fields were chosen. Converted to Unicode and normalized for this project.
-- `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived from `cms-notes-intro.tex` by `dev/extract_intro.py`. Bracketed names point at examples in `notes-test.bib`.
+- `cms-notes-intro-guide.md` — prose grouping entry types by kind of source, derived by `dev/extract_intro.py` from `cms-notes-intro.tex`, which ships with the package rather than being vendored here. Bracketed names point at examples in `notes-test.bib`.
 
 Where the field reference teaches _vocabulary_ (which fields a type takes), these teach _classification_ — what kind of thing a source is, and which type therefore fits. They add ~49,000 tokens to the prompt prefix.
 
@@ -277,15 +277,30 @@ ostracon-ai/
 │   ├── biblio-template.bib # One worked example per entry type, in this project's conventions
 │   ├── biblatex-chicago-notes-ref.md  # Condensed biblatex-chicago field and entry-type reference
 │   ├── notes-test.bib    # The package's annotated test suite (203 entries) — see Third-party material
-│   ├── cms-notes-intro-guide.md       # Entry-type guide derived from cms-notes-intro.tex
-│   └── cms-notes-intro.tex # Upstream source for the guide above (not sent to Claude)
+│   ├── cms-notes-intro-guide.md       # Entry-type guide derived from the package's cms-notes-intro.tex
+│   └── biblatex-chicago-fields.md     # Manual §4.2 verbatim; a consultation source, NOT loaded into
+│                         #   the prompt — an A/B found no benefit for ~45k extra tokens (dev/ab-findings.md)
 │
 ├── dev/                  # Developer tooling; nothing here runs during extraction
 │   ├── test_setup.py     # Checks dependencies, config, context files, and documentation drift
 │   ├── estimate_cost.py  # Measures the current prompt-cache cost profile
-│   ├── extract_intro.py  # Regenerates cms-notes-intro-guide.md from the upstream .tex
 │   ├── install_service.py # Builds and installs the macOS Quick Action
-│   └── normalization-plan.md # Draft plan for bringing a legacy .bib up to the current house style
+│   │
+│   │                     # Context generators — re-run after a package update, then diff
+│   ├── extract_intro.py  # Regenerates cms-notes-intro-guide.md from the package's .tex
+│   ├── extract_manual.py # Regenerates biblatex-chicago-fields.md from biblatex-chicago.tex
+│   ├── build_template.py # Regenerates biblio-template.bib from real biblio.bib entries
+│   │
+│   │                     # Legacy-library normalization (see normalization-plan.md)
+│   ├── bib_audit.py      # Read-only span scanner and the shared safety gates
+│   ├── bib_normalize.py  # Tier A transform; surgical span edits, never re-serialized
+│   ├── unwrap_names.py   # Removes whole-field \foreignlanguage wrappers from name fields
+│   ├── rewrap_names.py   # Re-applies them per name component, so biber still parses the name
+│   ├── bib_bisect.py     # Bisects for an entry that crashes BibDesk
+│   ├── normalization-plan.md # Method, decisions, and the current worklist
+│   │
+│   ├── ab_compare.py     # Scores two extraction runs against curated ground truth
+│   └── ab-findings.md    # Results of the §4.2 context experiment
 │
 ├── automator/
 │   ├── script.sh.example # Shell script template (copy to script.sh and edit)
@@ -377,10 +392,12 @@ Copyright (c) 2026 [yrammos](https://github.com/yrammos). Licensed under [CC BY-
 
 Three files are drawn from the [biblatex-chicago](https://ctan.org/pkg/biblatex-chicago) package (v2.3b, 2024-04-15), Copyright © 2008–2024 David Fussner, distributed under the [LaTeX Project Public License](https://www.latex-project.org/lppl/).
 
-| File                       | Origin                                                       | Modified                                                                                                                           |
-| -------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `cms-notes-intro.tex`      | package `doc/` directory                                     | no                                                                                                                                 |
-| `notes-test.bib`           | package `doc/` directory                                     | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges converted to single hyphens; no bibliographic content altered |
-| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged                                       |
+| File                            | Origin                                                          | Modified                                                                                                                          |
+| ------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `notes-test.bib`                | package `doc/` directory                                        | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges converted to single hyphens; no bibliographic content altered |
+| `cms-notes-intro-guide.md`      | derived from the package's `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged                          |
+| `biblatex-chicago-fields.md`    | derived from §4.2 of the package's `biblatex-chicago.tex` by `dev/extract_manual.py` | yes — LaTeX markup stripped, paragraphs reflowed, one heading added per field; wording unchanged                |
 
-Each file records its own provenance and modifications in a header, as the LPPL requires. `dev/extract_intro.py` is included so the derivation can be reproduced or re-run against a newer upstream release.
+The two `.tex` sources are not vendored here: they ship with the package, and the generated files are what this project consumes. Upstream drift therefore surfaces as a diff in the generated file when the script is re-run, which is the artifact that matters.
+
+Each file records its own provenance and modifications in a header, as the LPPL requires. `dev/extract_intro.py` and `dev/extract_manual.py` are included so the derivations can be reproduced or re-run against a newer upstream release.

@@ -293,6 +293,77 @@ academic years is a question for the maintainer.
 
 ---
 
+## Re-audit, 2026-08-02 — Tier A is complete
+
+`bib_normalize.py` proposes **0 edits, 0 entries touched** against the current
+file. Tier A is done; what follows is the state it left behind.
+
+| Rule | 2026-08-01 | now | note |
+|---|---|---|---|
+| unsplit `Title` | 2,043 | **8** (+6 `@Review`, likely exempt) | |
+| unsplit `Booktitle` | 216 | **2** | |
+| `Shorttitle` ≠ pre-colon segment | 175 | **3** | |
+| range punctuation | 51 combined | **1** | plus 13 `series-carries-division` |
+| non-ASCII title, no `Langid` | 269 | **193** | Tier B |
+| no `Date` at all | 84 | **85** | needs sources, not rules |
+| `keywords` present | 5,508 | 5,508 | decision: kept |
+| `Url` misplaced | 702 | **263** | see below |
+| `Shorttitle` redundant | 499 | **216** | see below |
+| `Shorttitle` missing | 1,280 | **1,730** | see below |
+
+### First task: the audit lags the decisions
+
+Three counts above are inflated because `bib_audit.py`'s rules were never
+updated when the decisions of 2026-08-01 refined them. The audit is a
+*reporting* tool and was left as first written; the normalizer got the refined
+logic. They now disagree, and the audit is the one that is wrong:
+
+- **`shorttitle-missing` 1,730.** The decision was that a merely colonless
+  title has no subtitle to hoist and needs no `Shorttitle`, which "drops the
+  rule from 1,280 to nil." The audit still applies the old test.
+- **`shorttitle-redundant` 216** against the normalizer's
+  `shorttitle-earned-KEPT` **225**. The audit flags as redundant the very
+  entries the normalizer correctly preserves — sealed colons, `@Review` titles.
+- **`url-misplaced` 263.** The policy was relaxed to one canonical locator per
+  entry: a `Url` beside a `Doi` goes, an entry without a `Doi` keeps its `Url`
+  whatever its type. The audit still tests by entry type.
+
+Reconcile these before triaging anything, or the worklist will be mostly
+phantoms. Nothing here indicates a defect in the library.
+
+### Worklist
+
+**Tier A stragglers — per-entry judgement, ~23 items.** 8 unsplit titles and 6
+`@Review`s that look exempt; 2 unsplit booktitles; 3 `Shorttitle` mismatches; 2
+raw quotation marks in titles; 1 `@Online` with no `Url` (`Gotham`, which also
+lacks a date and carries a stray `volume = {2}`); 1 range-punctuation case.
+
+**Two entries are well-formed nonsense, and this is the sharpest lesson of the
+pass.** `Smalley1997` carries a page range in `Volume` (`{107--126}`, with no
+`Pages` and no `Number`); `Williams1976` carries one in `Volumes` — the field
+meaning *number of volumes in a set* — and is typed `@Book` while having
+neither publisher nor location, though it looks like a journal article. Both
+were touched during the elided-range expansion, which applied the literal-field
+rule correctly to values sitting in the wrong fields, and so made the
+corruption look deliberate. **A rule that is right about punctuation can still
+be wrong about meaning; nothing in Tier A checks whether a value belongs in the
+field that holds it.** Worth a dedicated audit rule: numeric-looking ranges in
+`Volume`, `Volumes` or `Number`.
+
+**Tier B proper.** 193 non-ASCII titles with no `Langid`; 13 entries with a
+division left inside `Series`; and title case across the corpus — which the
+audit does not measure at all, and where compounds are the usual failure.
+
+**141 titles whose colon is sealed inside `\foreignlanguage`.** Deliberately
+not auto-split. Each needs the `Deliege2009` treatment: split by hand, both
+halves separately wrapped. Mostly Russian. Arguably Tier B, since it turns on
+reading the title.
+
+**85 entries with no `Date`, 44 with neither `Date` nor `Urldate`.** Data
+completion; needs the sources.
+
+---
+
 ## Tiering
 
 Sort every rule by whether the defect reaches the rendered page. This, not
