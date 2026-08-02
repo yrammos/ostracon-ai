@@ -362,6 +362,58 @@ reading the title.
 **85 entries with no `Date`, 44 with neither `Date` nor `Urldate`.** Data
 completion; needs the sources.
 
+### Session decisions, 2026-08-02 (Tier B kickoff)
+
+- **The no-date backlog is out of scope**, on the maintainer's instruction. The
+  85 undated entries and the 44 with neither `Date` nor `Urldate` are not
+  touched this pass and are not reported against.
+- **One consolidated worklist, not five review cycles.** The read-only work —
+  audit-rule fixes, title-case scoping, source lookups, and every proposal —
+  runs end to end unsupervised; the maintainer reviews once, and each approved
+  class is then applied in its own gated pass. Review time, not API cost, is
+  the constraint on this project, and five small proposal/review cycles spend
+  it five times over. Nothing writes to `biblio.bib` without sign-off, and
+  BibDesk is quit only with the maintainer's assent.
+- **Item 4 must precede the shorttitle rules, not follow them.** The 141
+  sealed-colon titles are exactly what fills the normalizer's
+  `shorttitle-earned-KEPT` bucket: they keep their `Shorttitle` only because
+  the splitter declines to act on a colon inside `\foreignlanguage`. Split them
+  by hand and each acquires a `Subtitle`, at which point those same
+  `Shorttitle` values become redundant under the never-both rule. So the order
+  is: fix the audit → do the 141 → *then* re-run the shorttitle rules. Running
+  them earlier only means running them twice.
+- **Title case has no measured scope yet, and none is asserted.** The audit has
+  never covered it. Two probes bound the problem loosely: 191 English titles
+  carry two or more lowercase non-stopwords, but the sample inspected was
+  dominated by `\bibstring{reviewof}` and `\mkbibquote` artefacts, so that
+  figure measures the probe's poor precision rather than the corpus; and 75
+  `Capital-lowercase` hyphen compounds (`Avant-garde`, `Post-modern`,
+  `Twenty-first`) each need a CMOS 8.161 judgement. `lower-lower` compounds
+  mid-title and ALL-CAPS imports remain unmeasured. A scoping pass precedes any
+  number.
+- **Snapshot labels must not be reused.** `bib_normalize.py --apply` writes
+  `biblio_<date>_pre-<label>.bib`, and `biblio_2026-08-02_pre-tier-b.bib` is
+  already occupied by a hand-made pristine backup taken before this session.
+  Re-running `--apply --label tier-b` today would overwrite the only fresh
+  clean copy with a post-edit state. Use a distinct label per apply —
+  `pre-stragglers`, `pre-langid`, `pre-colon-split`.
+- **Restore points as of this session**: `biblio_backup.bib` (the maintainer's
+  own, pre-normalization) and `biblio_2026-08-02_pre-tier-b.bib` (Tier A
+  complete, verified md5-identical to the live file at the time of copying).
+  The intermediate snapshots listed further up were deleted; those two are what
+  remains.
+- **Model**: `claude-opus-5` for the whole pass. The pipeline's `--model` flag
+  does not enter into it — normalization never invokes `src/extract.py`, so
+  this is a question about the interactive session alone. The test that decides
+  it is whether a wrong answer announces itself. Where output is checkable by
+  re-running something (the audit rules, the mechanical split generation) a
+  cheaper model would serve; where a wrong answer looks exactly like a right
+  one — a CMOS call on a compound, a boundary inside a Russian title — it buys
+  confidently wrong edits to an irreplaceable file, which is the one failure
+  mode the seven gates are structurally blind to. `CLAUDE.md`'s operator note
+  records `claude-sonnet-5` fabricating a publisher and a date on this
+  project's own comparison run. Invention, not omission.
+
 ---
 
 ## Tiering
