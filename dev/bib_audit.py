@@ -737,8 +737,22 @@ def run_rules(entries):
         # a real gap, not a pass.
         t = e.get("title")
         if t and not e.has("langid"):
-            if "\\foreignlanguage" in t.value:
+            # The wrapper must cover the WHOLE title. A `\foreignlanguage` round
+            # part of it marks an embedded foreign phrase -- most often the
+            # reviewed work's title in a `\bibstring{reviewof}` construction --
+            # and says nothing about the language of the entry itself. Rammos2018
+            # is an English review in Music & Letters of a French book; giving it
+            # Langid = {french} was the error the maintainer caught, so the rule
+            # must not ask for it back.
+            # `unwrap` also strips \mkbibquote and \mkbibemph, so testing it
+            # alone catches every English title that happens to sit inside a
+            # quotation -- 49 of them. The wrapper has to be \foreignlanguage
+            # specifically, and it has to be the outermost one.
+            if t.value.strip().startswith("\\foreignlanguage{") \
+                    and unwrap(t.value) != t.value.strip():
                 hit("wrapped-title-no-langid", e.citekey, t.value[:50])
+            elif "\\foreignlanguage" in t.value:
+                hit("partly-wrapped-title(embedded phrase)", e.citekey, t.value[:50])
             elif substantive_non_ascii(t.value):
                 hit("non-ascii-no-langid", e.citekey,
                     f"{''.join(sorted(set(substantive_non_ascii(t.value))))[:12]} | "
