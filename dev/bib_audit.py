@@ -771,11 +771,18 @@ def run_rules(entries):
             # alone catches every English title that happens to sit inside a
             # quotation -- 49 of them. The wrapper has to be \foreignlanguage
             # specifically, and it has to be the outermost one.
-            if t.value.strip().startswith("\\foreignlanguage{") \
-                    and unwrap(t.value) != t.value.strip():
-                hit("wrapped-title-no-langid", e.citekey, t.value[:50])
-            elif "\\foreignlanguage" in t.value:
-                hit("partly-wrapped-title(embedded phrase)", e.citekey, t.value[:50])
+            # ADVISORY, not a demand. A foreign-wrapped title is evidence about
+            # the *string*, never proof about the *entry*, and the assumption
+            # that the two coincide has been falsified twice: Rammos2018 is an
+            # English review of a French book, and Miucci2023 is a predominantly
+            # Anglophone journal whose series name happens to be German. Both
+            # correctly carry a wrapper and NO Langid. So this reports a title
+            # worth a glance; it does not say a Langid is missing.
+            if "\\foreignlanguage" in t.value:
+                whole = (t.value.strip().startswith("\\foreignlanguage{")
+                         and unwrap(t.value) != t.value.strip())
+                hit("foreign-text-in-title(langid?)", e.citekey,
+                    f"{'whole title' if whole else 'embedded phrase'}: {t.value[:44]}")
             elif substantive_non_ascii(t.value) and not looks_english(t.value):
                 hit("non-ascii-no-langid", e.citekey,
                     f"{''.join(sorted(set(substantive_non_ascii(t.value))))[:12]} | "
