@@ -506,7 +506,15 @@ def keeps_shorttitle(entry: Entry, title_value: str) -> bool:
     shorten it *to*, so the Shorttitle is simply redundant.
     """
     if entry.etype == "review":
-        return True                       # Title carries the reviewed work
+        # The Title carries the reviewed work, and the house short form
+        # truncates it at its colon and reduces the author to a surname. Where
+        # the reviewed title has neither -- `\bibstring{reviewof}
+        # \mkbibemph{Music Encoding Initiative}`, three words and no author --
+        # there is nothing to compress, and a Shorttitle would simply duplicate
+        # the Title. That is the same defect as Vanhandel2009's, which the
+        # maintainer ruled against on 2026-08-02, so the same test applies here.
+        return (":" in title_value
+                or "\\bibstring{by" in title_value.replace(" ", ""))
     if word_count(title_value) <= 6:
         return False
     if would_split(entry, title_value):
