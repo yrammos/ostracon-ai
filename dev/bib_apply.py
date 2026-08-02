@@ -55,6 +55,19 @@ from bib_normalize import (  # noqa: E402
 # before them, whatever the alphabet says.
 TRAILING = re.compile(r"^(bdsk-|local-url|remote-url|devonthink)")
 
+# The maintainer's protection list, exactly. It is deliberately NOT
+# bib_normalize.PROTECTED, which additionally guards `doi` -- that entry is a
+# self-imposed guard for the RULE-based pass, whose rules have no business
+# touching a DOI. This tool is driven by a hand-written list naming each entry
+# and field, so a deliberate DOI repair (Cone1982 held a full http:// URL with
+# %2F percent-encoding, which broke the build) is legitimate here and must not
+# be blocked by a guard the maintainer never asked for.
+PROTECTED_HERE = re.compile(
+    r"^(reference|date-added|date-modified|keywords|"
+    r"local-url(-\d+)?|remote-url(-\d+)?|devonthink\d*|"
+    r"bdsk-file(-\d+)?|bdsk-url(-\d+)?|rating|read)$"
+)
+
 
 def plan(text: str, entries, ops):
     edits, notes, problems = [], [], []
@@ -83,7 +96,7 @@ def plan(text: str, entries, ops):
         fname = op.get("field", "")
         fld = e.get(fname.lower()) if fname else None
 
-        if fname and PROTECTED.match(fname.lower()) and kind != "noop":
+        if fname and PROTECTED_HERE.match(fname.lower()) and kind != "noop":
             problems.append(f"{key}.{fname}: protected field, refusing")
             continue
 
@@ -231,7 +244,7 @@ def verify(original: str, result: str, edits):
 
     def protected_map(ents):
         return {(e.citekey, f.key): f.value
-                for e in ents for f in e.fields if PROTECTED.match(f.key)}
+                for e in ents for f in e.fields if PROTECTED_HERE.match(f.key)}
     pb, pa = protected_map(before_entries), protected_map(entries)
     if pb != pa:
         problems.append(f"{len(set(pb.items()) ^ set(pa.items()))} protected value(s) changed")
