@@ -127,6 +127,18 @@ def plan(text: str, entries, ops):
             edits.append(Edit(span[0], span[1], "", f"delete-{fname.lower()}",
                               key, before=fld.value[:70]))
 
+        elif kind == "dropentry":
+            # Removing a whole record, not a field. Deliberately awkward to
+            # reach for: BibDesk's static groups key on citekeys, so a deletion
+            # can break a group reference silently. Check the @comment plists
+            # for the bare key before using this, and check the entry carries no
+            # bdsk-file/local-url/devonthink attachment that would be orphaned.
+            start, end = e.span
+            while end < len(text) and text[end] in "\r\n":
+                end += 1                     # take the blank line after it too
+            edits.append(Edit(start, end, "", "dropentry", key,
+                              before=f"@{e.etype}, {len(e.fields)} fields"))
+
         elif kind == "add":
             if fld is not None:
                 problems.append(f"{key}.{fname}: already present; use `set`")
@@ -224,7 +236,7 @@ def _insertion(text: str, entry, name: str, value: str, skip=frozenset(),
     return base + len(earlier_pending), f"{lead}\n{indent}{name} = {{{value}}}"
 
 
-def verify(original: str, result: str, edits):
+def verify(original: str, result: str, edits, dropped=frozenset()):
     problems = []
     entries, opaque = scan(result)
     ok, why = roundtrip_ok(result, entries, opaque)
@@ -232,10 +244,15 @@ def verify(original: str, result: str, edits):
         problems.append(f"output fails round-trip scan: {why}")
 
     before_entries, _ = scan(original)
-    if len(entries) != len(before_entries):
-        problems.append(f"entry count changed: {len(before_entries)} -> {len(entries)}")
-    if [e.citekey for e in before_entries] != [e.citekey for e in entries]:
-        problems.append("citekeys changed or reordered")
+    # Entry count and citekey order must be unchanged EXCEPT for keys the edit
+    # list explicitly drops. Stated as a set difference rather than relaxed to a
+    # count, so a deletion the list did not ask for is still caught.
+    if len(entries) != len(before_entries) - len(dropped):
+        problems.append(f"entry count changed: {len(before_entries)} -> "
+                        f"{len(entries)} (expected {len(before_entries) - len(dropped)})")
+    want = [e.citekey for e in before_entries if e.citekey not in dropped]
+    if want != [e.citekey for e in entries]:
+        problems.append("citekeys changed or reordered beyond the requested drops")
 
     def comments(t):
         return [t[s:e] for s, e in scan(t)[1] if t[s:e].lstrip().startswith("@")]
@@ -243,8 +260,11 @@ def verify(original: str, result: str, edits):
         problems.append("@comment blocks (BibDesk groups) were modified")
 
     def protected_map(ents):
+        # A dropped entry takes its own protected fields with it; that is the
+        # deletion, not a modification. Everything else must still match.
         return {(e.citekey, f.key): f.value
-                for e in ents for f in e.fields if PROTECTED_HERE.match(f.key)}
+                for e in ents if e.citekey not in dropped
+                for f in e.fields if PROTECTED_HERE.match(f.key)}
     pb, pa = protected_map(before_entries), protected_map(entries)
     if pb != pa:
         problems.append(f"{len(set(pb.items()) ^ set(pa.items()))} protected value(s) changed")
@@ -266,7 +286,8 @@ def verify(original: str, result: str, edits):
     before_map = {e.citekey: original[e.span[0]:e.span[1]] for e in before_entries}
     after_map = {e.citekey: result[e.span[0]:e.span[1]] for e in entries}
     strayed = [k for k in before_map
-               if k not in touched and before_map[k] != after_map.get(k)]
+               if k not in touched and k not in dropped
+               and before_map[k] != after_map.get(k)]
     if strayed:
         problems.append(f"{len(strayed)} unnamed entry/entries changed: {strayed[:5]}")
 
@@ -334,7 +355,8 @@ def main():
         return 1
 
     result = apply_edits(original, edits)
-    vproblems = verify(original, result, edits)
+    dropped = {o["key"] for o in ops if o["op"] == "dropentry"}
+    vproblems = verify(original, result, edits, dropped)
 
     delta = sum(len(ed.text) - (ed.end - ed.start) for ed in edits)
     if len(result) != len(original) + delta:
@@ -369,6 +391,7 @@ def main():
                  "no field swallowed by a missing comma",
                  "no doubled commas",
                  "every entry NOT named in the edit list is byte-identical",
+                 f"{len(dropped)} entry/entries dropped, exactly as named",
                  f"length arithmetic exact ({delta:+d} bytes)",
                  f"independent parser (bibtool): {len(after_errs)} errors, same as input"):
         print(f"  PASS  {line}")
