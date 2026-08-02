@@ -288,6 +288,29 @@ UNDEFINED_MACRO = re.compile(
     r"number|edition|reprint|translation)\{")
 
 
+# English function words. Their presence is a far better signal of the title's
+# own language than the presence of an accented letter, which usually marks
+# nothing more than a foreign proper name inside an English title.
+ENGLISH_MARKERS = frozenset("""the of and in a an to for from with on at by as
+is are was were its his her their this that these those how why what when
+between through about into over under after before against toward towards""".split())
+
+
+def looks_english(value: str) -> bool:
+    r"""True where the title's own function words are English.
+
+    Written after reading all 92 hits of `non-ascii-no-langid` by hand and
+    finding that **every one** was an English title carrying a foreign name or
+    term -- `Bartók's 14 Bagatelles`, `Abbé Vogler's Theory of Reduction`, `The
+    Recordings of Joachim, Ysaÿe and Sarasate`. Firing on an accented character
+    measures the alphabet, not the language, and a rule that is wrong 92 times
+    out of 92 trains its reader to ignore it.
+    """
+    words = re.sub(r"[^A-Za-z' ]", " ",
+                   re.sub(r"\\[A-Za-z]+|[{}]", " ", value)).lower().split()
+    return sum(1 for w in words if w in ENGLISH_MARKERS) >= 2
+
+
 def substantive_non_ascii(value: str):
     """Non-ASCII characters that actually bear on the title's language."""
     return [c for c in value
@@ -753,7 +776,7 @@ def run_rules(entries):
                 hit("wrapped-title-no-langid", e.citekey, t.value[:50])
             elif "\\foreignlanguage" in t.value:
                 hit("partly-wrapped-title(embedded phrase)", e.citekey, t.value[:50])
-            elif substantive_non_ascii(t.value):
+            elif substantive_non_ascii(t.value) and not looks_english(t.value):
                 hit("non-ascii-no-langid", e.citekey,
                     f"{''.join(sorted(set(substantive_non_ascii(t.value))))[:12]} | "
                     f"{t.value[:40]}")
@@ -773,6 +796,22 @@ def run_rules(entries):
                 hit("ligature-artefact", e.citekey,
                     f"{f.key}: {m.group(0)!r} in "
                     f"{f.value[max(0, m.start() - 24):m.start() + 24]}")
+
+        # --- Truncated values --------------------------------------------
+        # A parenthesis that opens and never closes is the signature of a value
+        # cut off in transit. Eight fields carried one, and none was visible any
+        # other way: they parse, they compile, and they read as slightly odd
+        # titles. `Goebl2014`'s doi is the mirror image -- a stray `2014)` at
+        # the front, the tail of a citation string pasted in with it.
+        for f in e.fields:
+            if f.key.startswith(("bdsk-", "local-url", "remote-url",
+                                 "devonthink", "keywords", "abstract", "annote")):
+                continue
+            for opener, closer in (("(", ")"), ("[", "]")):
+                if f.value.count(opener) != f.value.count(closer):
+                    hit("unbalanced-delimiter", e.citekey,
+                        f"{f.key}: {f.value.count(opener)}x{opener} "
+                        f"{f.value.count(closer)}x{closer} -- {f.value[:52]}")
 
         # --- Macros the style does not define ----------------------------
         # `\reviewof{...}` looks entirely plausible -- `reviewof` IS a name in
