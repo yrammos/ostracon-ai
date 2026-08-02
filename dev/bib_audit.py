@@ -330,6 +330,12 @@ def word_count(value: str) -> int:
     return len([w for w in txt.split() if w.strip()])
 
 
+def _flatten(value: str) -> str:
+    """Comparable form: markup, brace and whitespace differences discounted."""
+    return re.sub(r"\s+", " ",
+                  re.sub(r"[{}\\]", "", value)).strip().lower().rstrip(".,;:?!")
+
+
 def repeated_ngram(value: str, n: int = 5):
     """The first n-word run that occurs twice in `value`, or None.
 
@@ -568,6 +574,12 @@ def run_rules(entries):
             verdict = shorttitle_verdict(e, t.value, e.has("subtitle"))
             if verdict == "redundant":
                 hit("shorttitle-redundant", e.citekey, t.value[:50])
+            # A Shorttitle equal to the Title shortens nothing. It slips past
+            # the redundancy rule because keeps_shorttitle sees a boundary mark
+            # and says "earned" -- true of the mark, false of this title, whose
+            # only mark is the final `?` with nothing after it to hoist.
+            if _flatten(st.value) == _flatten(t.value):
+                hit("shorttitle-equals-title", e.citekey, t.value[:60])
             hits = colon_at_top_level(t.value)
             if hits:
                 pre = t.value[: hits[0]].strip()
@@ -793,7 +805,14 @@ def merged_fields(text: str, entries):
     or deletes fields must run this over its output.
     """
     bad = []
-    pat = re.compile(r"[{}]|\n\s*[A-Za-z][-A-Za-z0-9]*\s*=\s*[{\"]")
+    # The lookahead is load-bearing. Consuming the opening `{` as part of the
+    # field header -- which this pattern did until 2026-08-02 -- means the brace
+    # never increments the depth, the closing `}` drives it to -1, and every
+    # subsequent header is rejected by the `depth == 0` test. The function then
+    # returns [] unconditionally: it reported clean on a synthetic entry whose
+    # `bookauthor` had demonstrably been swallowed. A gate that cannot fail is
+    # worse than no gate, because it is trusted.
+    pat = re.compile(r"[{}]|\n\s*[A-Za-z][-A-Za-z0-9]*\s*=\s*(?=[{\"])")
     for e in entries:
         for f in e.fields:
             depth = hits = 0

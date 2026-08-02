@@ -30,17 +30,18 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bib_audit import (  # noqa: E402
-    TERMINAL_SPLIT,
-    Entry,
     _at_top_level,
     bibtool_errors,
     colon_at_top_level,
     count_terminal,
+    Entry,
     full_stop_boundary,
+    merged_fields,
     roundtrip_ok,
     scan,
     SERIES_DIVISION,
     shorttitle_verdict,
+    TERMINAL_SPLIT,
     unwrap,
     url_is_earned,
     word_count,
@@ -440,6 +441,28 @@ def verify(original: str, result: str, edits):
             f"{len(diff)} protected field value(s) changed, e.g. "
             f"{list(diff)[:3]}")
 
+    # A field written without its trailing comma does not fail to parse: the
+    # scanner runs its span on to the next comma and swallows whatever follows,
+    # so two fields become one and the second disappears. Invisible to the span
+    # round-trip, to the arithmetic check and to bibtool alike -- only biber
+    # notices, by which time the entry is short of a name. Every rule here that
+    # inserts or deletes a field is exactly the operation this guards.
+    before_merged = merged_fields(original, before_entries)
+    after_merged = merged_fields(result, entries)
+    if len(after_merged) > len(before_merged):
+        new = [m for m in after_merged if m not in before_merged]
+        problems.append(f"{len(new)} field(s) swallowed by a missing comma, "
+                        f"e.g. {new[:3]}")
+
+    # The mirror-image failure: removing a field but leaving its comma behind,
+    # or inserting one that brings a second. Legal BibTeX, so nothing else
+    # objects, but it is not BibDesk's form and it compounds silently.
+    doubled = [e.citekey for e in entries
+               if re.search(r",\s*,", result[e.span[0]:e.span[1]])]
+    if doubled:
+        problems.append(f"{len(doubled)} entry/entries with a doubled comma, "
+                        f"e.g. {doubled[:3]}")
+
     # Idempotence: a second pass must propose nothing.
     again, _ = plan_edits(result, entries)
     if again:
@@ -568,6 +591,8 @@ def main():
     print("  PASS  @comment blocks (BibDesk groups) byte-identical")
     print("  PASS  no protected field altered")
     print("  PASS  idempotent (second pass proposes nothing)")
+    print("  PASS  no field swallowed by a missing comma (merged_fields)")
+    print("  PASS  no doubled commas")
     print(f"  PASS  length arithmetic exact ({delta:+d} bytes, scanner-independent)")
     print("  PASS  utf-8 round trip is the identity (line endings preserved)")
     print(f"  PASS  independent parser (bibtool): {len(_after)} errors, same as input")
