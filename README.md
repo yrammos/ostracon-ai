@@ -18,6 +18,7 @@ A Claude-powered macOS agent for generating BibLaTeX-Chicago entries from PDF fi
   - [macOS Quick Action (Recommended)](#macos-quick-action-recommended)
   - [Command Line](#command-line)
 - [Project Structure](#project-structure)
+- [Normalizing a legacy library](#normalizing-a-legacy-library)
 - [BibDesk Integration](#bibdesk-integration)
 - [Troubleshooting](#troubleshooting)
 - [Cost Estimate](#cost-estimate)
@@ -53,7 +54,7 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 1. Accepts one or more PDF and/or `.webloc` files as input.
 2. For a PDF: runs OCR if necessary, after prompting the user to select the text language, then extracts text from the first page (~450 words), the last page (~150 words), running headers/footers from each page, and embedded metadata.
 3. Sends all of the above to the Claude API together with the cached context prefix — the house-style guidelines, the entry-type template, the field reference, and the worked-example corpora — and asks Claude to generate a BibLaTeX-Chicago entry.
-4. Strips any field the guidelines forbid (ISSN, keywords, or `Url`/`Urldate` on an entry that is neither `@Online` nor undated) that Claude included anyway. A structural safeguard, because the prompt can be overgenerous.
+4. Strips any field the guidelines forbid (ISSN, ISBN, keywords, or a redundant `Url`) that Claude included anyway. A structural safeguard, because the prompt can be overgenerous. The `Url` rule is **one canonical locator per entry**: Chicago cites a DOI in preference to a URL, so a `Url` beside a `Doi` goes, while an entry with no DOI keeps its `Url` whatever its type — there the address is the only locator the style has to print.
 5. If required or desired fields for the entry type are still missing, searches CrossRef and, as a fallback, Google Scholar (via ScrapingDog) for the work, then merges any fields found via a second Claude pass.
 6. Audits the entry for fields filled from Claude's training-data recollection rather than the source text—a genuine failure mode with academic works Claude may recognize.
 7. Re-checks CrossRef/Scholar for recollection-based or missing container-level fields (editor, publisher, date). A conflicting value is applied automatically only when it comes from CrossRef and strictly completes the entry.
@@ -292,12 +293,11 @@ ostracon-ai/
 │   ├── build_template.py # Regenerates biblio-template.bib from real biblio.bib entries
 │   │
 │   │                     # Legacy-library normalization (see normalization-plan.md)
-│   ├── bib_audit.py      # Read-only span scanner and the shared safety gates
-│   ├── bib_normalize.py  # Tier A transform; surgical span edits, never re-serialized
-│   ├── unwrap_names.py   # Removes whole-field \foreignlanguage wrappers from name fields
-│   ├── rewrap_names.py   # Re-applies them per name component, so biber still parses the name
-│   ├── bib_bisect.py     # Bisects for an entry that crashes BibDesk
-│   ├── normalization-plan.md # Method, decisions, and the current worklist
+│   ├── bib_audit.py      # Read-only span scanner; also holds the predicates the other two import
+│   ├── bib_normalize.py  # Edits derived from a RULE firing across the corpus
+│   ├── bib_apply.py      # Edits from a NAMED JSON list, for what judgement must settle
+│   ├── bib_bisect.py     # Bisects for the one entry that breaks a build or crashes BibDesk
+│   ├── normalization-plan.md # Method, the four tiers, the ten gates, outstanding items
 │   │
 │   ├── ab_compare.py     # Scores two extraction runs against curated ground truth
 │   └── ab-findings.md    # Results of the §4.2 context experiment
@@ -308,6 +308,45 @@ ostracon-ai/
 ├── pdf-in/               # Drop PDFs and .webloc files here for batch processing (--all)
 └── pdf-out/              # Processed PDFs are moved here (webloc files are typically relocated by BibDesk instead—see below)
 ```
+
+## Normalizing a legacy library
+
+The agent writes new entries. A separate set of tools in `dev/` brings an
+*existing* `.bib` file into the same shape — built for a 5,745-entry BibDesk
+library and general enough to reuse. Nothing here runs during extraction.
+
+| tool | acts by | for |
+|---|---|---|
+| `dev/bib_audit.py` | — (read-only) | Counting. Parses by byte span, proves round-trip equality before reporting anything |
+| `dev/bib_normalize.py` | **rule** | Edits derived from a predicate that fires across the corpus |
+| `dev/bib_apply.py` | **name** | A JSON list of "in entry X, set field Y to Z", for what judgement rather than rule must settle |
+| `dev/bib_bisect.py` | subsetting | Isolates the one entry that breaks a build or crashes BibDesk |
+
+```bash
+python3 dev/bib_audit.py ~/Documents/Bibdesk/biblio.bib      # count, change nothing
+python3 dev/bib_normalize.py <file>                          # dry run, grouped by rule
+python3 dev/bib_normalize.py <file> --apply --label tier-a   # snapshot, then write
+```
+
+Three properties make this safe enough to run against an irreplaceable file:
+
+- **Never re-serialized.** Every change is a byte-span rewrite, so BibDesk's tab
+  indentation, its alphabetical field order, the multi-KB base64 in `bdsk-file-*`
+  and the two `@comment` blocks holding the group hierarchy all come through
+  untouched. The decisive argument is reviewability: surgical edits give a diff a
+  maintainer can skim.
+- **Ten gates** before any write — round-trip, entry count, citekey order,
+  `@comment` byte-identity, protected fields, swallowed fields, doubled commas,
+  length arithmetic (deliberately independent of the scanner), utf-8 identity,
+  and an independent `bibtool` parse.
+- **Leave untouched and report.** Anything the transform cannot handle
+  confidently stays as it is and goes into a worklist.
+
+`dev/normalization-plan.md` records the method, the tier taxonomy, and what
+remains. The most useful thing it documents is the class of defect nobody plans
+for: values that are **well-formed and wrong** — a page range sitting in
+`Volume`, a bare number in `Issuetitle`, a title stored twice — which parse,
+compile, and read as merely odd records.
 
 ## BibDesk Integration
 
@@ -349,7 +388,9 @@ OCR runs `--skip-text` first, which treats a page as done if it carries any text
 
 Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input at the default five-minute TTL, 2× at one hour, and cache reads 0.1×.
 
-The static prefix measures **61,879 tokens** (209,015 chars). Writing it costs $0.23; every later call in the same run reads it back for $0.019.
+The static prefix measures **~67,400 tokens** (227,637 chars). Writing it costs ~$0.25; every later call in the same run reads it back for ~$0.02.
+
+> The token figure is scaled from the last real measurement (61,879 tokens at 209,015 chars); the prefix has since grown by 9%, chiefly in `CLAUDE.md`. Re-run `python3 dev/estimate_cost.py` in the project's virtualenv for an exact count — it uses the API's `count_tokens` rather than a ratio. The per-call table below is likewise approximate until then.
 
 | Call             | Runs when                                   | First file | Later files |
 | ---------------- | ------------------------------------------- | ---------- | ----------- |

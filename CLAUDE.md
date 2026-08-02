@@ -94,7 +94,9 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
   - **The first/last inversion is lost.** Chicago prints a name "First Last" in every position except the leading one, and above all in the note, which is this style's primary citation form. Compiled proof: `Author = {\foreignlanguage{russian}{Акопян, Л.~О.}}` gives the note `Акопян, Л. О., Эвфония и парафония (…)`, whereas the unwrapped `Author = {Акопян, Л.~О.}` gives the correct `Л. О. Акопян, Эвфония и парафония (…)`. The bibliography looks identical either way — "Last, First" is right *there* — which is exactly why this hides.
   - **A name list collapses into a single person.** `{Ivanov, Ivan~I. and Petrov, Petr~P.}` wrapped renders as the one name `Ivanov, Ivan I. and Petrov, Petr P.`; unwrapped it renders as `Ivan I. Ivanov and Petr P. Petrov`, two people with Chicago's conjunction. This is a loss of bibliographic data, not merely of typography.
   - **Do not simply strip the wrapper instead: `Langid` does not compensate.** biblatex applies a language environment per entry only when the `autolang` package option asks it to, and `autolang` defaults to `none` — under which `Langid` is typographically inert. Verified by compiling a French title with no space before its question mark: wrapped, French spacing is inserted; bare with `Langid = {french}`, nothing happens. `autolang=hyphen` behaves the same here (it loads hyphenation patterns only). The loss is not theoretical even for names: with `autolang=none` a bare Cyrillic surname is offered English hyphenation patterns, which never match, so a long name will not break at all and overflows the measure — `Константинопольский` runs off the line bare, and hyphenates to `Константино-польский` when wrapped per component. Record `Langid` as well, for sorting and for tools that read it; the two are complementary, not alternatives.
-  - **Non-name fields** — `Title`, `Subtitle`, `Booktitle`, `Publisher`, `Location`, `Organization`, `Series`, `Note` — take a single wrapper around the whole value, since there is no name parser to obstruct.
+  - **Never write `\,` inside a name field — use `~`.** biber reads the comma in `\,` as the surname/forename separator, so `Author = {Harrison, Peter~M.\,C.}` is split three ways and written to the `.bbl` as `suffix={Peter\bibnamedelima M.\}` — a trailing backslash that escapes the closing brace, so the group never closes. One such entry broke the bibliography's list environment and orphaned 2,099 of 5,741 entries as `Lonely \item`. `~` is equally non-breaking and is the house form already: `Smith, John~A.`, `Harrison, Peter~M.~C.` Two neighbouring faults from the same family, both compile-proved: **`\and` is LaTeX's `\author` separator and is undefined in a bibliography field** — a list field such as `Location` is split on the bare word `and`, so write `Durham and London`; and **`\reviewof{…}` is not a command** — `reviewof` exists only as a bibstring and a `relatedtype`, so the form is `\bibstring{reviewof} \mkbibemph{…}`.
+  - **Non-name fields** — `Title`, `Subtitle`, `Booktitle`, `Publisher`, `Location`, `Organization`, `Series`, `Note` — take a single wrapper around the whole value, since there is no name parser to obstruct. A wrapper is evidence about the *string*, never about the *entry*: `Langid` records the language of the work being catalogued, so an English review of a French book, or an Anglophone journal with a German series name, correctly carries a `\foreignlanguage` wrapper and **no** `Langid`.
+  - **A TeX special left unescaped in a printed field halts the build.** `_` and `^` demand math mode; `&` is the alignment tab and opens a table cell; `%` comments out the rest of the line. Write `\_`, `\^{}`, `\&`. This does **not** apply to `Url`, `Doi` or `Eprint`, which are verbatim fields: there the raw characters are correct and escaping them corrupts the identifier — `\%20` renders as `%5C%20`, putting the backslash inside the address.
   - **Do not "solve" this by setting `autolang=other`.** It would make `Langid` do the whole job and render the wrappers redundant, but it also encloses the entry in the foreign language environment wholesale: key terms localise (`edited by` → `sous la direction de`), the page-range dash degrades from an en dash to a hyphen, and the full stop moves *outside* the closing quotation mark — which contradicts the Chicago punctuation rule stated above. Demonstrated by compilation. `autolang=none` is correct for this project.
   - **Inside a French wrapper, never type the space before `?`, `!`, `;` or `:`.** French sets a thin space there, and `polyglossia` inserts it on its own: `\foreignlanguage{french}{…faire ?}` and `\foreignlanguage{french}{…faire?}` render *identically*, as `faire ?`, in the full title and in the short note alike. Compile-proved, so by the operational test above this is a question of choice and the house form is the unspaced one — the source then says what the page shows. Typing it also invites disagreement between fields: `Rayna2014` ended up with a spaced `Title` and an unspaced `Shorttitle`, which look like different strings and are not. Two further traps:
     - **A tie on *both* sides is a defect, not redundancy.** `transfert~:~ lecture` adds a space after the colon that `polyglossia` does not intend. Write `transfert: lecture`.
@@ -123,6 +125,31 @@ In this repository, all four under `prompt-context/` (no network access needed; 
 - `biblio-template.bib` — **tier 3.** This project's house style, one worked example per entry type, drawn from `biblio.bib` by `dev/build_template.py`. Authoritative on presentation, not on which types exist. Doubles as the regression fixture: `dev/bib_normalize.py` must report 0 edits against it and it must compile without biber warnings.
 - `notes-test.bib` — **tier 1.** The package's annotated test suite (203 entries, 32 types), vendored verbatim. Authoritative on type and field semantics, and the first place to look when a field's behaviour is in question; most entries carry an `annote` saying why the type and field set follow from the source. Keep it byte-identical to upstream so it can be re-vendored and diffed.
 - `cms-notes-intro-guide.md` — **tier 1.** The package author's own introduction, `cms-notes-intro.tex`, mechanically *extracted* rather than summarised by `dev/extract_intro.py` from the copy that ships with the package (`texdoc -l cms-notes-intro` locates it; it is not vendored here): LaTeX scaffolding and the trailing database appendix are dropped (the latter duplicates `notes-test.bib`), the prose is kept whole, and each `Type -> worked example` mapping is rendered inline as `@Type [key]`. Re-run the script after a package update and diff this file.
+
+### The rules that are executable rather than written down
+
+Much of what this project has learned about how entries go wrong is not prose in
+this file but **rules in `dev/bib_audit.py`**, which is the right home for it:
+they are checkable, they run in a second over the whole library, and they cannot
+drift out of step with themselves. Consult them the way you would consult a
+checklist — `python3 dev/bib_audit.py <file>` prints a count per rule.
+
+They cover, among others: a value sitting in the wrong field (a page range in
+`Volume`, a bare number in `Issuetitle`); text doubled by a botched import;
+values truncated at an unclosed parenthesis; bibstring names written as commands
+(`\reviewof{}`); typographic ligatures (U+FB03 for "ffi"); and `Shorttitle`
+verdicts. Three programs, split by how they act:
+
+- **`dev/bib_audit.py`** — read-only counting, and the home of the **shared
+  predicates**. `bib_normalize.py` imports them; never reimplement one in the
+  audit, or the two will disagree and the audit will be the wrong one.
+- **`dev/bib_normalize.py`** — edits derived from a rule that fires across the
+  corpus.
+- **`dev/bib_apply.py`** — a named JSON edit list, for what judgement rather
+  than rule has to settle.
+
+All three write nothing without ten gates passing. `dev/normalization-plan.md`
+records the design; the entry-level history lives outside the repository.
 
 Upstream (consult when the local files are insufficient):
 
