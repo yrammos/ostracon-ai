@@ -624,8 +624,12 @@ def main():
     with open(args.path, "wb") as fh:      # binary: no newline translation
         fh.write(result.encode("utf-8"))
     print(f"Written:  {args.path}")
+    # `/bin/cp -f`, not `cp`: an interactive alias (cp -i) is common in a login
+    # profile, and with no tty it declines the overwrite, prints "not
+    # overwritten" on STDOUT and exits 1. A revert that quietly does nothing is
+    # the worst possible failure for this command. Verified in this environment.
     if not args.no_snapshot:
-        print(f"\nTo revert:  cp '{snap}' '{args.path}'")
+        print(f"\nTo revert:  /bin/cp -f '{snap}' '{args.path}'")
     return 0
 
 

@@ -279,6 +279,14 @@ TYPOGRAPHIC_NON_ASCII = "‘’“”–—…‑‐" \
 # `Mediæval` is an editorial choice, `Eﬃcient` is damage.
 LIGATURE = re.compile(r"[ﬀ-ﬆĲĳ]")
 
+# Bibstring names written as though they were commands. biblatex-chicago
+# defines these as localisation strings, never as macros, so `\reviewof{X}`
+# is an undefined control sequence that halts the build. The trap is that the
+# name is real -- only the calling convention is wrong.
+UNDEFINED_MACRO = re.compile(
+    r"\\(reviewof|byeditor|bytranslator|byauthor|nodate|newseries|volume|"
+    r"number|edition|reprint|translation)\{")
+
 
 def substantive_non_ascii(value: str):
     """Non-ASCII characters that actually bear on the title's language."""
@@ -503,8 +511,25 @@ def keeps_shorttitle(entry: Entry, title_value: str) -> bool:
         return False
     if would_split(entry, title_value):
         return False                      # Title will lose its subtitle anyway
-    return bool(BOUNDARY_MARK.search(title_value)
-                or full_stop_boundary(title_value) is not None)
+    return (has_hoistable_boundary(title_value)
+            or full_stop_boundary(title_value) is not None)
+
+
+def has_hoistable_boundary(value: str) -> bool:
+    """A `:`, `?` or `!` with something after it to shorten the title TO.
+
+    Maintainer's ruling, 2026-08-02. A title whose only mark is the closing
+    question mark -- "When Is the Brilliant Style Not the Brilliant Style?" --
+    has no shortened form: the guidelines say a Shorttitle is the title "up to
+    the mark", and here that is the whole title. Two entries had already
+    resolved it by storing a Shorttitle byte-identical to the Title, which
+    shortens nothing. Such a title is now treated exactly like one carrying no
+    mark at all, which is the redundant case.
+    """
+    for m in BOUNDARY_MARK.finditer(value):
+        if value[m.end():].strip().strip("}").strip():
+            return True
+    return False
 
 
 def shorttitle_verdict(entry: Entry, title_value: str, already_split: bool) -> str:
@@ -721,6 +746,21 @@ def run_rules(entries):
                 hit("ligature-artefact", e.citekey,
                     f"{f.key}: {m.group(0)!r} in "
                     f"{f.value[max(0, m.start() - 24):m.start() + 24]}")
+
+        # --- Macros the style does not define ----------------------------
+        # `\reviewof{...}` looks entirely plausible -- `reviewof` IS a name in
+        # biblatex-chicago -- but only as a bibstring and a relatedtype. There
+        # is no such command, so the entry is a build-breaker. It hid in
+        # `shorttitle` and `titleaddon` after the `title` occurrences were
+        # fixed, which is why this scans every field rather than the titles.
+        for f in e.fields:
+            if f.key.startswith(("bdsk-", "local-url", "remote-url",
+                                 "devonthink", "abstract")):
+                continue
+            for m in UNDEFINED_MACRO.finditer(f.value):
+                hit("undefined-macro", e.citekey,
+                    f"{f.key}: {m.group(0)} -- did you mean "
+                    f"\\bibstring{{{m.group(1)}}}?")
 
         # --- Straight quotes in title ------------------------------------
         if t and re.search(r"(?<![A-Za-z])['\"]", t.value) and "\\mkbibquote" not in t.value:
