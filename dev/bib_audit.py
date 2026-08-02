@@ -265,11 +265,63 @@ BAD_RANGE = re.compile(r"--|[\u2010\u2011\u2012\u2013\u2014\u2015]")
 
 NON_ASCII = re.compile(r"[^\x00-\x7F]")
 
+# Non-ASCII that says nothing about language. Curly quotes, dashes, an ellipsis
+# and a non-breaking hyphen are typography, not evidence of a foreign title, and
+# an English title full of them needs no Langid. They were 91 of the rule's 193
+# hits until 2026-08-02 -- very nearly half the finding, all of it noise.
+TYPOGRAPHIC_NON_ASCII = "‘’“”–—…‑‐" \
+                        "‒― ­′″°− " \
+                        " ‹›†‡©®™·"
+
+
+# U+FB00-FB06 (ff fi fl ffi ffl st) and U+0132/0133 (IJ ij). Deliberately NOT
+# Æ/æ/Œ/œ, which are letters of the alphabet in the languages that use them --
+# `Mediæval` is an editorial choice, `Eﬃcient` is damage.
+LIGATURE = re.compile(r"[ﬀ-ﬆĲĳ]")
+
+
+def substantive_non_ascii(value: str):
+    """Non-ASCII characters that actually bear on the title's language."""
+    return [c for c in value
+            if ord(c) > 127 and c not in TYPOGRAPHIC_NON_ASCII]
+
+# A whole field value that is nothing but an ascending numeric range. Deliberately
+# anchored: a range *inside* a title is ordinary, a range that IS the value of
+# `Volume`, `Volumes` or `Number` is the shape that needs looking at.
+WHOLE_NUMERIC_RANGE = re.compile(
+    r"^\s*(\d+)\s*(?:--|-|[\u2010\u2011\u2012\u2013\u2014\u2015])\s*(\d+)\s*$")
+
+# `boxer:china` in notes-test.bib: "the name of the series alone goes in series,
+# the rest in number". What counts as "the rest" is a named division or a volume
+# number, NOT any colon or digit -- "Harmonologia: Studies in Music Theory" and
+# "California Studies in 20th-Century Music" are whole series names, and firing
+# on those made 11 of the rule's 13 hits noise.
 SERIES_DIVISION = re.compile(
-    r"(\bReihe\b|\b\d+(st|nd|rd|th)\s+ser\.|\bser\.|\bn\.s\.|\bnew series\b|"
-    r"\bser[ií]e\b|\bBd\.|\bvol\.|[;:]|\d)",
+    r"(\bReihe\b|\bAbt(eilung)?\b|\bFolge\b|\bser[ií]e\b|"
+    r"\b\d+(st|nd|rd|th)\s+ser\.|\bser\.|\bn\.\s?s\.|\bnew series\b|"
+    r"\bBd\.|\bvol\.|\bno\.|"
+    r"[,;]\s*[IVXLC0-9]+\s*$|"          # trailing ", 135" or "; IV"
+    r"\s+[IVXLC]{1,6}\s*$|"             # trailing Roman numeral, e.g. "... X"
+    r"\s+\d{1,3}\s*$)",                 # trailing bare volume number
     re.IGNORECASE,
 )
+
+
+WHOLE_WRAPPER = re.compile(r"^\\(?:foreignlanguage\{[a-zA-Z]+\}|mkbibquote|mkbibemph)\{")
+
+
+def unwrap(value: str) -> str:
+    """The payload of a macro wrapping the WHOLE value, else the value itself.
+
+    Rules anchored on the end of a value are otherwise defeated by the closing
+    brace: `\\foreignlanguage{ngerman}{... Jahrhundert X}` does not end in `X`.
+    """
+    v = value.strip()
+    m = WHOLE_WRAPPER.match(v)
+    if not m:
+        return v
+    close = _matching_brace(v, m.end() - 1)
+    return v[m.end():close] if close == len(v) - 1 else v
 
 
 def word_count(value: str) -> int:
@@ -278,7 +330,207 @@ def word_count(value: str) -> int:
     return len([w for w in txt.split() if w.strip()])
 
 
+def repeated_ngram(value: str, n: int = 5):
+    """The first n-word run that occurs twice in `value`, or None.
+
+    Case- and punctuation-blind, because the doubling seen in this file is not
+    a clean copy: Sears2020 repeats its second half in lowercase and drops a
+    bracket. Five words rather than four: four fires on genuine anaphora.
+    """
+    words = re.sub(r"\s+", " ",
+                   re.sub(r"[^a-z0-9 ]", " ",
+                          re.sub(r"[{}\\]", " ", value).lower())).strip().split()
+    seen = set()
+    for i in range(len(words) - n + 1):
+        gram = " ".join(words[i:i + n])
+        if gram in seen:
+            return gram
+        seen.add(gram)
+    return None
+
+
 ONLINE_OK_TYPES = {"online"}
+
+
+# --------------------------------------------------------------------------
+# Shared predicates
+#
+# These live here, below the scanner, rather than in bib_normalize.py, so that
+# the audit and the normalizer answer the same question the same way. They were
+# written in the normalizer first, and for one day the two files disagreed:
+# three audit counts (1,730 / 216 / 263) were phantoms of rules the decisions of
+# 2026-08-01 had already superseded. The dependency arrow runs audit -> normalize
+# and cannot be reversed -- normalize already imports the scanner from here, so
+# importing back would be a module-level cycle. Hence: predicates move DOWN.
+# --------------------------------------------------------------------------
+
+# A title may be joined to its subtitle by terminal punctuation rather than a
+# colon. biblatex-chicago handles that itself: \subtitlepunct emits a bare space
+# when \ifterm is true and ": " otherwise, so a title ending in `?` or `!` gets
+# no interpolated colon. See `batson` in notes-test.bib.
+TERMINAL_SPLIT = re.compile(r"[?!](?=\s+[A-Z\\])")
+
+# `:`, `?`, `!` anywhere -- including sealed inside \foreignlanguage{} or
+# \mkbibquote{}, which is exactly the case that earns a Shorttitle.
+BOUNDARY_MARK = re.compile(r"[:?!]")
+
+# A full stop is the treacherous case: TeX's own spacefactor rule reads a period
+# after a capital as an abbreviation, and so must we. "J.\,S. Bach" and
+# "Pitch vs. Timbre" are not sentence boundaries.
+ABBREV = {"vs", "cf", "ed", "eds", "no", "op", "vol", "pt", "st", "ca",
+          "trans", "rev", "ser", "fig", "chap", "mr", "mrs", "dr", "jr", "sr"}
+
+
+def _at_top_level(value: str, pattern: re.Pattern):
+    """First match of `pattern` sitting at brace depth 0, else None.
+
+    Depth awareness is the whole point: a `?` inside
+    \\foreignlanguage{french}{... faire ? Dramatiser ...} punctuates the quoted
+    phrase, not the entry's title, and splitting there would tear a macro in half.
+    """
+    depth = 0
+    i = 0
+    n = len(value)
+    while i < n:
+        c = value[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif depth == 0:
+            m = pattern.match(value, i)
+            if m:
+                return m
+        i += 1
+    return None
+
+
+def count_terminal(value: str) -> int:
+    """How many `?`/`!` sit at brace depth 0."""
+    depth = n = i = 0
+    while i < len(value):
+        c = value[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif depth == 0 and c in "?!":
+            n += 1
+        i += 1
+    return n
+
+
+def _token_before(value: str, i: int) -> str:
+    return re.split(r"[\s~{}(),]", value[:i].rstrip("."))[-1]
+
+
+def full_stop_boundary(value: str):
+    """Offset of a full stop that genuinely ends a sentence, else None.
+
+    Deliberately conservative: this only ever feeds a report, never an edit,
+    because deciding where a period ends a title and where it abbreviates a name
+    is judgment the renderer cannot make on our behalf.
+    """
+    pat = re.compile(r"\.(?=\s+[A-Z\\])")
+    depth = 0
+    i = 0
+    while i < len(value):
+        c = value[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif depth == 0 and pat.match(value, i):
+            tok = _token_before(value, i)
+            if not (len(tok) <= 1 or tok.isupper()
+                    or tok.lower().strip(".") in ABBREV):
+                return i                   # a real sentence end, not an initial
+        i += 1
+    return None
+
+
+def would_split(entry: Entry, value: str) -> bool:
+    """True if the splitter would act on this title in this pass."""
+    if entry.etype == "review":
+        return False
+    hits = colon_at_top_level(value)
+    if len(hits) == 1:
+        return True
+    if hits:
+        return False                      # multi-colon: declined
+    if ": " in value:
+        return False                      # sealed inside a macro: declined
+    if full_stop_boundary(value) is not None:
+        return False                      # reported, never split
+    return bool(_at_top_level(value, TERMINAL_SPLIT)) and count_terminal(value) == 1
+
+
+def keeps_shorttitle(entry: Entry, title_value: str) -> bool:
+    r"""True where Shorttitle is earned rather than redundant.
+
+    CLAUDE.md: use Shorttitle "only when the title could not be split and the
+    full title is more than six words long". Both halves matter, and the first is
+    the one that is easy to get wrong.
+
+    "Could not be split" is not the same as "has no colon". A title whose
+    boundary mark is sealed inside a macro -- `\foreignlanguage{russian}{О
+    воспитании дирижера: Очерки}`, or Kretschmer2008's `\mkbibquote{...Idee?}` --
+    carries a boundary the splitter deliberately declines to act on, so the
+    Shorttitle stays and does real work. Likewise a title ending in `?`, which
+    has nothing after the mark to hoist into a Subtitle.
+
+    A title with no boundary mark at all is a different case: there is nothing to
+    shorten it *to*, so the Shorttitle is simply redundant.
+    """
+    if entry.etype == "review":
+        return True                       # Title carries the reviewed work
+    if word_count(title_value) <= 6:
+        return False
+    if would_split(entry, title_value):
+        return False                      # Title will lose its subtitle anyway
+    return bool(BOUNDARY_MARK.search(title_value)
+                or full_stop_boundary(title_value) is not None)
+
+
+def shorttitle_verdict(entry: Entry, title_value: str, already_split: bool) -> str:
+    """`earned` | `redundant` | `deferred`, for an entry that HAS a Shorttitle.
+
+    `deferred` means the Title still carries a top-level colon: the splitter will
+    act on it, and the disposition follows from that, not from here.
+    """
+    if not already_split and keeps_shorttitle(entry, title_value):
+        return "earned"
+    if already_split or not colon_at_top_level(title_value):
+        return "redundant"
+    return "deferred"
+
+
+def url_is_earned(entry: Entry) -> bool:
+    """True where the entry's `Url` is the locator biblatex-chicago would print.
+
+    The one-canonical-locator rule of 2026-08-01, not the old test by entry type:
+    Chicago cites a DOI in preference to a URL, so a `Url` beside a `Doi` is
+    redundant; where there is no DOI the address is the only locator the style
+    has, so it stays whatever the type.
+    """
+    sub = entry.get("entrysubtype")
+    online_ref = (
+        entry.etype in ("inreference", "reference")
+        and sub is not None
+        and sub.value.strip().lower() == "online"
+    )
+    return (entry.etype == "online" or online_ref
+            or not (entry.has("date") or entry.has("year"))
+            or not entry.has("doi"))
 
 
 def run_rules(entries):
@@ -306,18 +558,31 @@ def run_rules(entries):
                 hit(rule, e.citekey, detail)
 
         # --- Redundant / missing shorttitle ----------------------------
+        # Both tests defer to the shared predicates above. Testing "has no
+        # colon" here instead -- as this rule did until 2026-08-02 -- inflated
+        # `shorttitle-missing` to 1,730 and `shorttitle-redundant` to 216, the
+        # latter naming precisely the entries the normalizer correctly keeps.
         st = e.get("shorttitle")
         t = e.get("title")
         if st and t:
-            if not colon_at_top_level(t.value) and not e.has("subtitle"):
-                hit("shorttitle-redundant", e.citekey, "")
-            else:
-                pre = t.value[: colon_at_top_level(t.value)[0]].strip() if colon_at_top_level(t.value) else ""
+            verdict = shorttitle_verdict(e, t.value, e.has("subtitle"))
+            if verdict == "redundant":
+                hit("shorttitle-redundant", e.citekey, t.value[:50])
+            hits = colon_at_top_level(t.value)
+            if hits:
+                pre = t.value[: hits[0]].strip()
                 if pre and st.value.strip() != pre:
-                    hit("shorttitle-mismatch", e.citekey, f"{st.value[:40]!r} vs {pre[:40]!r}")
-        if t and not st:
-            if not colon_at_top_level(t.value) and word_count(t.value) > 6:
-                hit("shorttitle-missing", e.citekey, f"{word_count(t.value)} words")
+                    hit("shorttitle-mismatch", e.citekey,
+                        f"{st.value[:40]!r} vs {pre[:40]!r}")
+        if t and not st and keeps_shorttitle(e, t.value):
+            # @Review is asymmetric: keeps_shorttitle answers "keep the one it
+            # has?", and for a review that is unconditionally yes because the
+            # Title encodes the reviewed work. Repurposed as "should it have
+            # one?" that flags every review without a Shorttitle -- a different
+            # finding from the Tier A sense, so it gets its own bucket.
+            rule = ("shorttitle-missing-REVIEW" if e.etype == "review"
+                    else "shorttitle-missing")
+            hit(rule, e.citekey, f"{word_count(t.value)} words: {t.value[:40]}")
 
         # --- Range punctuation -----------------------------------------
         for rf in RANGE_FIELDS:
@@ -333,23 +598,73 @@ def run_rules(entries):
             hit("keywords-present(DECISION)", e.citekey, "")
 
         # --- Url placement ---------------------------------------------
+        # One canonical locator per entry, not the old test by entry type,
+        # which flagged 263 entries the relaxed policy of 2026-08-01 permits.
         url = e.get("url")
-        if url:
-            online_ref = (
-                e.etype in ("inreference", "reference")
-                and (e.get("entrysubtype") or Field("", "", "", (0, 0), (0, 0))).value.strip().lower() == "online"
-            )
-            if e.etype not in ONLINE_OK_TYPES and not online_ref and e.has("date"):
-                hit("url-misplaced", e.citekey, e.etype)
+        if url and not url_is_earned(e):
+            hit("url-misplaced", e.citekey, f"{e.etype}, has doi")
         if e.etype in ONLINE_OK_TYPES and not url:
             hit("online-without-url", e.citekey, "")
         if not e.has("date") and not e.has("urldate"):
             hit("undated-no-urldate", e.citekey, e.etype)
 
+        # --- A value in the wrong field ----------------------------------
+        # Nothing in Tier A checks whether a value BELONGS in the field that
+        # holds it. Smalley1997 carries a page range in `Volume`; Williams1976
+        # carries one in `Volumes`, the field meaning *number of volumes in a
+        # set*. The elided-range expansion then applied the literal-field rule
+        # correctly to both, which made the corruption look deliberate.
+        #
+        # Precision matters here: `Number = {1--2}` is house style for a double
+        # issue and must not be reported. The discriminators are the field's own
+        # meaning and the absence of the field the value probably belongs in.
+        for nf in ("volumes", "volume", "number"):
+            f = e.get(nf)
+            if not f:
+                continue
+            m = WHOLE_NUMERIC_RANGE.match(f.value)
+            if not m:
+                continue
+            lo, hi = int(m.group(1)), int(m.group(2))
+            detail = (f"{nf}={f.value.strip()} [{e.etype}"
+                      f"{'' if e.has('pages') else ', NO pages'}"
+                      f"{'' if e.has('number') or nf == 'number' else ', no number'}]")
+            if nf == "volumes":
+                # A count cannot be a range. Always wrong.
+                hit("range-in-count-field", e.citekey, detail)
+            elif not e.has("pages") and (hi - lo) >= 3:
+                # A wide range with no Pages field is the Smalley shape: the
+                # page range has been parked in a numbering field.
+                hit("range-in-numbering-field", e.citekey, detail)
+            elif nf == "number":
+                hit("number-range(double-issue?)", e.citekey, detail)
+            else:
+                hit("volume-range-REVIEW", e.citekey, detail)
+
+        # `Issuetitle` is the *title* of a themed issue -- "The Baroque Body",
+        # not "49". A bare number there is the tell for a whole field set shifted
+        # one place left: volume -> issuetitle, number -> volume, pages -> number.
+        it = e.get("issuetitle")
+        if it and re.match(r"^\s*\d+\s*$", it.value):
+            g = lambda k: (e.get(k).value.strip() if e.get(k) else "-")  # noqa: E731
+            hit("numeric-issuetitle(rotation?)", e.citekey,
+                f"issuetitle={g('issuetitle')} volume={g('volume')} "
+                f"number={g('number')} pages={g('pages')}")
+
+        # --- Text doubled by a botched import ----------------------------
+        # Sibling of the rotation above, same root cause and same disguise: the
+        # value parses, renders, and reads as an over-long title. A repeated
+        # five-word run is the discriminator -- four words catches genuine
+        # anaphora ("The Washing of the Word, the Washing of the World").
+        for tf in ("title", "subtitle", "booktitle", "booksubtitle"):
+            f = e.get(tf)
+            if f and repeated_ngram(f.value):
+                hit("doubled-text-in-title", e.citekey, f"{tf}: {f.value[:60]}")
+
         # --- Series / Number -------------------------------------------
         s = e.get("series")
-        if s and SERIES_DIVISION.search(s.value):
-            hit("series-carries-division", e.citekey, s.value[:50])
+        if s and SERIES_DIVISION.search(unwrap(s.value)):
+            hit("series-carries-division", e.citekey, s.value[:60])
         num = e.get("number")
         if s and num and num.value.strip() and num.value.strip() in s.value:
             hit("number-duplicated-in-series", e.citekey, num.value[:20])
@@ -365,10 +680,35 @@ def run_rules(entries):
                 break
 
         # --- Language markers --------------------------------------------
+        # Two distinct populations, and the second is the larger one the rule
+        # could not see: a title already wrapped in \foreignlanguage but with no
+        # Langid recorded. CLAUDE.md wants both -- the wrapper for typography,
+        # Langid for sorting and for tools that read it -- so a wrapper alone is
+        # a real gap, not a pass.
         t = e.get("title")
-        if t and NON_ASCII.search(t.value) and not e.has("langid") \
-                and "\\foreignlanguage" not in t.value:
-            hit("non-ascii-no-langid", e.citekey, t.value[:40])
+        if t and not e.has("langid"):
+            if "\\foreignlanguage" in t.value:
+                hit("wrapped-title-no-langid", e.citekey, t.value[:50])
+            elif substantive_non_ascii(t.value):
+                hit("non-ascii-no-langid", e.citekey,
+                    f"{''.join(sorted(set(substantive_non_ascii(t.value))))[:12]} | "
+                    f"{t.value[:40]}")
+
+        # --- PDF extraction artefacts ------------------------------------
+        # A typographic ligature is a glyph, not a character: "Eﬃcient" with
+        # U+FB03 is what a PDF copy-paste leaves behind. It renders acceptably
+        # and so survives every other check, but it defeats search, sorting and
+        # hyphenation. Same family as the `hĴp://` and `hps://` URLs already on
+        # the url-malformed list, where the tt ligature was mangled or dropped.
+        for f in e.fields:
+            if f.key.startswith(("bdsk-", "local-url", "remote-url",
+                                 "devonthink", "abstract", "keywords")):
+                continue
+            m = LIGATURE.search(f.value)
+            if m:
+                hit("ligature-artefact", e.citekey,
+                    f"{f.key}: {m.group(0)!r} in "
+                    f"{f.value[max(0, m.start() - 24):m.start() + 24]}")
 
         # --- Straight quotes in title ------------------------------------
         if t and re.search(r"(?<![A-Za-z])['\"]", t.value) and "\\mkbibquote" not in t.value:

@@ -30,11 +30,20 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bib_audit import (  # noqa: E402
+    TERMINAL_SPLIT,
     Entry,
+    _at_top_level,
     bibtool_errors,
     colon_at_top_level,
+    count_terminal,
+    full_stop_boundary,
     roundtrip_ok,
     scan,
+    SERIES_DIVISION,
+    shorttitle_verdict,
+    unwrap,
+    url_is_earned,
+    word_count,
 )
 
 # --------------------------------------------------------------------------
@@ -83,156 +92,17 @@ EN_DASH_FIELDS = ("number", "volume", "volumes", "title", "subtitle",
 NUM_RANGE = re.compile(r"(?<![\d-])(\d+)(\s*)-(\s*)(\d+)(?![\d-])")
 
 
-# A title may also be joined to its subtitle by terminal punctuation rather
-# than a colon. biblatex-chicago handles that itself: \subtitlepunct emits a
-# bare space when \ifterm is true and ": " otherwise, so a title ending in
-# `?`, `!` or `.` gets no interpolated colon. The package's own test suite
-# says so outright -- see `batson` in notes-test.bib, whose annote reads
-# "you no longer need to include the subtitle in the title field when the
-# latter ends in a question mark, as the styles now do the right thing
-# automatically." So these ARE splittable, and the title keeps its mark.
-TERMINAL_SPLIT = re.compile(r"[?!](?=\s+[A-Z\\])")
+# The title-boundary predicates -- TERMINAL_SPLIT, _at_top_level,
+# count_terminal, full_stop_boundary, would_split, keeps_shorttitle,
+# shorttitle_verdict, url_is_earned -- were written here and now live in
+# bib_audit.py, imported above. They moved so that the audit and this pass
+# cannot drift apart; for one day they had, and three audit counts were
+# phantoms. See the "Shared predicates" block there for the reasoning.
 
 # French typography puts a non-breaking space before a colon, so the colon we
 # drop can strand a `~` or `\,` at the end of the title. Absorb it with the
 # colon rather than leaving it dangling.
 TRAILING_GLUE = re.compile(r"(?:~|\\,|\\ |\s)+$")
-
-
-def _at_top_level(value: str, pattern: re.Pattern):
-    """First match of `pattern` sitting at brace depth 0, else None.
-
-    Depth awareness is the whole point: a `?` inside
-    \\foreignlanguage{french}{... faire ? Dramatiser ...} punctuates the
-    quoted phrase, not the entry's title, and splitting there would tear a
-    macro in half.
-    """
-    depth = 0
-    i = 0
-    n = len(value)
-    while i < n:
-        c = value[i]
-        if c == "\\":
-            i += 2
-            continue
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-        elif depth == 0:
-            m = pattern.match(value, i)
-            if m:
-                return m
-        i += 1
-    return None
-
-def count_terminal(value: str) -> int:
-    """How many `?`/`!` sit at brace depth 0."""
-    depth = n = i = 0
-    while i < len(value):
-        c = value[i]
-        if c == "\\":
-            i += 2
-            continue
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-        elif depth == 0 and c in "?!":
-            n += 1
-        i += 1
-    return n
-
-
-# A full stop is the treacherous case: TeX's own spacefactor rule reads a
-# period after a capital as an abbreviation, and so must we. "J.\,S. Bach"
-# and "Pitch vs. Timbre" are not sentence boundaries.
-ABBREV = {"vs", "cf", "ed", "eds", "no", "op", "vol", "pt", "st", "ca",
-          "trans", "rev", "ser", "fig", "chap", "mr", "mrs", "dr", "jr", "sr"}
-
-
-def word_count(value: str) -> int:
-    txt = re.sub(r"\\[A-Za-z]+\s*", " ", value)
-    return len(re.sub(r"[{}]", " ", txt).split())
-
-
-def _token_before(value: str, i: int) -> str:
-    return re.split(r"[\s~{}(),]", value[:i].rstrip("."))[-1]
-
-
-def full_stop_boundary(value: str):
-    """Offset of a full stop that genuinely ends a sentence, else None.
-
-    Deliberately conservative: this only ever feeds a report, never an edit,
-    because deciding where a period ends a title and where it abbreviates a
-    name is judgment the renderer cannot make on our behalf.
-    """
-    pat = re.compile(r"\.(?=\s+[A-Z\\])")
-    depth = 0
-    i = 0
-    while i < len(value):
-        c = value[i]
-        if c == "\\":
-            i += 2
-            continue
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-        elif depth == 0 and pat.match(value, i):
-            tok = _token_before(value, i)
-            if not (len(tok) <= 1 or tok.isupper()
-                    or tok.lower().strip(".") in ABBREV):
-                return i                   # a real sentence end, not an initial
-        i += 1
-    return None
-
-
-def would_split(entry: Entry, value: str) -> bool:
-    """True if the splitter would act on this title in this pass."""
-    if entry.etype == "review":
-        return False
-    hits = colon_at_top_level(value)
-    if len(hits) == 1:
-        return True
-    if hits:
-        return False                      # multi-colon: declined
-    if ": " in value:
-        return False                      # sealed inside a macro: declined
-    if full_stop_boundary(value) is not None:
-        return False                      # reported, never split
-    return bool(_at_top_level(value, TERMINAL_SPLIT)) and count_terminal(value) == 1
-
-
-# `:`, `?`, `!` anywhere -- including inside \foreignlanguage{} or \mkbibquote{}.
-BOUNDARY_MARK = re.compile(r"[:?!]")
-
-
-def keeps_shorttitle(entry: Entry, title_value: str) -> bool:
-    r"""True where Shorttitle is earned rather than redundant.
-
-    CLAUDE.md: use Shorttitle "only when the title could not be split and the
-    full title is more than six words long". Both halves matter, and the first
-    is the one that is easy to get wrong.
-
-    "Could not be split" is not the same as "has no colon". A title whose
-    boundary mark is sealed inside a macro -- `\foreignlanguage{russian}{О
-    воспитании дирижера: Очерки}`, or Kretschmer2008's `\mkbibquote{...Idee?}`
-    -- carries a boundary the splitter deliberately declines to act on, so the
-    Shorttitle stays and does real work. Likewise a title ending in `?`, which
-    has nothing after the mark to hoist into a Subtitle.
-
-    A title with no boundary mark at all is a different case: there is nothing
-    to shorten it *to*, so the Shorttitle is simply redundant.
-    """
-    if entry.etype == "review":
-        return True                       # Title carries the reviewed work
-    if word_count(title_value) <= 6:
-        return False
-    if would_split(entry, title_value):
-        return False                      # Title will lose its subtitle anyway
-    return bool(BOUNDARY_MARK.search(title_value)
-                or full_stop_boundary(title_value) is not None)
 
 
 def snapshot_path(path: str, label: str) -> str:
@@ -409,10 +279,11 @@ def plan_edits(text: str, entries):
         if st and t:
             effective = split_head if split_head is not None else t.value
             already_split = split_head is not None or e.has("subtitle")
-            if not already_split and keeps_shorttitle(e, effective):
+            verdict = shorttitle_verdict(e, effective, already_split)
+            if verdict == "earned":
                 reports["shorttitle-earned-KEPT"].append(
                     (e.citekey, effective[:70]))
-            elif already_split or not colon_at_top_level(t.value):
+            elif verdict == "redundant":
                 span = field_removal_span(text, e, st)
                 rule = ("drop-shorttitle-after-split" if already_split
                         else "drop-shorttitle-redundant")
@@ -483,20 +354,11 @@ def plan_edits(text: str, entries):
             reports["url-malformed-REVIEW"].append(
                 (e.citekey, url.value[:66]))
         if url:
-            sub = e.get("entrysubtype")
-            online_ref = (
-                e.etype in ("inreference", "reference")
-                and sub is not None
-                and sub.value.strip().lower() == "online"
-            )
             # Chicago cites a DOI in preference to a URL, so a `Url` beside a
             # `Doi` is redundant and goes. Where there is no DOI the address
             # is the only locator the style would print, so it stays -- even
             # on an entry type that would not otherwise carry one.
-            keep = (e.etype == "online" or online_ref
-                    or not (e.has("date") or e.has("year"))
-                    or not e.has("doi"))
-            if not keep:
+            if not url_is_earned(e):
                 if url.value.strip() not in protected_urls:
                     reports["url-sole-copy-KEPT"].append(
                         (e.citekey, url.value[:60]))
@@ -516,7 +378,7 @@ def plan_edits(text: str, entries):
 
         # ---- Report-only: needs a maintainer decision, never rewritten
         s = e.get("series")
-        if s and re.search(r"(\bReihe\b|\bser\.|\bn\.s\.|[;:])", s.value, re.I):
+        if s and SERIES_DIVISION.search(unwrap(s.value)):
             reports["series-division-REVIEW"].append((e.citekey, s.value[:70]))
 
     return edits, reports
