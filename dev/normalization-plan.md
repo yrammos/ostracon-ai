@@ -416,6 +416,104 @@ completion; needs the sources.
 
 ---
 
+## The read-only pass, 2026-08-02 — audit reconciled, worklist delivered
+
+Ran end to end without checking in, as agreed. `biblio.bib` is byte-identical
+to `biblio_2026-08-02_pre-tier-b.bib` at the end of it; nothing was written.
+The worklist itself is `~/Documents/Bibdesk/biblio-worklist_1.md`, with two
+companion tables beside it — kept out of the repo, like the changelog, because
+it quotes the library.
+
+**The audit's rules now share the normalizer's predicates rather than
+paraphrasing them.** `would_split`, `keeps_shorttitle`, `shorttitle_verdict`,
+`url_is_earned`, `full_stop_boundary` and the rest moved *down* into
+`bib_audit.py`, which the normalizer already imports; importing the other way
+would be a module-level cycle. Behaviour is unchanged — 0 edits proposed
+before and after, every gate green, 0 on the template fixture — and the three
+phantom counts resolve to 71 / 0 / 0.
+
+**Two rules were imprecise rather than stale**, and the difference matters:
+`non-ascii-no-langid` fell 193 → 102 once curly quotes and en dashes stopped
+counting as evidence of a foreign title, and `series-carries-division` fell
+13 → 1 once "any colon or digit" gave way to a named division or a trailing
+volume number. Both had been reported as findings for a day.
+
+### What the fourth rule actually found
+
+The plan asked for one rule about numeric ranges in `Volume`/`Volumes`/
+`Number`. Written with the discriminators that give it precision — the field's
+own meaning, and the absence of `Pages`, since `Number = {1--2}` is house style
+for a double issue — it returned 23 rather than 2, and pulled a second rule
+after it: a bare number in `Issuetitle`, which is the tell for a whole field
+set shifted one place left. 38 entries in total, verified against Crossref.
+
+**`Williams1976` is the specimen.** Its `volumes = {2461--2478}` is not a range
+at all: it is the issue number `2` welded to the page range `461-478`. Tier A's
+elided-range expansion then set a correctly-typeset en dash inside a number
+that never existed. The generalisation the plan drew from these two entries was
+right and understated — *a rule that is right about punctuation can still be
+wrong about meaning* — and the corollary is that the tidier the pass, the
+better the disguise.
+
+Two further classes fell out of looking at the same failure mode:
+
+- **Doubled text in a title** (5 hits, 4 genuine). `Sculley2008` holds its
+  entire title twice; `Sears2020` holds its second half twice, the repeat
+  lowercased and missing a bracket. A repeated five-word run discriminates;
+  four also catches genuine anaphora.
+- **Ligature artefacts** (3). U+FB03 in "Eﬃcient" is a glyph, not a character.
+  It renders acceptably and defeats search, sorting and hyphenation — the same
+  family as the `hĴp://` and `hps://` URLs already on the malformed list.
+
+### The sealed-colon population is 226, not 141
+
+The missing 85 are `@Review` entries: the normalizer's R1 returns early on
+`@Review` and reports only when the colon is at top level, so a review with a
+*sealed* colon fell through silently. 121 of the 226 split cleanly; the other
+105 are correctly declined.
+
+**Output-neutrality was compiled, not assumed**, per the plan's own operational
+test — and it does not hold uniformly. Russian, German, Greek and Italian
+splits render byte-for-byte identically. **French does not**: with the colon
+sealed inside `\foreignlanguage{french}{…}`, French typography sets its thin
+space (`musicale : une introduction`); split, biblatex supplies the colon
+outside the French environment and Chicago spacing results
+(`musicale: une introduction`). 22 of the 121 are French. The change is
+right — the colon belongs to the citation, not the title — but it is a change,
+and calling the whole class "neutral" would have been false.
+
+### Title case, measured at last
+
+5,243 English entries, eight fields, brace-depth-zero text only so that
+embedded work titles and foreign phrases are skipped. **305 entries** carry a
+capitalized preposition CMOS 8.159 lowercases, at ~90% precision — `From` (61),
+`Between` (38), `With` (36), `Through` (36). **64 hyphen compounds** need a
+CMOS 8.161 call each. 81 lowercase hits are foreign particles and correct as
+they stand; 120 ALL-CAPS runs are almost entirely legitimate acronyms, so that
+bucket is now measured and empty rather than merely unexamined.
+
+The plan's warning about the first probe was well taken, and the trap was
+narrower than "macro artefacts": I first applied the *length* rule for
+lowercasing prepositions, which is AP's. CMOS lowercases them regardless of
+length, so `between` and `through` were being reported as errors when they were
+already right.
+
+### Corrections to this document
+
+- **The snapshot hazard does not exist.** The session note above says re-running
+  `--apply --label tier-b` would overwrite `biblio_2026-08-02_pre-tier-b.bib`.
+  `snapshot_path()` has a never-clobber loop and would have written
+  `…_pre-tier-b-2.bib`. Distinct labels remain right practice, but no guarding
+  should be built around a hazard that is not there.
+- **13 `@Review` entries are almost certainly mistyped.** 137 of 150 encode the
+  reviewed work via `\bibstring{reviewof}`; these thirteen carry ordinary
+  titles, one of them a bare `interview by Fred Orton and Gavin Bryars`.
+  Reported, not acted on, per the Risks section — but they bear on sequencing,
+  because `keeps_shorttitle` grants `@Review` an unconditional exemption and
+  these thirteen are drawing a pass they have not earned.
+
+---
+
 ## Tiering
 
 Sort every rule by whether the defect reaches the rendered page. This, not
