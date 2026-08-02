@@ -279,6 +279,11 @@ TYPOGRAPHIC_NON_ASCII = "‘’“”–—…‑‐" \
 # `Mediæval` is an editorial choice, `Eﬃcient` is damage.
 LIGATURE = re.compile(r"[ﬀ-ﬆĲĳ]")
 
+# A LaTeX accent macro: \"{o}, \'e, \`{a}, \^o, \~n, \={u}, \.z. Group 1 is
+# the accent, group 2 the letter -- enough to tell a legitimate `\'{e}` from a
+# diaeresis planted on a consonant.
+ACCENT_MACRO = re.compile(r'\\(["\'`^~=.])\{?([A-Za-z])\}?')
+
 # Bibstring names written as though they were commands. biblatex-chicago
 # defines these as localisation strings, never as macros, so `\reviewof{X}`
 # is an undefined control sequence that halts the build. The trap is that the
@@ -819,6 +824,24 @@ def run_rules(entries):
                     hit("unbalanced-delimiter", e.citekey,
                         f"{f.key}: {f.value.count(opener)}x{opener} "
                         f"{f.value.count(closer)}x{closer} -- {f.value[:52]}")
+
+        # --- LaTeX accent macros -----------------------------------------
+        # This library writes accented letters as Unicode; a `\"{}`-style macro
+        # is a leftover from some earlier encoding and worth reporting on sight,
+        # because a misapplied one is invisible in the .bib and only shows on
+        # the page. `Vanhande\"{l}` put a diaeresis on an `l` -- not a letter in
+        # any language -- and rendered as `Vanhandel,̈ ...`. It surfaced only
+        # when the SHORT-note form was compiled, which is the form the
+        # maintainer actually cites with.
+        for f in e.fields:
+            if f.key.startswith(("bdsk-", "local-url", "remote-url",
+                                 "devonthink", "abstract", "annote")):
+                continue
+            for m in ACCENT_MACRO.finditer(f.value):
+                impossible = m.group(2).lower() in "bcdfghjklmnpqrstvwxz" \
+                    and m.group(1) == '"'
+                hit("accent-macro" + ("-IMPOSSIBLE" if impossible else ""),
+                    e.citekey, f"{f.key}: {m.group(0)!r} in {f.value[:44]}")
 
         # --- Macros the style does not define ----------------------------
         # `\reviewof{...}` looks entirely plausible -- `reviewof` IS a name in

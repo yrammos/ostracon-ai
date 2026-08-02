@@ -388,18 +388,26 @@ OCR runs `--skip-text` first, which treats a page as done if it carries any text
 
 Claude API calls dominate. At `claude-sonnet-4-6` rates ($3/$15 per 1M input/output tokens), cache writes cost 1.25× input at the default five-minute TTL, 2× at one hour, and cache reads 0.1×.
 
-The static prefix measures **~67,400 tokens** (227,637 chars). Writing it costs ~$0.25; every later call in the same run reads it back for ~$0.02.
+The static prefix measures **67,813 tokens** (229,207 chars). Writing it costs $0.25 at the five-minute TTL, $0.41 at one hour; every later call in the same run reads it back for $0.020.
 
-> The token figure is scaled from the last real measurement (61,879 tokens at 209,015 chars); the prefix has since grown by 9%, chiefly in `CLAUDE.md`. Re-run `python3 dev/estimate_cost.py` in the project's virtualenv for an exact count — it uses the API's `count_tokens` rather than a ratio. The per-call table below is likewise approximate until then.
+| component | tokens |
+| --------- | -----: |
+| annotated test suite (`notes-test.bib`) | 46,302 |
+| `CLAUDE.md` | 10,393 |
+| field reference | 4,959 |
+| entry-type guide | 3,208 |
+| `biblio-template.bib` | 2,242 |
+
+> Measured by `dev/estimate_cost.py --no-api`, which uses the project's own 3.38 chars/token ratio. Dropping `--no-api` counts exactly via the API's `count_tokens`; that path needs API credit.
 
 | Call             | Runs when                                   | First file | Later files |
 | ---------------- | ------------------------------------------- | ---------- | ----------- |
-| Extraction       | always                                      | $0.25      | $0.03       |
-| Grounding audit  | `enrich_missing_fields: true` (default)     | $0.005     | $0.005      |
-| Enrichment merge | required/desired fields missing             | $0.03      | $0.03       |
-| Reconciliation   | a CrossRef match strictly completes a value | $0.03      | $0.03       |
+| Extraction       | always                                      | $0.272     | $0.038      |
+| Grounding audit  | `enrich_missing_fields: true` (default)     | $0.007     | $0.007      |
+| Enrichment merge | required/desired fields missing             | $0.028     | $0.028      |
+| Reconciliation   | a CrossRef match strictly completes a value | $0.028     | $0.028      |
 
-A clean source costs **~$0.25 for the first file in a run and ~$0.04 for each one after**; if all four calls fire, **~$0.30 and ~$0.09**.
+A clean source costs **$0.28 for the first file in a run and $0.05 for each one after**; if all four calls fire, **$0.33 and $0.10**.
 
 Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts rather than completes, is flagged for review without reaching that fourth call — so the worst case remains rare.
 
@@ -407,15 +415,15 @@ Reconciliation is conservative — a Scholar-sourced conflict, or a CrossRef val
 
 The prefix is written once per run and read thereafter, so cost turns on how often a run starts without a warm cache. At the default five-minute TTL the cache does not survive between separate Quick Action invocations.
 
-| Usage pattern                             | 5-minute TTL | 1-hour TTL |
-| ----------------------------------------- | ------------ | ---------- |
-| One batch of 10, nothing else that hour   | $0.60        | $0.74      |
-| Two batches of 5, 20 minutes apart        | $0.81        | $0.74      |
-| 10 single-file invocations across an hour | $2.52        | $0.74      |
+| Usage pattern                             | 5-minute TTL | 1-hour TTL | cheaper |
+| ----------------------------------------- | ------------ | ---------- | ------- |
+| One batch of 10, nothing else that hour   | $0.69        | $0.84      | 5m      |
+| Two batches of 5, 20 minutes apart        | $0.92        | $0.84      | 1h      |
+| 10 single-file invocations across an hour | $2.79        | $0.84      | 1h      |
 
-The one-hour TTL costs a flat **$0.14 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays the extra write immediately.
+The one-hour TTL costs a flat **$0.15 more per cache write** and nothing more per file, so it loses only when a run is genuinely isolated. Any second run within the hour — batch or single — repays the extra write immediately.
 
-To cut the prefix instead: dropping `notes-test.bib` from `example_files` while keeping `cms-notes-intro-guide.md` leaves ~15,500 tokens and a ~$0.08 first file — retaining the entry-type taxonomy while shedding most of the annotated examples.
+To cut the prefix instead: `notes-test.bib` is 46,302 of the 67,813 tokens, so dropping it from `example_files` while keeping `cms-notes-intro-guide.md` leaves ~21,500 and a much cheaper first file — retaining the entry-type taxonomy while shedding most of the annotated examples. Weigh that against what the suite is for: it is the tier-1 authority on what each type and field *does*.
 
 These figures are produced by `dev/estimate_cost.py`, which measures the real assembled prompt with `count_tokens` rather than restating hardcoded numbers. Re-run it (`python3 dev/estimate_cost.py --model <id>`) after changing the prefix or model.
 
