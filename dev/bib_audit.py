@@ -611,7 +611,12 @@ def run_rules(entries):
                 if pre and st.value.strip() != pre:
                     hit("shorttitle-mismatch", e.citekey,
                         f"{st.value[:40]!r} vs {pre[:40]!r}")
-        if t and not st and keeps_shorttitle(e, t.value):
+        # `and not e.has("subtitle")`: an entry must never carry both. Where a
+        # Subtitle exists the Title is already the short form and short notes
+        # fall back to it, so there is nothing for a Shorttitle to do. Omitting
+        # this test made the rule ask for two Shorttitles that would have
+        # violated the never-both rule the moment they were written.
+        if t and not st and not e.has("subtitle") and keeps_shorttitle(e, t.value):
             # @Review is asymmetric: keeps_shorttitle answers "keep the one it
             # has?", and for a review that is unconditionally yes because the
             # Title encodes the reviewed work. Repurposed as "should it have
