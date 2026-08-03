@@ -279,6 +279,10 @@ TYPOGRAPHIC_NON_ASCII = "‘’“”–—…‑‐" \
 # `Mediæval` is an editorial choice, `Eﬃcient` is damage.
 LIGATURE = re.compile(r"[ﬀ-ﬆĲĳ]")
 
+# Two-argument macros whose second argument is missing: the closing `}` of the
+# first argument is not followed immediately by `{`.
+TWO_ARG_MACRO = re.compile(r"\\foreignlanguage\{[a-zA-Z]+\}(?!\{)")
+
 # A LaTeX accent macro: \"{o}, \'e, \`{a}, \^o, \~n, \={u}, \.z. Group 1 is
 # the accent, group 2 the letter -- enough to tell a legitimate `\'{e}` from a
 # diaeresis planted on a consonant.
@@ -842,6 +846,24 @@ def run_rules(entries):
                     and m.group(1) == '"'
                 hit("accent-macro" + ("-IMPOSSIBLE" if impossible else ""),
                     e.citekey, f"{f.key}: {m.group(0)!r} in {f.value[:44]}")
+
+        # --- Macros called with the wrong number of arguments -------------
+        # `\foreignlanguage` takes TWO. Written with one, it grabs whatever
+        # token follows, which is either loud or silent depending on what that
+        # is. Loud: `\foreignlanguage{ngerman} \mkbibquote{Und so weiter}`
+        # swallows the macro and strands its braces — csquotes reports
+        # "unbalanced groups" and the build stops. Silent, and worse:
+        # `\foreignlanguage{italian}Andante con variazioni` takes only the `A`,
+        # so every letter but the first is set in the wrong language, with no
+        # error at all. Both shapes were in the library; only the first was
+        # findable any other way.
+        for f in e.fields:
+            if f.key.startswith(("bdsk-", "local-url", "remote-url",
+                                 "devonthink", "keywords", "abstract")):
+                continue
+            for m in TWO_ARG_MACRO.finditer(f.value):
+                hit("macro-missing-argument", e.citekey,
+                    f"{f.key}: {f.value[max(0, m.start() - 12):m.end() + 30]}")
 
         # --- Macros the style does not define ----------------------------
         # `\reviewof{...}` looks entirely plausible -- `reviewof` IS a name in
