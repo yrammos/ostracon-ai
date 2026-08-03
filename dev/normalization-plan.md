@@ -149,6 +149,26 @@ executable rather than remembered.
    colon, `\autocap` in subtitles, `version` vs `edition` on `@Online`, and
    whether `%` in a `url` needs escaping — on which reasoning alone had me
    wrong, and my "fix" made three URLs worse.
+6. **Compile with the maintainer's own preamble, not a minimal one.** This is
+   the rule that cost the most to learn, because a wrong harness does not fail —
+   it answers confidently. Four false findings came from it, none from the data:
+   - **Missing `\setotherlanguages` entries** made polyglossia raise its error
+     *inside* biblatex's text macro, producing 12 of 16 "errors".
+   - **`pdflatex` exhausting memory** before reaching the bibliography made a
+     bisect report "clean" over a file that demonstrably failed.
+   - **A missing `csquotes`** invented an `\mkbibquote` nesting "defect". I
+     reverted a correct encoding to an inferior one, then proposed a brace
+     workaround that would have degraded it further. With `csquotes` — which the
+     maintainer loads — the original was already textbook Chicago.
+   - **The wrong engine.** The preamble is `pdflatex` (`inputenc` +
+     `fontenc[T1,T2A]`); run under `lualatex` the T2A Cyrillic fonts are not
+     found at all — 19,651 missing characters — and the resulting internal
+     errors sent a bisect to an entirely innocent entry.
+
+   A corollary for the probe itself: it needs **three** LaTeX passes, and it must
+   refuse to answer when the compile dies early. And check the harness's own
+   escaping — one "clean" result came from a shell heredoc turning
+   `\foreignlanguage` into `\\foreignlanguage`, so the test was testing nothing.
 
 ### Snapshots, not git
 
