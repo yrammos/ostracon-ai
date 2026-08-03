@@ -348,6 +348,50 @@ for: values that are **well-formed and wrong** — a page range sitting in
 `Volume`, a bare number in `Issuetitle`, a title stored twice — which parse,
 compile, and read as merely odd records.
 
+
+### Keeping it normalized
+
+Entries added by the agent will mostly conform, but "mostly" is the operative
+word — several defect classes in the original library came from earlier
+extraction runs, not from hand editing. Three checks, in increasing cost:
+
+```bash
+# 1. Read-only, one second. Anything outside the known-steady buckets is new.
+python3 dev/bib_audit.py ~/Documents/Bibdesk/biblio.bib
+
+# 2. Dry run. Should report 0 edits; anything else is mechanically fixable.
+python3 dev/bib_normalize.py ~/Documents/Bibdesk/biblio.bib
+
+# 3. Compile with YOUR OWN preamble and engine. This is the one that
+#    catches what no static rule can.
+```
+
+The audit's steady state is not zero — several buckets are standing decisions or
+absent data rather than defects, and they should be read as a baseline:
+`keywords` (a decision to keep), `number-range` (double issues are house style),
+`no-date` and `undated-no-urldate` (missing data), `volume-range` (genuine
+combined volumes), `non-ascii-no-langid` (English titles carrying a foreign
+name), `foreign-text-in-title` (advisory). A *new* rule firing, or a jump in one
+of these, is the signal.
+
+**Step 3 is not optional, and it must use your real preamble.** Every fault that
+static checking missed was found by compiling: a `\,` in a name field that made
+biber mis-parse the name and orphaned three quarters of the bibliography; an
+unescaped `_`; `\reviewof{}`, which looks correct because `reviewof` is a real
+bibstring but is not a command; `\foreignlanguage` called with one argument
+instead of two, silently setting all but the first letter in the wrong language.
+None of these is visible in the `.bib`, and none produces a biber error.
+
+Equally, a compile against the *wrong* preamble produces confident false
+findings — a missing package, a missing language, or the wrong engine will each
+invent defects that are not there. `dev/normalization-plan.md` records four such
+episodes in detail.
+
+When a compile does fail, `dev/bib_bisect.py` isolates the entry by writing
+subsets and testing them. Run it with the same preamble as the failing document,
+three LaTeX passes, and a guard that refuses to answer when the compile dies
+early.
+
 ## BibDesk Integration
 
 By default the agent writes to the file set in `main_bib_file` (`config.yaml`), which you import into BibDesk manually. Each entry includes a `bdsk-file-1` bookmark to the source PDF or `.webloc` file.

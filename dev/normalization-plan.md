@@ -11,6 +11,59 @@ changed on instruction.
 
 ---
 
+## Status, 2026-08-03 — normalization is complete
+
+Every defect class found in this work now reports **0**. What the audit still
+counts is either a standing decision or absent data, and that is the baseline to
+read future runs against:
+
+| bucket | n | why it is not a defect |
+|---|---|---|
+| `keywords-present` | 5,507 | maintainer's decision to keep a decade of tagging |
+| `number-range` | 82 | `Number = {1--2}` is house style for a double issue |
+| `no-date` | 67 | absent data; 55 carry a `Urldate`, which IS the dating evidence |
+| `non-ascii-no-langid` | 43 | English titles carrying a foreign proper name |
+| `undated-no-urldate` | 12 | no dating evidence of any kind; tabulated for the maintainer |
+| `volume-range-REVIEW` | 11 | genuine combined volumes (*Theory and Practice* 49–50 and the like), all but one with `Pages` to prove it |
+| `foreign-text-in-title` | 7 | advisory: a wrapper is evidence about the string, never the entry |
+| `shorttitle-missing` | 2 | `Tremblay2016` is a standing exception |
+| `doubled-text-in-title` | 1 | `Duerksen2009`'s repetition is genuine |
+
+**A new rule firing, or a jump in one of these, is the signal.** Zero is not the
+target and never was.
+
+### Picking this up later
+
+1. `python3 dev/bib_audit.py <file>` — compare against the table above.
+2. `python3 dev/bib_normalize.py <file>` — must report 0 edits.
+3. `python3 dev/bib_normalize.py prompt-context/biblio-template.bib` — the
+   regression fixture, also 0.
+4. Compile with the maintainer's own preamble and engine (see constraint 6).
+
+Entry-level history is in `~/Documents/Bibdesk/biblio-changelog_{1,2}.md`;
+outstanding data questions in `biblio-undated_1.md` and the
+`biblio-worklist_1*` files. All are outside the repository because they quote
+the library.
+
+### Open questions the maintainer has not settled
+
+- **1,749 of 1,834 `\foreignlanguage` wrappers (95%, in 496 entries) are
+  redundant** under `autolang=other`, where the entry's `Langid` already
+  encloses the record — proved by compilation, byte-identical output. Only 85
+  are load-bearing: 81 on entries with no `Langid`, 4 naming a genuinely
+  different language. Kept, because they document intent and keep the `.bib`
+  independent of one document's package options.
+- **Eight transliterated/Cyrillic duplicate pairs**, kept on instruction.
+  `Senderovic1987a` has a `rating` its twin lacks, so a future merge has a
+  direction.
+- **Transliterated titles**: whether a Latin-transliterated Russian or Persian
+  title takes a `Langid` and a wrapper is unruled. `Talai` and the transliterated
+  Russian entries currently have neither, consistently.
+- **12 entries with no dating evidence**, three of which (`SchumannSchenker*`)
+  have no attachment, imprint or identifier and are a keep-or-delete decision.
+
+---
+
 ## Status, 2026-08-02
 
 | | |
