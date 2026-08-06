@@ -527,15 +527,26 @@ Measured on BibDesk 1.9.12 and DEVONthink 4.3.2:
   within 0.33 s of an explicit save immediately afterwards. So this runs on
   deliberate saves only, never on a timer.
 
-**Budget about 5 s per save, or 23 s if DEVONthink is cold.** The parse is ~4.5 s
-on a 5,700-entry library and DEVONthink's first lookup costs a one-off ~18 s of
-warm-up. BibDesk gives no indication that anything is running, so the first save
-of the day looks like a stall. Leaving DEVONthink open avoids it.
+**Budget about 1.5 s per save, or 20 s if DEVONthink is cold** — the first figure
+projected from the measured parts rather than timed under the hook, since the
+5 s it replaces was 4.5 s scan. The scan of a 5,700-entry library now costs ~1 s;
+DEVONthink's first lookup still costs a one-off ~18 s of warm-up. BibDesk gives
+no indication that anything is running, so the first save of the day still looks
+like a stall. Leaving DEVONthink open avoids it.
 
-If that cost grates, the useful optimisation is to skip the DEVONthink step
-entirely when the union holds no attachment deficits: an entry that merely
-*changed* usually needs nothing from DEVONthink, and today every changed entry
-pays for a lookup regardless.
+The scan used to be the larger half of the warm case at ~4.5 s. Nearly all of it
+was two per-character loops in `bib_audit`'s scanner walking 16.7 MB in Python;
+stepping between significant characters with a compiled pattern instead cut
+`scan()` from 4.24 s to 0.77 s, measured, with byte-identical output. Everything
+built on that scanner moved with it — the audit from 4.8 s to 1.4 s, a
+`bib_normalize` dry run from 28 s to 8 s.
+
+What remains of the cold case is DEVONthink's warm-up alone. **Proposed, not
+built:** skip the DEVONthink step when nothing in scope needs it. An entry that
+merely *changed* usually wants nothing from DEVONthink, yet today every one pays
+for a lookup. `addLocalURLs` already computes the discriminator — it writes only
+where a path has actually moved — so running it first and gating the DEVONthink
+step on `deficit > 0 or paths written > 0` would need no extra Apple events.
 
 Renaming records safely is a separate tool, `dtrename`, kept in the author's
 dotfiles and linked into DEVONthink's own Rename menu. Renaming a file inside a

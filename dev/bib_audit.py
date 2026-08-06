@@ -49,24 +49,43 @@ class Entry:
         return self.get(key) is not None
 
 
+# Every character that can move the brace or comma state machines below. The
+# backslash is in both because it escapes the character after it: without it,
+# `\{` and `\}` would be counted and every entry containing one would close at
+# the wrong byte.
+_BRACE_STEP = re.compile(r"[\\{}]")
+_COMMA_STEP = re.compile(r"[\\{}\",]")
+
+
 def _matching_brace(text: str, start: int):
-    """Index of the `}` closing the `{` at `start`, or None if unbalanced."""
+    """Index of the `}` closing the `{` at `start`, or None if unbalanced.
+
+    Jumps between significant characters with a compiled pattern instead of
+    walking every character in Python. On a 5,700-entry library the two are
+    called ~175,000 times over 16.7 MB, and the per-character form accounted
+    for 3.9 s of scan()'s 4.2 s -- which is most of what a `nrch` run costs
+    on every save. `search(text, i)` rather than `search(text[i:])`: the
+    latter copies the remaining megabytes on each call and is slower than
+    what it replaces.
+    """
     depth = 0
     i = start
-    n = len(text)
-    while i < n:
-        c = text[i]
+    while True:
+        m = _BRACE_STEP.search(text, i)
+        if m is None:
+            return None
+        i = m.start()
+        c = m.group()
         if c == "\\":
             i += 2
             continue
         if c == "{":
             depth += 1
-        elif c == "}":
+        else:
             depth -= 1
             if depth == 0:
                 return i
         i += 1
-    return None
 
 
 ENTRY_RE = re.compile(r"^@([A-Za-z]+)\s*\{", re.MULTILINE)
@@ -130,12 +149,22 @@ def _parse_entry(text: str, etype: str, start: int, brace: int, close: int) -> E
 
 
 def _top_level_comma(s: str, start: int):
+    """Index of the next comma outside braces and quotes, or None.
+
+    Same jump-to-the-next-significant-character shape as _matching_brace, and
+    the same escape rule. A `"` toggles quoting only at depth 0, as before:
+    inside braces it is ordinary text, so `{a "b}, c` still breaks at the
+    comma.
+    """
     depth = 0
     in_quote = False
     i = start
-    n = len(s)
-    while i < n:
-        c = s[i]
+    while True:
+        m = _COMMA_STEP.search(s, i)
+        if m is None:
+            return None
+        i = m.start()
+        c = m.group()
         if c == "\\":
             i += 2
             continue
@@ -143,12 +172,12 @@ def _top_level_comma(s: str, start: int):
             depth += 1
         elif c == "}":
             depth -= 1
-        elif c == '"' and depth == 0:
-            in_quote = not in_quote
-        elif c == "," and depth == 0 and not in_quote:
+        elif c == '"':
+            if depth == 0:
+                in_quote = not in_quote
+        elif depth == 0 and not in_quote:
             return i
         i += 1
-    return None
 
 
 FIELD_RE = re.compile(r"^(\s*)([A-Za-z][A-Za-z0-9_+:-]*)(\s*=\s*)(.*)$", re.DOTALL)

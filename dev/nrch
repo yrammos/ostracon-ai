@@ -3,7 +3,7 @@
 #
 #   ./nrch              enrich whatever needs it (changed since the stamp, plus
 #                       any entry short of Local-Url*/Devonthink*)
-#   ./nrch --audit      ignore the stamp and re-examine every entry (~96 s)
+#   ./nrch --audit      ignore the stamp and re-examine every entry (~92 s)
 #   ./nrch --selection  act on the current BibDesk selection only
 #
 # Orthogonal to nrmlz on purpose: this touches the BibDesk database, nrmlz
