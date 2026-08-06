@@ -443,11 +443,41 @@ Two things that will not be caught otherwise:
 - **A missing stamp means a full pass.** Around ninety seconds — fine, but do not
   mistake it for a hang.
 
+### Running it on save instead
+
 `nrch.applescript` also defines the `perform BibDesk action` handler, so it can
-be registered on BibDesk's **Save Document** script hook and run unprompted.
-Measured on DEVONthink 4.3.2 and BibDesk 1.9.12: that hook fires roughly 0.25 s
-*after* the bytes reach disk, so the scan reads fresh content, and it does not
-fire on autosave — a document left dirty for seven minutes never triggered it.
+be registered on BibDesk's **Save Document** script hook and run unprompted —
+Preferences → Script Hooks, or:
+
+```bash
+defaults write edu.ucsd.cs.mmccrack.bibdesk "Script Hooks" \
+  -dict "Save Document" "$HOME/Dev/ostracon-ai/dev/nrch.applescript"
+```
+
+BibDesk accepts the plain `.applescript`; nothing needs compiling, and it picks
+up an externally written preference without a restart. The workflow then reduces
+to: edit, ⌘S, `nrmlz`.
+
+Measured on BibDesk 1.9.12 and DEVONthink 4.3.2:
+
+- The hook fires roughly **0.25 s after** the bytes reach disk, consistently over
+  four consecutive saves, so the scan reads fresh content and enrichment lands on
+  the same save rather than the next.
+- It does **not** fire on autosave. A document left deliberately dirty for seven
+  minutes, well past the 300 s `BDSKAutosaveTimeIntervalKey` default, never
+  triggered it — with the control that the hook was still registered and fired
+  within 0.33 s of an explicit save immediately afterwards. So this runs on
+  deliberate saves only, never on a timer.
+
+**Budget about 5 s per save, or 23 s if DEVONthink is cold.** The parse is ~4.5 s
+on a 5,700-entry library and DEVONthink's first lookup costs a one-off ~18 s of
+warm-up. BibDesk gives no indication that anything is running, so the first save
+of the day looks like a stall. Leaving DEVONthink open avoids it.
+
+If that cost grates, the useful optimisation is to skip the DEVONthink step
+entirely when the union holds no attachment deficits: an entry that merely
+*changed* usually needs nothing from DEVONthink, and today every changed entry
+pays for a lookup regardless.
 
 Renaming records safely is a separate tool, `dtrename`, kept in the author's
 dotfiles and linked into DEVONthink's own Rename menu. Renaming a file inside a
