@@ -299,6 +299,11 @@ ostracon-ai/
 │   ├── bib_bisect.py     # Bisects for the one entry that breaks a build or crashes BibDesk
 │   ├── normalization-plan.md # Method, the four tiers, the ten gates, outstanding items
 │   │
+│   │                     # Enriching the live BibDesk database (see BibDesk Integration)
+│   ├── nrch              # Wrapper: nrch, --audit, --selection
+│   ├── nrch.applescript  # Drives BibDesk and DEVONthink; doubles as a Save Document hook
+│   ├── nrch-scan.py      # Chooses what to enrich; imports bib_audit's scanner
+│   │
 │   ├── ab_compare.py     # Scores two extraction runs against curated ground truth
 │   └── ab-findings.md    # Results of the §4.2 context experiment
 │
@@ -397,6 +402,57 @@ early.
 By default the agent writes to the file set in `main_bib_file` (`config.yaml`), which you import into BibDesk manually. Each entry includes a `bdsk-file-1` bookmark to the source PDF or `.webloc` file.
 
 Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The agent will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open).
+
+### Enriching what BibDesk holds: `dev/nrch`
+
+An entry arrives with a `bdsk-file-1` bookmark and nothing else tying it to
+DEVONthink. Three manual steps used to close that gap: a script mapping each
+attachment to its `x-devonthink-item://` URI, a second writing the attachment's
+filesystem path into `Local-Url`, and BibDesk's **Convert File and URL fields**
+dialogue to make those links clickable. `nrch` does all three.
+
+```bash
+dev/nrch              # whatever needs it
+dev/nrch --audit      # ignore the stamp and re-examine every entry (~90 s)
+dev/nrch --selection  # only what is selected in BibDesk
+```
+
+It writes to the **open BibDesk document, not to disk** — save in BibDesk
+afterwards, or a mirror regenerated from the file will predate the enrichment.
+
+**Scope is the union of two predicates**, because each is blind where the other
+sees. *Changed since the last run* catches an attachment swapped for a different
+file, where the field counts stay equal while the stored URI silently goes
+wrong. *A deficit* of `Local-Url*`/`Devonthink*` against `Bdsk-File-N` makes the
+whole thing self-healing: delete the stamp, or hand it a wrong one, and genuine
+deficits are still found. With no stamp at all everything is in scope, which is
+exactly what `--audit` wants, so that mode needs no separate code path.
+
+The `Devonthink` half of the deficit test is a **pre-filter, not a criterion**.
+`Local-Url` tracks the attachment count exactly; `Devonthink` does not, because
+it is hand-maintained and one item may map to several DEVONthink records. It
+therefore cannot see an entry whose counts agree while the URI points at the
+wrong record. Only `--audit`, which re-resolves every path through DEVONthink,
+can.
+
+Two things that will not be caught otherwise:
+
+- **Renaming a DEVONthink record is invisible to it.** A rename moves neither the
+  field counts nor `Date-Modified`, so `Local-Url` goes stale silently. Run
+  `--audit` after any rename pass.
+- **A missing stamp means a full pass.** Around ninety seconds — fine, but do not
+  mistake it for a hang.
+
+`nrch.applescript` also defines the `perform BibDesk action` handler, so it can
+be registered on BibDesk's **Save Document** script hook and run unprompted.
+Measured on DEVONthink 4.3.2 and BibDesk 1.9.12: that hook fires roughly 0.25 s
+*after* the bytes reach disk, so the scan reads fresh content, and it does not
+fire on autosave — a document left dirty for seven minutes never triggered it.
+
+Renaming records safely is a separate tool, `dtrename`, kept in the author's
+dotfiles and linked into DEVONthink's own Rename menu. Renaming a file inside a
+`.dtBase2` package from the filesystem corrupts the database; going through
+DEVONthink's `set name of` preserves the UUID, item link, dates and sync history.
 
 ## Troubleshooting
 
