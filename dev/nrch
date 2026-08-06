@@ -1,0 +1,13 @@
+#!/bin/sh
+# nrch -- enrich the BibDesk database, so that nrmlz has something to mirror.
+#
+#   ./nrch              enrich whatever needs it (changed since the stamp, plus
+#                       any entry short of Local-Url*/Devonthink*)
+#   ./nrch --audit      ignore the stamp and re-examine every entry (~96 s)
+#   ./nrch --selection  act on the current BibDesk selection only
+#
+# Orthogonal to nrmlz on purpose: this touches the BibDesk database, nrmlz
+# touches the .bib on disk. Run nrch first, save in BibDesk, then nrmlz.
+#
+# See nrch.applescript for the design and nrch-scan.py for how scope is decided.
+exec osascript "$(dirname "$0")/nrch.applescript" "$@"
