@@ -17,9 +17,13 @@
 --   fire on autosave, so this runs on deliberate saves only, never on a timer.
 --
 -- SCOPE is the union of two predicates, computed by nrch-scan.py in one pass:
---   A. changed since the stamp -- the only thing that catches an attachment
---      swapped for a different file, where counts stay equal but the URI is now
---      wrong.
+--   A. changed since the stamp -- the only predicate that brings a swapped
+--      attachment back into scope, where counts stay equal but the stored URI
+--      is now wrong. What it buys is bounded: the local half rewrites
+--      Local-Url, while the DEVONthink half APPENDS the new record's URI beside
+--      the stale one, since addField takes the first free Devonthink* slot and
+--      never assigns over a non-empty field. Removing the wrong URI is manual,
+--      in --audit as much as here.
 --   B. a deficit of Local-Url*/Devonthink* against Bdsk-File-N -- what makes the
 --      design self-healing when the stamp is lost, stale or simply wrong.
 -- Neither alone suffices. See nrch-scan.py for why the Devonthink half of B is a

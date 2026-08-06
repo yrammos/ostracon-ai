@@ -461,9 +461,9 @@ It writes to the **open BibDesk document, not to disk** — save in BibDesk
 afterwards, or a mirror regenerated from the file will predate the enrichment.
 
 **Scope is the union of two predicates**, because each is blind where the other
-sees. *Changed since the last run* catches an attachment swapped for a different
-file, where the field counts stay equal while the stored URI silently goes
-wrong. *A deficit* of `Local-Url*`/`Devonthink*` against `Bdsk-File-N` makes the
+sees. *Changed since the last run* brings a swapped attachment back into scope,
+where the field counts stay equal while the stored URI silently goes wrong. *A
+deficit* of `Local-Url*`/`Devonthink*` against `Bdsk-File-N` makes the
 whole thing self-healing: delete the stamp, or hand it a wrong one, and genuine
 deficits are still found. With no stamp at all everything is in scope, which is
 exactly what `--audit` wants, so that mode needs no separate code path.
@@ -474,6 +474,17 @@ it is hand-maintained and one item may map to several DEVONthink records. It
 therefore cannot see an entry whose counts agree while the URI points at the
 wrong record. Only `--audit`, which re-resolves every path through DEVONthink,
 can.
+
+**No mode repairs a wrong URI**, and it is worth being exact about what the
+changed-since-the-stamp predicate therefore buys. On a swapped attachment the
+local half rewrites `Local-Url` to the new path, and the DEVONthink half
+resolves the new file and **appends** its URI: `addField` writes into the first
+free `Devonthink*` slot and returns early only on an exact match, so it never
+assigns over a field that already holds something. The stale URI survives beside
+the correct one, in `--audit` as much as in a plain run, and deleting it is a
+manual act. In practice this is a statement about a rare event rather than about
+the corpus — the last full `--audit` over 5,745 entries added two links in
+total.
 
 Two things that will not be caught otherwise:
 

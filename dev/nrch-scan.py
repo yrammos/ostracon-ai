@@ -27,8 +27,15 @@ or with --parse-check, a single line:
 SCOPE IS THE UNION OF TWO PREDICATES, because each is blind where the other sees.
 
   A. changed since the stamp -- Date-Modified later than the value passed in.
-     The ONLY thing that catches an attachment swapped for a different file: the
-     counts stay equal while the stored URI silently goes wrong.
+     The only predicate that brings a swapped attachment back into scope: the
+     counts stay equal while the stored URI silently goes wrong, so B cannot see
+     it. What that buys is bounded, and the bound is worth stating. The local
+     half rewrites Local-Url to the new path; the DEVONthink half resolves the
+     new file and APPENDS its URI, because addField takes the first free
+     Devonthink* slot and returns "duplicate" only on an exact match -- it never
+     assigns over a non-empty field. The stale URI therefore survives beside the
+     correct one. Nothing here repairs a wrong URI, and neither does --audit;
+     removing one is a manual act.
 
   B. deficit -- more Bdsk-File-N attachments than Local-Url* or Devonthink*
      values. This is what makes the design self-healing: lose the stamp, or hand
