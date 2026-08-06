@@ -416,9 +416,19 @@ dialogue to make those links clickable. `nrch` does all three.
 
 ```bash
 dev/nrch              # whatever needs it
-dev/nrch --audit      # ignore the stamp and re-examine every entry (~90 s)
+dev/nrch --audit      # ignore the stamp and re-examine every entry (see timing below)
 dev/nrch --selection  # only what is selected in BibDesk
 ```
+
+…or **Scripts ▸ Enrich Selected Entries** in BibDesk, which is `--selection` with
+the summary shown in an alert. That menu entry is a one-line wrapper living in
+the dotfiles repository (`BibDesk/nrch-selection.applescript`, linked by dotbot);
+it holds no logic, so this remains the only place the enrichment is defined.
+
+Prefer the menu over the command line for `--selection`. **BibDesk's selection is
+only legible from inside the application**: an `osascript` invoked from a shell
+reads `selection of document` as empty and cannot set it either, so the CLI's
+`--selection` works reliably only when BibDesk itself is the caller.
 
 It writes to the **open BibDesk document, not to disk** — save in BibDesk
 afterwards, or a mirror regenerated from the file will predate the enrichment.
@@ -441,10 +451,16 @@ can.
 Two things that will not be caught otherwise:
 
 - **Renaming a DEVONthink record is invisible to it.** A rename moves neither the
-  field counts nor `Date-Modified`, so `Local-Url` goes stale silently. Run
-  `--audit` after any rename pass.
-- **A missing stamp means a full pass.** Around ninety seconds — fine, but do not
-  mistake it for a hang.
+  field counts nor `Date-Modified`, so `Local-Url` goes stale silently — invisible
+  to a plain run, to the save hook, and to any amount of saving. After a bulk
+  rename, `--audit`; after one or two, select the entries and use **Enrich
+  Selected Entries**, which is seconds rather than half an hour.
+- **A missing stamp means a full pass**, and `--audit` is that pass by
+  definition. Around ninety seconds when it confirms rather than corrects. When
+  it has real work the cost is the writing, not the scanning: refreshing 707
+  stale `Local-Url` fields over 5,745 entries took **31 minutes** (measured
+  2026-08-06, after a bulk rename). It logs nothing while `addLocalURLs` runs, so
+  budget accordingly and do not mistake the silence for a hang.
 
 ### Why the two helpers live in `dev/lib/`
 
