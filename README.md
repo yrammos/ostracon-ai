@@ -406,6 +406,33 @@ By default the agent writes to the file set in `main_bib_file` (`config.yaml`), 
 
 Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The agent will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open).
 
+#### Where the auto-filed PDF actually lands, and why it needs a hook elsewhere
+
+`_save_via_bibdesk` calls BibDesk's `auto file` with no destination, so BibDesk generates
+the filename from its Local File format — and in doing so flattens the LaTeX in `Title` and
+the author fields. `\bibstring{reviewof}` becomes `reviewof`,
+`\foreignlanguage{russian}{X}` becomes `russianX`, and `~`, `\,`, `---`, `--` survive
+verbatim. About one attachment in seven arrived damaged this way. No BibDesk setting avoids
+it: the TeX stripping is what *produces* the debris, and all sixteen values of
+`BDSKLocalFileCleanOptionKey` were measured.
+
+The repair lives outside this repository, in `~/.dotfiles/BibDesk/` — a `Did Auto File`
+script hook. BibDesk files into a staging folder that nothing watches, and the hook carries
+each paper the last step into DEVONthink's Inbox under a corrected name. **Nothing here
+changes**: the same `auto file pub` call, the same format string, the same final
+destination. `move_to_processed` still finds the source PDF gone from `pdf-in`, because
+BibDesk moved it.
+
+Two consequences worth knowing:
+
+- **On a machine without that hook installed, this pipeline files debris names again.**
+  It is installed by `./install` in the dotfiles repository; see
+  `~/.dotfiles/BibDesk/README.md`. Quit BibDesk first, or the preference writes are
+  discarded on quit.
+- **If papers stop appearing in DEVONthink, look in `~/Documents/Bibdesk/Staging`** before
+  suspecting this agent. That is the hook's deliberate failure mode — the files are intact
+  and correctly named, they just have not been carried the last step.
+
 ### Enriching what BibDesk holds: `dev/nrch`
 
 An entry arrives with a `bdsk-file-1` bookmark and nothing else tying it to
