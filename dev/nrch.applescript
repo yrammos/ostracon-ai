@@ -125,7 +125,8 @@ on nrchRun(mode, masterOverride)
 		if thePubs is {} then
 			return my finish(theLog, "Nothing selected in BibDesk.", true)
 		end if
-		set scopeNote to (count of thePubs) & " selected"
+		set scopeNote to my plural((count of thePubs), "entry", "entries") & ¬
+			" (the current selection)"
 	else
 		set oldStamp to ""
 		if mode is not "audit" then set oldStamp to my readFile(stampFile)
@@ -171,18 +172,48 @@ on nrchRun(mode, masterOverride)
 	if wrote then set parseNote to my bibtoolErrors(masterFile)
 
 	-- ---------- report ----------
-	set summary to "scope=" & scopeNote & "; devonthink+" & (added of devonRec) & ¬
-		"/unresolved " & (unresolved of devonRec) & "; local-url+" & localWritten & ¬
-		"; linked URLs+" & linksAdded & "; parse " & parseNote
+	-- Two renderings of the same numbers, because they serve different readers.
+	-- The log wants one greppable line per run; a person wants sentences. The old
+	-- single string ("devonthink+0/unresolved 0; local-url+0") served neither.
+	set devonAdded to added of devonRec
+	set devonUnres to unresolved of devonRec
+	set totalWritten to devonAdded + localWritten + linksAdded
+
+	set logLine to scopeNote
+	if totalWritten = 0 then
+		set logLine to logLine & "; nothing changed"
+	else
+		set logLine to logLine & "; +" & devonAdded & " DEVONthink, +" & localWritten & ¬
+			" paths, +" & linksAdded & " URLs; parse " & parseNote
+	end if
+	if devonUnres > 0 then set logLine to logLine & "; " & devonUnres & " unresolved"
+	if pendingKeys is not "" then set logLine to logLine & "; short going in: " & pendingKeys
+	my appendLog(theLog, "SUMMARY: " & logLine)
+
+	set summary to scopeNote & "." & linefeed & linefeed
+	if totalWritten = 0 then
+		set summary to summary & "Nothing needed changing."
+	else
+		set summary to summary & "Added " & my listPhrase({¬
+			my plural(devonAdded, "DEVONthink link", "DEVONthink links"), ¬
+			my plural(localWritten, "file path", "file paths"), ¬
+			my plural(linksAdded, "clickable URL", "clickable URLs")}) & "." & linefeed & ¬
+			"Parse check: " & parseNote & "."
+	end if
+	if devonUnres > 0 then
+		set summary to summary & linefeed & linefeed & my plural(devonUnres, ¬
+			"attachment could not be matched in DEVONthink.", ¬
+			"attachments could not be matched in DEVONthink.")
+	end if
 	-- These keys come from the scan, which necessarily ran BEFORE the enrichment,
 	-- so they describe what was short going in -- not what is still short now.
 	-- The honest post-run figure is `unresolved` above: if that is 0, everything
 	-- listed here was fixed by this very run. Labelling them "pending" was wrong
 	-- and made a successful run read like a failed one.
 	if pendingKeys is not "" then
-		set summary to summary & "; had a deficit going in: " & pendingKeys
+		set summary to summary & linefeed & linefeed & ¬
+			"Short of a full set going in, and now repaired: " & pendingKeys
 	end if
-	my appendLog(theLog, "SUMMARY: " & summary)
 
 	-- Stamp only now, and only in the scanner-driven modes: a --selection run
 	-- says nothing about the rest of the corpus.
@@ -250,7 +281,8 @@ on parseScan(scanOut)
 		end if
 	end repeat
 	set AppleScript's text item delimiters to savedDelims
-	set scopeNote to changedN & " changed + " & deficitN & " deficit of " & entriesN
+	set scopeNote to my plural(entriesN, "entry", "entries") & ", of which " & ¬
+		changedN & " changed and " & deficitN & " incomplete"
 	return {theKeys, newStamp, scopeNote, pendingKeys}
 end parseScan
 
@@ -326,6 +358,34 @@ on bibtoolErrors(masterFile)
 		return "check failed: " & errMsg
 	end try
 end bibtoolErrors
+
+
+-- "1 file path" / "0 file paths". AppleScript has no pluraliser and the summary
+-- reads as machine output without one.
+on plural(n, one, many)
+	if n = 1 then return (n as text) & " " & one
+	return (n as text) & " " & many
+end plural
+
+-- {"a", "b", "c"} -> "a, b and c". Drops any item that begins "0 ", so a run that
+-- wrote only paths says so instead of reciting two zeroes.
+on listPhrase(parts)
+	set kept to {}
+	repeat with i from 1 to (count of parts)
+		set t to item i of parts
+		if t does not start with "0 " then set end of kept to t
+	end repeat
+	if kept is {} then return "nothing"
+	if (count of kept) = 1 then return item 1 of kept
+	set lead to {}
+	repeat with i from 1 to ((count of kept) - 1)
+		set end of lead to item i of kept
+	end repeat
+	set AppleScript's text item delimiters to ", "
+	set t to (lead as text)
+	set AppleScript's text item delimiters to ""
+	return t & " and " & (item -1 of kept)
+end listPhrase
 
 
 on loadLib(p, theLog)
