@@ -34,7 +34,13 @@ property masterRel : "Documents/Bibdesk/biblio.bib"
 -- because it acts on the BibDesk database; nrmlz and strip-bibdesk.rsc, which
 -- produce the git mirror, stay there. The stamp and logs sit alongside it.
 property toolRel : "Dev/ostracon-ai/dev/"
-property scriptsRel : "Library/Application Support/BibDesk/Scripts/"
+-- The two helpers used to sit in BibDesk's Scripts folder, which put them in the
+-- Scripts MENU -- where each one's bare `run` handler sweeps the whole corpus
+-- unscoped: ~43 s for the local-url half, and the DEVONthink half writes a log to
+-- the Desktop. Harmless as libraries, a trap as menu items, and strictly worse
+-- than the "Enrich Selected Entries" entry that now calls this script with
+-- --selection. So they live beside the only thing that loads them.
+property libRel : "Dev/ostracon-ai/dev/lib/"
 property devonScriptName : "Add x-devonthink URIs based on attachment paths.scpt"
 property localScriptName : "Add local URLs.scpt"
 property scannerName : "nrch-scan.py"
@@ -140,8 +146,8 @@ on nrchRun(mode, masterOverride)
 	end if
 
 	-- ---------- enrich ----------
-	set devonLib to my loadLib(my homePath() & scriptsRel & devonScriptName, theLog)
-	set localLib to my loadLib(my homePath() & scriptsRel & localScriptName, theLog)
+	set devonLib to my loadLib(my homePath() & libRel & devonScriptName, theLog)
+	set localLib to my loadLib(my homePath() & libRel & localScriptName, theLog)
 	if devonLib is missing value or localLib is missing value then
 		return my finish(theLog, "Could not load the helper scripts.", true)
 	end if

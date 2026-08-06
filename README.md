@@ -303,6 +303,9 @@ ostracon-ai/
 │   ├── nrch              # Wrapper: nrch, --audit, --selection
 │   ├── nrch.applescript  # Drives BibDesk and DEVONthink; doubles as a Save Document hook
 │   ├── nrch-scan.py      # Chooses what to enrich; imports bib_audit's scanner
+│   ├── lib/              # The two helpers nrch loads. Libraries, not menu items
+│   │   ├── Add local URLs.scpt
+│   │   └── Add x-devonthink URIs based on attachment paths.scpt
 │   │
 │   ├── ab_compare.py     # Scores two extraction runs against curated ground truth
 │   └── ab-findings.md    # Results of the §4.2 context experiment
@@ -442,6 +445,18 @@ Two things that will not be caught otherwise:
   `--audit` after any rename pass.
 - **A missing stamp means a full pass.** Around ninety seconds — fine, but do not
   mistake it for a hang.
+
+### Why the two helpers live in `dev/lib/`
+
+`Add local URLs.scpt` and `Add x-devonthink URIs based on attachment paths.scpt`
+are libraries this script loads, nothing more. They used to sit in
+`~/Library/Application Support/BibDesk/Scripts/`, which put them in the Scripts
+**menu**, where each one's bare `run` handler sweeps the entire corpus unscoped —
+about 43 seconds for the local-url half, while the DEVONthink half writes a log
+to the Desktop. Harmless as libraries, a trap as menu items, and strictly worse
+than the scoped entry beside them. Moving them here removed two misleading menu
+entries and put the libraries next to the only thing that loads them; `libRel` in
+`nrch.applescript` is the single line that knows where they are.
 
 ### Running it on save instead
 
