@@ -17,7 +17,3 @@ automator/script.sh
 
 # LaTeX build artifacts from template test compiles
 prompt-context/out/
-
-# nrch runtime state
-dev/.nrch-stamp
-dev/nrch*.log

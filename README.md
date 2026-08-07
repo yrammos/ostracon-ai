@@ -299,14 +299,6 @@ ostracon-ai/
 │   ├── bib_bisect.py     # Bisects for the one entry that breaks a build or crashes BibDesk
 │   ├── normalization-plan.md # Method, the four tiers, the ten gates, outstanding items
 │   │
-│   │                     # Enriching the live BibDesk database (see BibDesk Integration)
-│   ├── nrch              # Wrapper: nrch, --audit, --selection
-│   ├── nrch.applescript  # Drives BibDesk and DEVONthink; doubles as a Save Document hook
-│   ├── nrch-scan.py      # Chooses what to enrich; imports bib_audit's scanner
-│   ├── lib/              # The two helpers nrch loads. Libraries, not menu items
-│   │   ├── Add local URLs.scpt
-│   │   └── Add x-devonthink URIs based on attachment paths.scpt
-│   │
 │   ├── ab_compare.py     # Scores two extraction runs against curated ground truth
 │   └── ab-findings.md    # Results of the §4.2 context experiment
 │
@@ -406,163 +398,27 @@ By default the agent writes to the file set in `main_bib_file` (`config.yaml`), 
 
 Set `autofile_bibdesk: true` in `config.yaml` to skip the staging file entirely. The agent will import each entry directly into BibDesk via AppleScript (opening the staging file in BibDesk if it is not already open).
 
-#### Where the auto-filed PDF actually lands, and why it needs a hook elsewhere
+#### Auto-filing mangles LaTeX in the filename, and that is BibDesk's doing
 
-`_save_via_bibdesk` calls BibDesk's `auto file` with no destination, so BibDesk generates
-the filename from its Local File format — and in doing so flattens the LaTeX in `Title` and
-the author fields. `\bibstring{reviewof}` becomes `reviewof`,
-`\foreignlanguage{russian}{X}` becomes `russianX`, and `~`, `\,`, `---`, `--` survive
-verbatim. About one attachment in seven arrived damaged this way. No BibDesk setting avoids
-it: the TeX stripping is what *produces* the debris, and all sixteen values of
-`BDSKLocalFileCleanOptionKey` were measured.
+Worth knowing before you turn `autofile_bibdesk` on. `_save_via_bibdesk` calls BibDesk's
+`auto file` with no destination, so BibDesk generates the filename from its Local File
+format — and in doing so flattens the LaTeX in `Title` and the author fields.
+`\bibstring{reviewof}` becomes `reviewof`, `\foreignlanguage{russian}{X}` becomes
+`russianX`, and `~`, `\,`, `---`, `--` survive verbatim. In one library roughly one
+attachment in seven arrived damaged this way.
 
-The repair lives outside this repository, in `~/.dotfiles/BibDesk/` — a `Did Auto File`
-script hook. BibDesk files into a staging folder that nothing watches, and the hook carries
-each paper the last step into DEVONthink's Inbox under a corrected name. **Nothing here
-changes**: the same `auto file pub` call, the same format string, the same final
-destination. `move_to_processed` still finds the source PDF gone from `pdf-in`, because
-BibDesk moved it.
+**No BibDesk setting avoids it.** The TeX stripping is what *produces* the debris rather
+than what cures it: it deletes the backslash, the command name and the braces, then keeps
+every brace group's contents — right for a one-argument formatting command, wrong for a
+bibstring, whose argument is a keyword, and wrong for `\foreignlanguage`, whose first
+argument is a parameter. All sixteen values of `BDSKLocalFileCleanOptionKey` were measured;
+none removes it, and one transliterates Cyrillic. The format string makes no difference
+either.
 
-Two consequences worth knowing:
-
-- **On a machine without that hook installed, this pipeline files debris names again.**
-  It is installed by `./install` in the dotfiles repository; see
-  `~/.dotfiles/BibDesk/README.md`. Quit BibDesk first, or the preference writes are
-  discarded on quit.
-- **If papers stop appearing in DEVONthink, look in `~/Documents/Bibdesk/Staging`** before
-  suspecting this agent. That is the hook's deliberate failure mode — the files are intact
-  and correctly named, they just have not been carried the last step.
-
-### Enriching what BibDesk holds: `dev/nrch`
-
-An entry arrives with a `bdsk-file-1` bookmark and nothing else tying it to
-DEVONthink. Three manual steps used to close that gap: a script mapping each
-attachment to its `x-devonthink-item://` URI, a second writing the attachment's
-filesystem path into `Local-Url`, and BibDesk's **Convert File and URL fields**
-dialogue to make those links clickable. `nrch` does all three.
-
-```bash
-dev/nrch              # whatever needs it
-dev/nrch --audit      # ignore the stamp and re-examine every entry (see timing below)
-dev/nrch --selection  # only what is selected in BibDesk
-```
-
-…or **Scripts ▸ Enrich Selected Entries** in BibDesk, which is `--selection` with
-the summary shown in an alert. That menu entry is a one-line wrapper living in
-the dotfiles repository (`BibDesk/nrch-selection.applescript`, linked by dotbot);
-it holds no logic, so this remains the only place the enrichment is defined.
-
-Prefer the menu over the command line for `--selection`. **BibDesk's selection is
-only legible from inside the application**: an `osascript` invoked from a shell
-reads `selection of document` as empty and cannot set it either, so the CLI's
-`--selection` works reliably only when BibDesk itself is the caller.
-
-It writes to the **open BibDesk document, not to disk** — save in BibDesk
-afterwards, or a mirror regenerated from the file will predate the enrichment.
-
-**Scope is the union of two predicates**, because each is blind where the other
-sees. *Changed since the last run* brings a swapped attachment back into scope,
-where the field counts stay equal while the stored URI silently goes wrong. *A
-deficit* of `Local-Url*`/`Devonthink*` against `Bdsk-File-N` makes the
-whole thing self-healing: delete the stamp, or hand it a wrong one, and genuine
-deficits are still found. With no stamp at all everything is in scope, which is
-exactly what `--audit` wants, so that mode needs no separate code path.
-
-The `Devonthink` half of the deficit test is a **pre-filter, not a criterion**.
-`Local-Url` tracks the attachment count exactly; `Devonthink` does not, because
-it is hand-maintained and one item may map to several DEVONthink records. It
-therefore cannot see an entry whose counts agree while the URI points at the
-wrong record. Only `--audit`, which re-resolves every path through DEVONthink,
-can.
-
-**No mode repairs a wrong URI**, and it is worth being exact about what the
-changed-since-the-stamp predicate therefore buys. On a swapped attachment the
-local half rewrites `Local-Url` to the new path, and the DEVONthink half
-resolves the new file and **appends** its URI: `addField` writes into the first
-free `Devonthink*` slot and returns early only on an exact match, so it never
-assigns over a field that already holds something. The stale URI survives beside
-the correct one, in `--audit` as much as in a plain run, and deleting it is a
-manual act. In practice this is a statement about a rare event rather than about
-the corpus — the last full `--audit` over 5,745 entries added two links in
-total.
-
-Two things that will not be caught otherwise:
-
-- **Renaming a DEVONthink record is invisible to it.** A rename moves neither the
-  field counts nor `Date-Modified`, so `Local-Url` goes stale silently — invisible
-  to a plain run, to the save hook, and to any amount of saving. After a bulk
-  rename, `--audit`; after one or two, select the entries and use **Enrich
-  Selected Entries**, which is seconds rather than half an hour.
-- **A missing stamp means a full pass**, and `--audit` is that pass by
-  definition. Around ninety seconds when it confirms rather than corrects. When
-  it has real work the cost is the writing, not the scanning: refreshing 707
-  stale `Local-Url` fields over 5,745 entries took **31 minutes** (measured
-  2026-08-06, after a bulk rename). It logs nothing while `addLocalURLs` runs, so
-  budget accordingly and do not mistake the silence for a hang.
-
-### Why the two helpers live in `dev/lib/`
-
-`Add local URLs.scpt` and `Add x-devonthink URIs based on attachment paths.scpt`
-are libraries this script loads, nothing more. They used to sit in
-`~/Library/Application Support/BibDesk/Scripts/`, which put them in the Scripts
-**menu**, where each one's bare `run` handler sweeps the entire corpus unscoped —
-about 43 seconds for the local-url half, while the DEVONthink half writes a log
-to the Desktop. Harmless as libraries, a trap as menu items, and strictly worse
-than the scoped entry beside them. Moving them here removed two misleading menu
-entries and put the libraries next to the only thing that loads them; `libRel` in
-`nrch.applescript` is the single line that knows where they are.
-
-### Running it on save instead
-
-`nrch.applescript` also defines the `perform BibDesk action` handler, so it can
-be registered on BibDesk's **Save Document** script hook and run unprompted —
-Preferences → Script Hooks, or:
-
-```bash
-defaults write edu.ucsd.cs.mmccrack.bibdesk "Script Hooks" \
-  -dict "Save Document" "$HOME/Dev/ostracon-ai/dev/nrch.applescript"
-```
-
-BibDesk accepts the plain `.applescript`; nothing needs compiling, and it picks
-up an externally written preference without a restart. The workflow then reduces
-to: edit, ⌘S, `nrmlz`.
-
-Measured on BibDesk 1.9.12 and DEVONthink 4.3.2:
-
-- The hook fires roughly **0.25 s after** the bytes reach disk, consistently over
-  four consecutive saves, so the scan reads fresh content and enrichment lands on
-  the same save rather than the next.
-- It does **not** fire on autosave. A document left deliberately dirty for seven
-  minutes, well past the 300 s `BDSKAutosaveTimeIntervalKey` default, never
-  triggered it — with the control that the hook was still registered and fired
-  within 0.33 s of an explicit save immediately afterwards. So this runs on
-  deliberate saves only, never on a timer.
-
-**Budget about 1.5 s per save, or 20 s if DEVONthink is cold** — the first figure
-projected from the measured parts rather than timed under the hook, since the
-5 s it replaces was 4.5 s scan. The scan of a 5,700-entry library now costs ~1 s;
-DEVONthink's first lookup still costs a one-off ~18 s of warm-up. BibDesk gives
-no indication that anything is running, so the first save of the day still looks
-like a stall. Leaving DEVONthink open avoids it.
-
-The scan used to be the larger half of the warm case at ~4.5 s. Nearly all of it
-was two per-character loops in `bib_audit`'s scanner walking 16.7 MB in Python;
-stepping between significant characters with a compiled pattern instead cut
-`scan()` from 4.24 s to 0.77 s, measured, with byte-identical output. Everything
-built on that scanner moved with it — the audit from 4.8 s to 1.4 s, a
-`bib_normalize` dry run from 28 s to 8 s.
-
-What remains of the cold case is DEVONthink's warm-up alone. **Proposed, not
-built:** skip the DEVONthink step when nothing in scope needs it. An entry that
-merely *changed* usually wants nothing from DEVONthink, yet today every one pays
-for a lookup. `addLocalURLs` already computes the discriminator — it writes only
-where a path has actually moved — so running it first and gating the DEVONthink
-step on `deficit > 0 or paths written > 0` would need no extra Apple events.
-
-Renaming records safely is a separate tool, `dtrename`, kept in the author's
-dotfiles and linked into DEVONthink's own Rename menu. Renaming a file inside a
-`.dtBase2` package from the filesystem corrupts the database; going through
-DEVONthink's `set name of` preserves the UUID, item link, dates and sync history.
+This repository does not attempt the repair, because the fix belongs to BibDesk's
+configuration rather than to an extraction agent: a **`Did Auto File` script hook** can
+rewrite the name after BibDesk has chosen it. If your titles are plain ASCII with no TeX
+markup, none of this will trouble you.
 
 ## Troubleshooting
 
