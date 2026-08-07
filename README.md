@@ -6,6 +6,7 @@ BibDesk.
 
 Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 
+- [Rationale](#rationale)
 - [What it does](#what-it-does)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -17,6 +18,16 @@ Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 - [Repository layout](#repository-layout)
 - [License](#license)
 - [Why “Ostracon”?](#why-ostracon)
+
+## Rationale
+
+[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission details.
+
+The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero-like auto-creation and auto-fill harder to reproduce reliably by hand.
+
+With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDFs or online-only sources.
+
+Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context; it is left as a trivial exercise for the reader.
 
 ## What it does
 
