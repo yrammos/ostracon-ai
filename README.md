@@ -21,11 +21,11 @@ Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 
 ## Rationale
 
-[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission details.
+[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission history, to various types of authorship, and to detail in general. Its "notes and bibliography" variant relies on footnotes or endnotes rather than inline ("author-date") references, and is the more common one in music theory and musicology.
 
-The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero-like auto-creation and auto-fill harder to reproduce reliably by hand.
+The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero unsustainable as a bibliography manager, with the otherwise excellent [Better BibTeX](https://retorque.re/zotero-better-bibtex/) extension only alleviating a painful experience. For many writers, [BibDesk](https://bibdesk.sourceforge.io) is the only macOS manager that elegantly navigates the style's ontological complexity. Others avoid managers altogether and prefer to edit `.bib` files directly within a text editor.
 
-With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDFs or online-only sources.
+With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDF files or `.webloc` links. Thanks to its reliance on AI and elaborate prompting, the agent should not only match Zotero but actually outperform it in most cases.
 
 Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context; it is left as a trivial exercise for the reader.
 
@@ -75,31 +75,31 @@ Three keys need a value; the rest have defaults.
 
 ```yaml
 anthropic_api_key: "sk-ant-..."
-main_bib_file: "~/Desktop/biblio-staging.bib"   # where entries are appended
-failed_bib_file: "~/Desktop/biblio-failed.bib"  # where invalid entries go
+main_bib_file: "~/Desktop/biblio-staging.bib" # where entries are appended
+failed_bib_file: "~/Desktop/biblio-failed.bib" # where invalid entries go
 ```
 
 Relative paths resolve against the repository rather than the working directory, so
 the commands below work from anywhere. A context file named in `config.yaml` but
 absent from disk is an error at startup, not a warning.
 
-| Key | Default | Effect |
-| --- | --- | --- |
-| `model` | `claude-sonnet-4-6` | Price alternatives with `dev/estimate_cost.py --model <id>` first. |
-| `max_tokens` | `4000` | Ceiling per response; entries run 400–500 tokens. |
-| `cache_ttl` | `"1h"` | Prompt-cache lifetime. Cheaper unless runs are genuinely isolated. |
-| `enrich_missing_fields` | `true` | The CrossRef/Scholar lookups, the grounding audit and reconciliation. `false` leaves only the initial extraction. |
-| `verbose` | `true` | Progress on stderr. |
-| `show_window` | `false` | The floating progress window; `--window`/`--no-window` override. |
-| `window_models` | sonnet-4-6, opus-5 | Models offered in the window's dropdown. Unset hides it. |
-| `window_start_delay` | `4` | Seconds before the first file, during which the model may be changed. |
-| `notifications` | `false` | macOS notifications for batch progress and failures. |
-| `ocr_threshold` | `100` | Words below which a PDF is treated as scanned. |
-| `ocr_timeout` | `180` | Seconds allowed to `ocrmypdf`. |
-| `default_ocr_language` | `eng` | Tesseract language when OCR runs unattended. |
-| `autofile_bibdesk` | `false` | Import into BibDesk directly rather than to the staging file. |
-| `crossref_email` | — | Opts into CrossRef's faster polite pool. Free, no account. |
-| `scrapingdog_api_key` | — | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup. |
+| Key                     | Default             | Effect                                                                                                            |
+| ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `model`                 | `claude-sonnet-4-6` | Price alternatives with `dev/estimate_cost.py --model <id>` first.                                                |
+| `max_tokens`            | `4000`              | Ceiling per response; entries run 400–500 tokens.                                                                 |
+| `cache_ttl`             | `"1h"`              | Prompt-cache lifetime. Cheaper unless runs are genuinely isolated.                                                |
+| `enrich_missing_fields` | `true`              | The CrossRef/Scholar lookups, the grounding audit and reconciliation. `false` leaves only the initial extraction. |
+| `verbose`               | `true`              | Progress on stderr.                                                                                               |
+| `show_window`           | `false`             | The floating progress window; `--window`/`--no-window` override.                                                  |
+| `window_models`         | sonnet-4-6, opus-5  | Models offered in the window's dropdown. Unset hides it.                                                          |
+| `window_start_delay`    | `4`                 | Seconds before the first file, during which the model may be changed.                                             |
+| `notifications`         | `false`             | macOS notifications for batch progress and failures.                                                              |
+| `ocr_threshold`         | `100`               | Words below which a PDF is treated as scanned.                                                                    |
+| `ocr_timeout`           | `180`               | Seconds allowed to `ocrmypdf`.                                                                                    |
+| `default_ocr_language`  | `eng`               | Tesseract language when OCR runs unattended.                                                                      |
+| `autofile_bibdesk`      | `false`             | Import into BibDesk directly rather than to the staging file.                                                     |
+| `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
+| `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
 
 The remaining paths — `pdf_in_folder`, `pdf_out_folder`, `template_file`,
 `claude_md_file`, `ref_file`, `example_files` — name the files constituting the
@@ -131,16 +131,16 @@ python3 src/biblio_agent.py paper.pdf --output out.bib
 python3 src/biblio_agent.py entry.webloc --model claude-opus-5
 ```
 
-| Flag | Effect |
-| --- | --- |
-| `--all` | Process `pdf_in_folder` rather than named files. |
-| `--no-save` | Print to stdout; no staging file, no BibDesk import. |
-| `--no-move` | Leave processed files in place. The quick action uses this. |
-| `--output FILE` | Write to `FILE` instead of `main_bib_file`. |
-| `--model ID` | Override `model` for this run. |
-| `--config FILE` | Use an alternate configuration file. |
-| `--window` / `--no-window` | Force the progress window on or off. |
-| `-q`, `--quiet` | Suppress status messages. |
+| Flag                       | Effect                                                      |
+| -------------------------- | ----------------------------------------------------------- |
+| `--all`                    | Process `pdf_in_folder` rather than named files.            |
+| `--no-save`                | Print to stdout; no staging file, no BibDesk import.        |
+| `--no-move`                | Leave processed files in place. The quick action uses this. |
+| `--output FILE`            | Write to `FILE` instead of `main_bib_file`.                 |
+| `--model ID`               | Override `model` for this run.                              |
+| `--config FILE`            | Use an alternate configuration file.                        |
+| `--window` / `--no-window` | Force the progress window on or off.                        |
+| `-q`, `--quiet`            | Suppress status messages.                                   |
 
 ## Cost
 
@@ -154,12 +154,12 @@ The static prefix is **68,928 tokens**. Writing it costs $0.26 at the five-minut
 cache TTL and $0.41 at one hour; every later call in the same run reads it back for
 $0.021.
 
-| Call | Runs when | First file | Later files |
-| --- | --- | --- | --- |
-| Extraction | always | $0.276 | $0.039 |
-| Grounding audit | `enrich_missing_fields: true` | $0.007 | $0.007 |
-| Enrichment merge | required or desired fields missing | $0.028 | $0.028 |
-| Reconciliation | a CrossRef match strictly completes a value | $0.028 | $0.028 |
+| Call             | Runs when                                   | First file | Later files |
+| ---------------- | ------------------------------------------- | ---------- | ----------- |
+| Extraction       | always                                      | $0.276     | $0.039      |
+| Grounding audit  | `enrich_missing_fields: true`               | $0.007     | $0.007      |
+| Enrichment merge | required or desired fields missing          | $0.028     | $0.028      |
+| Reconciliation   | a CrossRef match strictly completes a value | $0.028     | $0.028      |
 
 A clean source costs about **$0.28 for the first file in a run and $0.05 for each
 one after**; with all four calls firing, **$0.34 and $0.10**. Reconciliation is
@@ -169,11 +169,11 @@ Because the prefix is written once per run and read thereafter, cost turns on ho
 often a run starts cold. At the five-minute default the cache does not survive
 between separate quick-action invocations.
 
-| Pattern | 5-minute TTL | 1-hour TTL |
-| --- | --- | --- |
-| One batch of ten, nothing else that hour | $0.69 | $0.85 |
-| Two batches of five, twenty minutes apart | $0.93 | $0.85 |
-| Ten single-file invocations across an hour | $2.83 | $0.85 |
+| Pattern                                    | 5-minute TTL | 1-hour TTL |
+| ------------------------------------------ | ------------ | ---------- |
+| One batch of ten, nothing else that hour   | $0.69        | $0.85      |
+| Two batches of five, twenty minutes apart  | $0.93        | $0.85      |
+| Ten single-file invocations across an hour | $2.83        | $0.85      |
 
 The hour costs a flat $0.15 more per cache write and nothing more per file, so it
 loses only when a run is genuinely isolated. External services are negligible:
@@ -197,7 +197,7 @@ after BibDesk has chosen it. [`NOTES.md`](NOTES.md) records what was measured.
 
 ## Normalizing an existing library
 
-The agent writes new entries; a separate set of tools brings an *existing* `.bib`
+The agent writes new entries; a separate set of tools brings an _existing_ `.bib`
 into the same shape. Nothing in `dev/` runs during extraction.
 
 ```bash
