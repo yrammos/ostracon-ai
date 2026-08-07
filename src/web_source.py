@@ -17,6 +17,7 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 import requests
 from bs4 import BeautifulSoup
 
+import enrich
 from extract_pages import SourceContent, split_into_words, snap_to_sentence_end
 
 USER_AGENT = (
@@ -96,6 +97,146 @@ def clean_url(url):
     kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
             if not _is_tracking(k, v)]
     return urlunsplit(parts._replace(query=urlencode(kept)))
+
+
+# A bot wall answers a plain HTTP client with an interstitial challenge page
+# instead of the article. Oxford Academic (Silverchair) fronts every page with
+# Cloudflare's managed challenge, which keys on TLS fingerprint and JS
+# execution - no User-Agent or header set can pass it, and the whole host
+# answers 403, homepage included. Detected so the DOI fallback below can run,
+# and so the error message can say "bot challenge" rather than the misleading
+# "could not fetch", which reads like a dead bookmark.
+_CHALLENGE_STATUSES = {403, 429, 503}
+_CHALLENGE_BODY_MARKERS = ('just a moment', 'cf-browser-verification', 'challenges.cloudflare.com')
+
+
+def is_bot_challenge(response):
+    """True when a response is an interstitial bot challenge, not the page.
+
+    Deliberately permissive: a false positive costs one CrossRef lookup that
+    either yields a better record than the blocked page would have, or misses
+    and leaves the original error intact. A false negative costs the entry.
+    """
+    if response.status_code not in _CHALLENGE_STATUSES:
+        return False
+    headers = response.headers
+    if 'cf-mitigated' in headers:
+        return True
+    if 'cloudflare' in headers.get('server', '').lower():
+        return True
+    # .content rather than .text: an error payload may be large and carry no
+    # declared charset, and .text would run encoding detection over the whole
+    # of it before this slice ever narrowed it.
+    body = response.content[:4000].decode('utf-8', 'ignore').lower()
+    return any(marker in body for marker in _CHALLENGE_BODY_MARKERS)
+
+
+_DOI_PATH_RE = re.compile(r'/(10\.\d{4,9}/[^?#]+)')
+
+
+def doi_candidates(url, limit=3):
+    """DOIs the URL's path might contain, longest first.
+
+    Publishers embed the DOI in the path but frequently append an identifier
+    of their own after it: Silverchair writes
+    /doi/10.1093/jaac/kpag034/8725072, where the trailing number is an article
+    id, not part of the DOI. Because a DOI suffix may itself contain slashes,
+    no pattern can tell where one ends - so offer progressively shorter
+    candidates and let CrossRef adjudicate. `10.1093/jaac/kpag034/8725072`
+    misses; `10.1093/jaac/kpag034` hits.
+    """
+    match = _DOI_PATH_RE.search(urlsplit(url).path)
+    if not match:
+        return []
+    doi = match.group(1).rstrip('/')
+    candidates = []
+    while doi.count('/') >= 1 and len(candidates) < limit:
+        candidates.append(doi)
+        doi = doi.rsplit('/', 1)[0]
+    return candidates
+
+
+def _strip_jats(text):
+    """CrossRef abstracts arrive as JATS XML; keep the prose, drop the tags."""
+    return ' '.join(re.sub(r'<[^>]+>', ' ', text or '').split())
+
+
+def _full_date(message):
+    """Full publication date as YYYY-MM-DD (or as much as CrossRef gives).
+
+    Deliberately not enrich.crossref_date(), which yields the year alone.
+    Here the model needs the whole date, since CLAUDE.md's year-only rule has
+    exceptions (@Unpublished, magazine articles) it can only apply if it can
+    see the month and day.
+    """
+    for key in ('published-print', 'published-online', 'issued', 'published'):
+        parts = (message.get(key) or {}).get('date-parts') or []
+        if parts and parts[0] and parts[0][0]:
+            return '-'.join(f"{p:02d}" if i else str(p) for i, p in enumerate(parts[0]))
+    return None
+
+
+def _crossref_content(message, url):
+    """Turn a CrossRef work object into the same SourceContent shape the page
+    itself would have produced, so nothing downstream can tell the difference."""
+    title = ' '.join(message.get('title') or [])
+    subtitle = ' '.join(message.get('subtitle') or [])
+    authors = enrich.crossref_authors(message)
+    editors = enrich.crossref_editors(message)
+    container = (message.get('container-title') or [None])[0]
+    date = _full_date(message)
+    pages = message.get('page')
+
+    metadata = {}
+    for label, value in (
+        ('Title', ': '.join(p for p in (title, subtitle) if p)),
+        ('Author', '; '.join(authors)),
+        ('Editor', '; '.join(editors)),
+        ('Journal', container),
+        ('Publisher', message.get('publisher')),
+        ('Doi', message.get('DOI')),
+        ('Volume', message.get('volume')),
+        ('Number', message.get('issue')),
+        ('Pages', pages),
+        ('PublicationDate', date),
+        ('Language', message.get('language')),
+        ('Type', message.get('type')),
+    ):
+        if value:
+            metadata[label] = value
+
+    # Body text, so the model reads the work in prose as it would a webpage,
+    # rather than inferring everything from the metadata block alone.
+    lines = [f"{label}: {value}" for label, value in metadata.items()]
+    abstract = _strip_jats(message.get('abstract'))
+    if abstract:
+        # Held to the same budget as a fetched page, so a long abstract can't
+        # quietly cost more than the webpage path it stands in for.
+        spare = TEXT_WORD_BUDGET - len(split_into_words('\n'.join(lines)))
+        if spare > 0:
+            lines.append(abstract if len(split_into_words(abstract)) <= spare
+                         else snap_to_sentence_end(abstract, spare, from_end=False))
+
+    return SourceContent(
+        text='\n'.join(lines),
+        metadata=metadata,
+        label="CrossRef record",
+        url=clean_url(url),
+    )
+
+
+def crossref_fallback(url, crossref_email=None):
+    """A SourceContent built from CrossRef, for a URL whose page is walled off.
+
+    The DOI is already in the URL's own path, so the record can be fetched
+    from a registry that welcomes clients rather than from a publisher that
+    does not. Returns None when the URL carries no DOI or none resolves.
+    """
+    for doi in doi_candidates(url):
+        message = enrich.crossref_by_doi(doi, mailto=crossref_email)
+        if message:
+            return _crossref_content(message, url)
+    return None
 
 
 def resolve_webloc(path):
@@ -189,9 +330,12 @@ def _page_text(soup):
     return snap_to_sentence_end(text, TEXT_WORD_BUDGET, from_end=False)
 
 
-def extract_webloc(webloc_path, timeout=20):
+def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     """
     Extract a .webloc bookmark's target page as a SourceContent.
+
+    Where the publisher answers a bot challenge rather than the page, falls
+    back to the CrossRef record for the DOI in the URL's own path.
 
     Returns:
         SourceContent on success, or a string starting with "Error:" on failure.
@@ -211,9 +355,21 @@ def extract_webloc(webloc_path, timeout=20):
 
     try:
         response = requests.get(url, headers={'User-Agent': USER_AGENT}, timeout=timeout)
-        response.raise_for_status()
     except requests.RequestException as e:
         return f"Error: Could not fetch {url}: {e}"
+
+    # A challenge is the one failure worth routing around: the work exists and
+    # is citable, only this client is unwelcome. Every other non-2xx is left to
+    # fail loudly - a 404 masked by a CrossRef hit would file an entry whose
+    # Url points at a dead page, which is worse than a reported failure.
+    if not response.ok:
+        if not is_bot_challenge(response):
+            return f"Error: Could not fetch {url}: HTTP {response.status_code}"
+        fallback = crossref_fallback(url, crossref_email)
+        if fallback:
+            return fallback
+        return (f"Error: {url} is behind a bot challenge (HTTP "
+                f"{response.status_code}) and its URL carries no DOI to fall back on")
 
     soup = BeautifulSoup(response.text, 'html.parser')
 

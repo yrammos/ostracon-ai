@@ -41,6 +41,12 @@ and saves.
 A malformed entry is stashed away in `failed_bib_file`; a field that could not be confirmed
 leaves the entry amber in BibDesk.
 
+Some publishers — Oxford Academic and other Silverchair platforms among them — front every page
+with a Cloudflare bot challenge that no HTTP client can pass, so a `.webloc` pointing at one
+cannot be fetched at all. Where the bookmarked URL carries a DOI in its path, the entry is built
+from the CrossRef record instead. Any other fetch failure is still reported rather than papered
+over, so a dead bookmark stays visible as one.
+
 ![Progress window](screenshot.png)
 
 ## Installation

@@ -442,8 +442,10 @@ excerpt's text won't (e.g. an embedded Author field):
 """
 
         if content.url:
-            prompt += f"""12. This work has no PDF; the source text above was fetched from the web
-   address below. Identify the publication type from the work itself as
+            prompt += f"""12. This work has no PDF; it is published at the web address below.
+   (The source text above describes it, but may have come from a
+   bibliographic registry rather than from that address itself.)
+   Identify the publication type from the work itself as
    usual (step 1) - a webpage may still be a printable book, article, etc.
    with its own type, not necessarily @Online. Set Url to exactly this
    address: {content.url}
@@ -504,7 +506,14 @@ excerpt's text won't (e.g. an embedded Author field):
         # Extract source content (PDF pages / webpage - the one place this
         # branches on file type; everything below is generic)
         self._log("   Extracting content...", 'info')
-        kwargs = self._pdf_extractor_kwargs(path) if path.suffix.lower() == '.pdf' else {}
+        suffix = path.suffix.lower()
+        if suffix == '.pdf':
+            kwargs = self._pdf_extractor_kwargs(path)
+        elif suffix == '.webloc':
+            # For the CrossRef fallback when the page is behind a bot wall.
+            kwargs = {'crossref_email': self.config.get('crossref_email')}
+        else:
+            kwargs = {}
         content = extractor(path, **kwargs)
 
         if isinstance(content, str):  # error message
