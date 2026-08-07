@@ -144,11 +144,18 @@ def _names(readme, token):
 
 
 def test_documentation():
-    """Check README.md still covers every config key, CLI flag, file and directory.
+    """Check the docs still cover every config key, CLI flag, file and directory.
 
     These drift silently: a setting added to config.yaml.example or a flag
     added to argparse stays undocumented until someone happens to notice, and
     the README reads as complete the whole time. Cheap to check, so check.
+
+    Both README.md and NOTES.md count. The question this asks has always been
+    "is it documented in this repository", not "is it in that one file"; the
+    single-file read was incidental, and became wrong once the two were split
+    by audience -- what a reader needs in order to act stayed in the README,
+    the reasoning and the developer tooling moved across. NOTES.md is optional
+    so that a repository without one still passes.
     """
     print("\nTesting documentation coverage...")
 
@@ -157,6 +164,9 @@ def test_documentation():
         print("  ⚠  README.md not found")
         return False
     readme = readme_path.read_text(encoding="utf-8")
+    notes_path = ROOT / "NOTES.md"
+    if notes_path.exists():
+        readme += "\n" + notes_path.read_text(encoding="utf-8")
     ok = True
 
     # 1. Every config key in the template.
