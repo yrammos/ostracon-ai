@@ -3,7 +3,7 @@
 Reasoning, measurements and the developer tooling. Nothing here is needed in order
 to use the agent; see [`README.md`](README.md) for that.
 
-- [Why it exists](#why-it-exists)
+- [Rationale](#rationale)
 - [The cached prefix](#the-cached-prefix)
 - [How the cost arises](#how-the-cost-arises)
 - [The orchestration](#the-orchestration)
@@ -11,17 +11,15 @@ to use the agent; see [`README.md`](README.md) for that.
 - [Developer tooling](#developer-tooling)
 - [Third-party material](#third-party-material)
 
-## Why it exists
+## Rationale
 
-Chicago is the bibliographic style of the humanities, valued for its attention to
-source and transmission. The corresponding LaTeX implementation, biblatex-chicago,
-offers some forty entry types and a correspondingly large field vocabulary, which is
-precisely what makes Zotero-style automatic entry creation hard to reproduce by
-hand: the difficulty lies less in filling fields than in deciding which type a
-source belongs to.
+[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission details.
 
-That decision is what the cached prefix is for. Adapting the agent to another style
-would require changes to the prompt and the context files, and to nothing else.
+The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero-like auto-creation and auto-fill harder to reproduce reliably by hand.
+
+With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDFs or online-only sources.
+
+Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context; it is left as a trivial exercise for the reader.
 
 ## The cached prefix
 
