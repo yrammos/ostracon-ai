@@ -31,11 +31,12 @@ Using alternative styles (e.g., APA) would involve only minor modifications to t
 
 ## What it does
 
-For each source in turn: extracts text (OCR if scanned; for a `.webloc`, fetches the
-bookmarked page), asks Claude for an entry against a cached prefix holding the house
-style and the biblatex-chicago corpora, searches CrossRef and Google Scholar for
-whatever the entry type still wants, audits the result for fields drawn from Claude's
-recollection rather than from the source, and saves.
+For each source in turn: extracts text (OCR if scanned; for a `.webloc`,
+fetches the bookmarked page),
+asks Claude for a matching entry in accordance with BibLaTeX specifications,
+searches CrossRef and Google Scholar for any missing fields,
+audits the result for fields drawn from Claude's recollection rather than from the source,
+and saves.
 
 A malformed entry is stashed away in `failed_bib_file`; a field that could not be confirmed
 leaves the entry amber in BibDesk.
