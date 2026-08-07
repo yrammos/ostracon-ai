@@ -5,7 +5,8 @@ to use the agent; see [`README.md`](README.md) for that.
 
 - [Why it exists](#why-it-exists)
 - [The cached prefix](#the-cached-prefix)
-- [Cost](#cost)
+- [How the cost arises](#how-the-cost-arises)
+- [The orchestration](#the-orchestration)
 - [Auto-filing: what was measured](#auto-filing-what-was-measured)
 - [Developer tooling](#developer-tooling)
 - [Third-party material](#third-party-material)
@@ -30,15 +31,18 @@ a run pays for them once and reads them back thereafter.
 | component | tokens |
 | --- | ---: |
 | `notes-test.bib` — the package's annotated test suite | 46,302 |
-| `CLAUDE.md` — house style | 10,393 |
+| `CLAUDE.md` — house style | 11,508 |
 | `biblatex-chicago-notes-ref.md` — condensed field reference | 4,959 |
 | `cms-notes-intro-guide.md` — entry types by kind of source | 3,208 |
 | `biblio-template.bib` — one worked example per type | 2,242 |
 
-**67,813 tokens in total** (229,207 characters), measured by
+**68,928 tokens in total** (232,976 characters) on 2026-08-07, measured by
 `dev/estimate_cost.py --no-api`, which applies the project's own ratio of 3.38
 characters per token. Dropping `--no-api` counts exactly through the API's
 `count_tokens`, which requires credit.
+
+Only `CLAUDE.md` moves in ordinary use — the other four are vendored or generated —
+so it is the file to suspect when the figure shifts.
 
 The two corpora loaded by `example_files` do different work from the field
 reference. Where the reference teaches *vocabulary* — which fields a given type
@@ -57,8 +61,8 @@ capability, and the operational test when the two are confused is to encode both
 alternatives and compare the rendered output. `CLAUDE.md` sets this out at length.
 
 To shorten the prefix, `notes-test.bib` is the obvious candidate at 46,302 of the
-67,813 tokens: dropping it from `example_files` while retaining
-`cms-notes-intro-guide.md` leaves roughly 21,500 and a much cheaper first file,
+68,928 tokens: dropping it from `example_files` while retaining
+`cms-notes-intro-guide.md` leaves roughly 22,600 and a much cheaper first file,
 preserving the taxonomy while shedding the annotated examples. Weigh that against
 what the suite is for — it is the authority on what each type and field actually
 does.
@@ -67,47 +71,51 @@ does.
 loaded: an A/B run found no benefit for some 45,000 additional tokens. It remains
 for consultation.
 
-## Cost
+## How the cost arises
 
-At `claude-sonnet-4-6` rates ($3/$15 per million input/output tokens), a cache write
-costs 1.25× input at the five-minute TTL and 2× at one hour; a cache read costs
-0.1×. Writing the prefix therefore costs $0.25 at five minutes and $0.41 at an hour;
-every later call in the same run reads it for $0.020.
+The figures are in [`README.md`](README.md); this is the mechanism behind them. A
+cache write costs 1.25× the input rate at the five-minute TTL and 2× at one hour; a
+read costs 0.1×. Since the prefix is written once per run and read by every
+subsequent call, the dominant variable is not the number of files but the number of
+*cold starts* — which is why ten single-file invocations across an hour cost four
+times what one batch of ten costs at the same TTL.
 
-| Call | Runs when | First file | Later files |
-| --- | --- | --- | --- |
-| Extraction | always | $0.272 | $0.038 |
-| Grounding audit | `enrich_missing_fields: true` | $0.007 | $0.007 |
-| Enrichment merge | required or desired fields missing | $0.028 | $0.028 |
-| Reconciliation | a CrossRef match strictly completes a value | $0.028 | $0.028 |
+`dev/estimate_cost.py` holds the per-model rate table, and it is the one thing in
+this repository that has to be maintained by hand: there is no pricing API to read
+it from.
 
-A clean source costs **$0.28 for the first file in a run and $0.05 for each
-subsequent one**; with all four calls firing, **$0.33 and $0.10**. Reconciliation is
-conservative — a Scholar-sourced conflict, or a CrossRef value that contradicts
-rather than completes, is left for review without reaching the fourth call — so the
-upper figure is rare.
+## The orchestration
 
-External services are negligible: CrossRef is free, and the ScrapingDog fallback
-runs about $0.0004 per credit at a couple of credits per lookup.
+`biblio_agent.py`'s control flow, for anyone modifying it. The branching belongs to
+the harness around the model calls, not to the extraction itself — the bibliographic
+judgment happens inside the four Claude calls, and the diamonds below only decide
+which of them run.
 
-### Batching and cache lifetime
-
-The prefix is written once per run and read thereafter, so cost turns on how often a
-run begins without a warm cache. At the five-minute default the cache does not
-survive between separate quick-action invocations.
-
-| Pattern | 5-minute TTL | 1-hour TTL |
-| --- | --- | --- |
-| One batch of ten, nothing else that hour | $0.69 | $0.84 |
-| Two batches of five, twenty minutes apart | $0.92 | $0.84 |
-| Ten single-file invocations across an hour | $2.79 | $0.84 |
-
-The hour costs a flat **$0.15 more per cache write** and nothing more per file, so
-it loses only when a run is genuinely isolated; any second run within the hour
-repays the difference at once.
-
-`dev/estimate_cost.py` measures the assembled prompt rather than restating these
-figures, so re-run it after changing the prefix or the model.
+```mermaid
+flowchart TD
+    A[PDF or .webloc file] --> B{Source type}
+    B -- PDF --> C1[Extract text: first/last page,<br/>headers/footers, embedded metadata]
+    B -- .webloc --> C2[Fetch page: body text,<br/>citation_/og/JSON-LD metadata]
+    C1 --> D[Claude: initial extraction]
+    C2 --> D
+    D --> E[Strip forbidden fields]
+    E --> F{Required/desired<br/>fields missing?}
+    F -- yes --> G[CrossRef / Google Scholar search]
+    G --> H[Claude: merge enrichment fields]
+    F -- no --> I[Claude: grounding audit]
+    H --> I
+    I --> J{Recollection-based or<br/>missing container fields?}
+    J -- yes --> K[CrossRef / Google Scholar re-check]
+    K --> L{CrossRef match that is a<br/>strict completion?}
+    L -- yes --> M[Claude: merge completion]
+    L -- no --> N[Leave as-is, flag unresolved]
+    M --> O[Validate brace balance]
+    N --> O
+    J -- no --> O
+    O --> P{Unresolved fields<br/>remain?}
+    P -- yes --> Q[Save + flag amber in BibDesk]
+    P -- no --> R[Save entry]
+```
 
 ## Auto-filing: what was measured
 

@@ -10,6 +10,7 @@ Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Cost](#cost)
 - [BibDesk integration](#bibdesk-integration)
 - [Normalizing an existing library](#normalizing-an-existing-library)
 - [Troubleshooting](#troubleshooting)
@@ -27,32 +28,6 @@ recollection rather than from the source, and save.
 
 A malformed entry goes to `failed_bib_file`; a field that could not be confirmed
 leaves the entry amber in BibDesk.
-
-```mermaid
-flowchart TD
-    A[PDF or .webloc file] --> B{Source type}
-    B -- PDF --> C1[Extract text: first/last page,<br/>headers/footers, embedded metadata]
-    B -- .webloc --> C2[Fetch page: body text,<br/>citation_/og/JSON-LD metadata]
-    C1 --> D[Claude: initial extraction]
-    C2 --> D
-    D --> E[Strip forbidden fields]
-    E --> F{Required/desired<br/>fields missing?}
-    F -- yes --> G[CrossRef / Google Scholar search]
-    G --> H[Claude: merge enrichment fields]
-    F -- no --> I[Claude: grounding audit]
-    H --> I
-    I --> J{Recollection-based or<br/>missing container fields?}
-    J -- yes --> K[CrossRef / Google Scholar re-check]
-    K --> L{CrossRef match that is a<br/>strict completion?}
-    L -- yes --> M[Claude: merge completion]
-    L -- no --> N[Leave as-is, flag unresolved]
-    M --> O[Validate brace balance]
-    N --> O
-    J -- no --> O
-    O --> P{Unresolved fields<br/>remain?}
-    P -- yes --> Q[Save + flag amber in BibDesk]
-    P -- no --> R[Save entry]
-```
 
 ![Progress window](screenshot.png)
 
@@ -155,6 +130,44 @@ python3 src/biblio_agent.py entry.webloc --model claude-opus-5
 | `--config FILE` | Use an alternate configuration file. |
 | `--window` / `--no-window` | Force the progress window on or off. |
 | `-q`, `--quiet` | Suppress status messages. |
+
+## Cost
+
+> **Measured 2026-08-07** against `claude-sonnet-4-6` at $3/$15 per million
+> input/output tokens. Both the prefix size and the published rates drift — editing
+> `CLAUDE.md` alone moved these figures between 3 and 7 August. Re-run
+> `python3 dev/estimate_cost.py`, which measures the assembled prompt rather than
+> restating these numbers, before relying on them.
+
+The static prefix is **68,928 tokens**. Writing it costs $0.26 at the five-minute
+cache TTL and $0.41 at one hour; every later call in the same run reads it back for
+$0.021.
+
+| Call | Runs when | First file | Later files |
+| --- | --- | --- | --- |
+| Extraction | always | $0.276 | $0.039 |
+| Grounding audit | `enrich_missing_fields: true` | $0.007 | $0.007 |
+| Enrichment merge | required or desired fields missing | $0.028 | $0.028 |
+| Reconciliation | a CrossRef match strictly completes a value | $0.028 | $0.028 |
+
+A clean source costs about **$0.28 for the first file in a run and $0.05 for each
+one after**; with all four calls firing, **$0.34 and $0.10**. Reconciliation is
+conservative, so the upper figure is rare.
+
+Because the prefix is written once per run and read thereafter, cost turns on how
+often a run starts cold. At the five-minute default the cache does not survive
+between separate quick-action invocations.
+
+| Pattern | 5-minute TTL | 1-hour TTL |
+| --- | --- | --- |
+| One batch of ten, nothing else that hour | $0.69 | $0.85 |
+| Two batches of five, twenty minutes apart | $0.93 | $0.85 |
+| Ten single-file invocations across an hour | $2.83 | $0.85 |
+
+The hour costs a flat $0.15 more per cache write and nothing more per file, so it
+loses only when a run is genuinely isolated. External services are negligible:
+CrossRef is free, and the ScrapingDog fallback runs about $0.0004 per credit at a
+couple of credits per lookup.
 
 ## BibDesk integration
 
