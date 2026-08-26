@@ -234,8 +234,14 @@ conflict left deliberately unresolved.
 from the environment the quick action uses. Check `PYTHON` in
 `automator/script.sh`.
 
-**Quick action absent from Finder.** Re-run `python3 dev/install_service.py`, then
-enable it under System Settings ▸ General ▸ Login Items & Extensions.
+**Quick action absent from Finder.** Look under the contextual menu's **Services**
+submenu; on macOS 26 that is where it appears, not under Quick Actions. Re-run
+`python3 dev/install_service.py`, which rebuilds the workflow, refreshes the
+Services cache and relaunches Finder; the menu is built at Finder launch, so a
+stale menu survives until Finder restarts. The action is confined to Finder and
+to PDF and `.webloc` files, so it appears in no other application and against no
+other file type. If it is still absent, check that it is ticked under System
+Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services ▸ Files and Folders.
 
 **“Context files configured in config.yaml are missing.”** A file named in
 `claude_md_file`, `template_file`, `ref_file` or `example_files` is not where the
