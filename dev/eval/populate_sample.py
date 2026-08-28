@@ -24,6 +24,9 @@ not used, since the manifest connects one source file to one citekey.
 
 Uses dev/bib_audit.py's scanner (Entry/Field/scan()) to read the .bib file,
 per this project's rule against re-parsing .bib text - see scorer.py.
+
+resolve_attachment()/resolve_attachment_verbose() below are also imported by
+select_sample.py, so the decode logic lives here exactly once.
 """
 
 from __future__ import annotations
@@ -57,14 +60,19 @@ ALLOWED_SUFFIXES = {'.pdf', '.webloc'}
 _NSURL_BOOKMARK_RESOLUTION_WITHOUT_UI = 1 << 8
 
 
-def resolve_attachment(entry: "bib_audit.Entry"):
-    """Resolve one entry's source file path.
+def resolve_attachment_verbose(entry: "bib_audit.Entry"):
+    """Resolve one entry's source file path, with a reason on failure.
 
     Returns (path: str|None, note: str|None, error: str|None).
     - path is set on success; note carries a non-fatal remark (e.g. a
       stale-but-resolved bookmark, or an ignored second attachment).
     - error is set (path is None) when nothing usable could be resolved,
-      naming why.
+      naming why - including a resolved path that doesn't exist or whose
+      type sample/ doesn't accept (see ALLOWED_SUFFIXES).
+
+    The only place bdsk-file-1 bookmark / local-url decoding happens;
+    resolve_attachment() below and select_sample.py's candidate filter both
+    go through this function rather than reimplementing it.
     """
     note = None
     if entry.has('local-url-2') or entry.has('bdsk-file-2'):
@@ -72,33 +80,52 @@ def resolve_attachment(entry: "bib_audit.Entry"):
 
     local_url = entry.get('local-url')
     if local_url is not None:
-        return local_url.value.strip(), note, None
+        path = local_url.value.strip()
+    else:
+        bdsk_file = entry.get('bdsk-file-1')
+        if bdsk_file is None:
+            return None, note, "no local-url or bdsk-file-1 field"
 
-    bdsk_file = entry.get('bdsk-file-1')
-    if bdsk_file is None:
-        return None, note, "no local-url or bdsk-file-1 field"
+        try:
+            from Foundation import NSURL
+        except ImportError:
+            return None, note, "pyobjc (Foundation) not available - pip install pyobjc-framework-Cocoa"
 
-    try:
-        from Foundation import NSURL
-    except ImportError:
-        return None, note, "pyobjc (Foundation) not available - pip install pyobjc-framework-Cocoa"
+        try:
+            plist = plistlib.loads(base64.b64decode(bdsk_file.value))
+            bookmark_data = plist['bookmark']
+        except Exception as e:
+            return None, note, f"could not decode bdsk-file-1: {e}"
 
-    try:
-        plist = plistlib.loads(base64.b64decode(bdsk_file.value))
-        bookmark_data = plist['bookmark']
-    except Exception as e:
-        return None, note, f"could not decode bdsk-file-1: {e}"
+        resolved_url, stale, err = NSURL.URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error_(
+            bookmark_data, _NSURL_BOOKMARK_RESOLUTION_WITHOUT_UI, None, None, None
+        )
+        if err is not None or resolved_url is None:
+            return None, note, f"bookmark resolution failed: {err}"
 
-    resolved_url, stale, err = NSURL.URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error_(
-        bookmark_data, _NSURL_BOOKMARK_RESOLUTION_WITHOUT_UI, None, None, None
-    )
-    if err is not None or resolved_url is None:
-        return None, note, f"bookmark resolution failed: {err}"
+        path = resolved_url.path()
+        if stale:
+            note = (note + "; " if note else "") + "bookmark is stale (file may have moved)"
 
-    path = resolved_url.path()
-    if stale:
-        note = (note + "; " if note else "") + "bookmark is stale (file may have moved)"
+    source_path = Path(path)
+    if not source_path.exists():
+        return None, note, f"resolved to {source_path}, which does not exist"
+    if source_path.suffix.lower() not in ALLOWED_SUFFIXES:
+        return None, note, (
+            f"resolved to {source_path}, whose type "
+            f"({source_path.suffix or '(no extension)'}) sample/ doesn't accept - "
+            f"see sample/README.md"
+        )
     return path, note, None
+
+
+def resolve_attachment(entry: "bib_audit.Entry"):
+    """Resolve one entry's source file to a live, accepted-type Path, or
+    None. Thin wrapper over resolve_attachment_verbose() for callers (this
+    module's populate(), and select_sample.py) that only need path-or-None
+    and not the failure reason."""
+    path, _note, error = resolve_attachment_verbose(entry)
+    return Path(path) if path and not error else None
 
 
 def sha256_of(path) -> str:
@@ -120,21 +147,12 @@ def populate(bib_path: Path, sample_dir: Path, dry_run: bool):
             failures.append((citekey, "citekey contains a path separator, refusing to use it as a filename"))
             continue
 
-        path, note, error = resolve_attachment(entry)
+        path, note, error = resolve_attachment_verbose(entry)
         if error:
             failures.append((citekey, error))
             continue
 
         source_path = Path(path)
-        if not source_path.exists():
-            failures.append((citekey, f"resolved to {source_path}, which does not exist"))
-            continue
-        if source_path.suffix.lower() not in ALLOWED_SUFFIXES:
-            failures.append((citekey, f"resolved to {source_path}, whose type "
-                                       f"({source_path.suffix or '(no extension)'}) sample/ doesn't accept - "
-                                       f"see sample/README.md"))
-            continue
-
         dest_name = f"{citekey}{source_path.suffix}"
         dest_path = sample_dir / dest_name
 

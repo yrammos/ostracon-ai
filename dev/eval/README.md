@@ -12,12 +12,21 @@ python3 dev/eval/test_eval.py                  # exercise the harness itself, no
 
 ## How it fits together
 
+- [`select_sample.py`](select_sample.py) - builds `sample/` and
+  `expected.bib` together from `biblio.bib`, a stripped copy of the
+  library placed by hand and gitignored because it quotes the library (see
+  `.gitignore`). Stratifies by entry type and feature coverage, resolves
+  each candidate's attachment via `populate_sample.py`'s
+  `resolve_attachment()`, and copies only entries with a live source
+  predating the pipeline - so every `expected.bib` entry is ground truth
+  written before extraction existed, not a catalogue lookup.
+  `dev/eval/biblio.bib` must exist before running it.
 - [`sample/`](sample/) - real sources plus `manifest.json`, the list
   connecting each source file to a citekey. See `sample/README.md` for its
-  format. Empty until populated by hand.
-- [`expected.bib`](expected.bib) - one hand-verified entry per citekey in
-  the manifest, checked against the physical source rather than a
-  catalogue. Empty until populated by hand.
+  format. Empty until populated by `select_sample.py`.
+- [`expected.bib`](expected.bib) - one ground-truth entry per citekey in
+  the manifest, copied verbatim from `biblio.bib` by `select_sample.py`.
+  Empty until populated that way.
 - [`run.py`](run.py) - for each manifest item with both a source file and a
   matching `expected.bib` entry: runs the real extraction pipeline on the
   source, parses its output, and scores it against the expected entry.

@@ -23,3 +23,9 @@ prompt-context/out/
 # dev/eval/sample/README.md.
 dev/eval/sample/*.pdf
 dev/eval/sample/*.webloc
+
+# select_sample.py's input: a stripped copy of the library, kept out of the
+# repository because it quotes it - same convention as
+# dev/normalization-plan.md's changelog files. Placed by hand; see
+# dev/eval/README.md.
+dev/eval/biblio.bib
