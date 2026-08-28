@@ -51,6 +51,21 @@ def glob_input_files(folder):
     )
 
 
+# Model used for sources placed in pdf-in/careful/ when config.yaml sets no
+# careful_model of its own - see the reference-work operator note in CLAUDE.md.
+DEFAULT_CAREFUL_MODEL = "claude-opus-5"
+
+
+def glob_batch_files(folder):
+    """Source files for an --all run: folder itself plus its careful/
+    subfolder, if present (see process_batch's folder-convention note)."""
+    files = glob_input_files(folder)
+    careful_dir = Path(folder) / 'careful'
+    if careful_dir.is_dir():
+        files += glob_input_files(careful_dir)
+    return sorted(files)
+
+
 # Config paths are written relative to the repository ("./CLAUDE.md"), so they
 # must resolve against it rather than against the working directory - otherwise
 # the tool only runs from the repo root, and the Automator wrapper's `cd
@@ -90,6 +105,32 @@ def response_text(message):
     access a migration tripwire rather than a theoretical one.
     """
     return "".join(b.text for b in message.content if b.type == "text")
+
+
+# show_window, window_models and notifications govern presentation only and
+# moved under a single `interface:` config block. The bare top-level key of
+# the same name is still honored for one release (warns once via stderr) so
+# an existing config.yaml keeps working; see README.
+_deprecated_interface_keys_warned = set()
+
+
+def _interface_setting(config, key, default=None):
+    """Look up a presentation-only setting, preferring config['interface']
+    over the deprecated top-level key of the same name."""
+    interface = config.get('interface') or {}
+    if key in interface:
+        return interface[key]
+    if key in config:
+        if key not in _deprecated_interface_keys_warned:
+            _deprecated_interface_keys_warned.add(key)
+            print(
+                f"⚠ config key '{key}' is deprecated; move it under 'interface:' "
+                f"(see README). The top-level key will stop being read in the "
+                f"next release.",
+                file=sys.stderr,
+            )
+        return config[key]
+    return default
 
 
 class BiblioAgent:
@@ -477,13 +518,15 @@ excerpt's text won't (e.g. an embedded Author field):
             ocr_timeout=self.config.get('ocr_timeout', 180),
         )
 
-    def extract_bibtex(self, path, batch_info=None):
+    def extract_bibtex(self, path, batch_info=None, model_override=None):
         """
         Extract bibliographic information from a source file (PDF or .webloc).
 
         Args:
             path: Path to the source file
             batch_info: Optional (current_index, total) tuple for batch progress display
+            model_override: Use this model for this call only, instead of
+                config['model'] - for pdf-in/careful/ sources (see process_batch).
 
         Returns:
             str: BibLaTeX entry or error message
@@ -527,11 +570,15 @@ excerpt's text won't (e.g. an embedded Author field):
         prompt = self.build_prompt(content)
 
         # Call Claude API
-        self._log("   Sending to Claude...", 'info')
+        model = model_override or self.config['model']
+        if model_override:
+            self._log(f"   Sending to Claude ({model}, careful)...", 'info')
+        else:
+            self._log("   Sending to Claude...", 'info')
 
         try:
             message = self.client.messages.create(
-                model=self.config['model'],
+                model=model,
                 max_tokens=self.config['max_tokens'],
                 messages=[
                     {"role": "user", "content": self._cached_message_content(context, prompt)}
@@ -1063,7 +1110,7 @@ end tell'''
 
     def notify_progress(self, message, subtitle=""):
         """Send a macOS notification for progress updates (when notifications are enabled)."""
-        if not self.config.get('notifications', True):
+        if not _interface_setting(self.config, 'notifications', True):
             return
         script = f'display notification "{message}" with title "Ostracon AI"'
         if subtitle:
@@ -1072,7 +1119,7 @@ end tell'''
 
     def notify_incomplete(self, pdf_name, missing_fields):
         """Send a macOS notification that an entry was saved but is missing fields."""
-        if not self.config.get('notifications', True):
+        if not _interface_setting(self.config, 'notifications', True):
             return
         msg = f"{pdf_name}: saved but missing {', '.join(missing_fields)}."
         subprocess.run(
@@ -1083,7 +1130,7 @@ end tell'''
 
     def notify_failure(self, pdf_name, error_msg):
         """Send a macOS notification about a validation failure."""
-        if not self.config.get('notifications', True):
+        if not _interface_setting(self.config, 'notifications', True):
             return
         failed_path = Path(self.config.get('failed_bib_file', '~/Desktop/biblio-failed.bib')).expanduser()
         msg = f"Brace validation failed for {pdf_name}: {error_msg}. Entry saved to {failed_path}."
@@ -1270,6 +1317,11 @@ end tell'''
         Process a list of source files (or all supported files in the input
         folder when pdf_files is None).
 
+        Sources placed in pdf_in_folder/careful/ are processed with
+        careful_model instead of model - the folder is a deliberate gesture
+        (dropping a reference-work source there) rather than a choice made
+        under time pressure in a dropdown.
+
         Args:
             move_files: If True, move processed files to output folder
             pdf_files: Explicit list of Path objects; falls back to pdf_in_folder if None
@@ -1278,15 +1330,15 @@ end tell'''
         Returns:
             dict: Summary with 'success', 'failed', 'skipped' lists
         """
+        in_folder = Path(self.config.get('pdf_in_folder', './pdf-in'))
         if pdf_files is not None:
             files = [Path(p) for p in pdf_files]
         else:
-            in_folder = Path(self.config.get('pdf_in_folder', './pdf-in'))
             if not in_folder.exists():
                 self._log(f"Error: Input folder not found: {in_folder}", 'error')
                 self._log(f"Create it with: mkdir {in_folder}", 'error')
                 return {'success': [], 'failed': [], 'skipped': []}
-            files = glob_input_files(in_folder)
+            files = glob_batch_files(in_folder)
 
         if not files:
             self._log("No source files found.", 'warning')
@@ -1300,6 +1352,7 @@ end tell'''
             self._save_bibdesk_document()
 
         results = {'success': [], 'failed': [], 'skipped': []}
+        careful_dir = (in_folder / 'careful').resolve()
 
         for i, pdf_path in enumerate(files, 1):
             if progress_window and progress_window.cancelled:
@@ -1316,10 +1369,16 @@ end tell'''
                 if chosen and chosen != self.config['model']:
                     self.config['model'] = chosen
 
+            # A file from pdf_in_folder/careful/ always takes careful_model,
+            # regardless of the dropdown above - the point of the folder is
+            # to not depend on the operator noticing and reacting in time.
+            is_careful = pdf_path.resolve().parent == careful_dir
+            model_for_file = self.config.get('careful_model', DEFAULT_CAREFUL_MODEL) if is_careful else None
+
             self.notify_progress(f"[{i}/{total}] {pdf_path.name}", subtitle="Extracting bibliography")
 
             # Extract bibliography
-            bibtex_entry = self.extract_bibtex(pdf_path, batch_info=(i, total))
+            bibtex_entry = self.extract_bibtex(pdf_path, batch_info=(i, total), model_override=model_for_file)
 
             if bibtex_entry.startswith("Error:"):
                 self._log(f"   ✗ {bibtex_entry}", 'error')
@@ -1371,7 +1430,7 @@ def _resolve_show_window(args, config):
         return False
     if args.window is not None:
         return args.window  # --window or --no-window explicitly set
-    return config.get('show_window', False)
+    return _interface_setting(config, 'show_window', False)
 
 
 def _run_windowed(agent, pdf_files, move_files):
@@ -1385,21 +1444,14 @@ def _run_windowed(agent, pdf_files, move_files):
 
     win = ProgressWindow(
         total_files=len(pdf_files),
-        models=agent.config.get('window_models') or [agent.config['model']],
+        models=_interface_setting(agent.config, 'window_models', None) or [agent.config['model']],
         current_model=agent.config['model'],
     )
     agent._progress_callback = win.make_callback()
     win.show()
 
     def _process():
-        # Hold briefly before the first file. The batch loop re-reads the model
-        # popup each iteration, but without this the first file would already
-        # be in flight before the window was usable, so a batch you know needs
-        # a stronger model could not get one until file two.
-        delay = agent.config.get('window_start_delay') or 0
-        if delay:
-            win.countdown(delay)
-        if win.cancelled:
+        if win.cancelled:  # window closed before the worker thread got going
             win.finish(had_error=False)
             return
 
@@ -1505,7 +1557,7 @@ def main():
         if args.all:
             if show_window:
                 in_folder = Path(agent.config.get('pdf_in_folder', './pdf-in'))
-                pdf_files = glob_input_files(in_folder)
+                pdf_files = glob_batch_files(in_folder)
                 _run_windowed(agent, pdf_files, move_files=not args.no_move)
             else:
                 results = agent.process_batch(move_files=not args.no_move)
