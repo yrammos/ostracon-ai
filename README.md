@@ -245,17 +245,20 @@ python3 dev/eval/test_eval.py     # exercise the harness itself - no sample, no 
 ```
 
 `dev/eval/run.py` runs the real pipeline over `dev/eval/sample/` - real sources,
-matched by `dev/eval/sample/manifest.json` to hand-verified entries in
+matched by `dev/eval/sample/manifest.json` to ground-truth entries in
 `dev/eval/expected.bib` - and scores each field as exact, present-but-different,
 missing or spurious via `dev/eval/scorer.py`; entry-type accuracy is reported
 separately, since a wrong type invalidates everything scored under it. Both
-`sample/` and `expected.bib` start empty: populating either is hand work checked
-against the physical source, not something this repository can ship pre-filled.
-`dev/eval/test_eval.py` proves the harness itself works, against a synthetic
-fixture pair it builds at run time. `dev/eval/populate_sample.py` is the
-one-off helper that populates `sample/` (source files plus `manifest.json`)
-from a hand-verified `.bib` file's BibDesk attachments - see its own
-docstring. See [`dev/eval/README.md`](dev/eval/README.md).
+`sample/` and `expected.bib` ship empty and are populated by
+`dev/eval/select_sample.py`, which draws a stratified sample from
+`dev/eval/biblio.bib` - a stripped, gitignored copy of the library placed by
+hand, since the entries in it predate the pipeline and are ground truth only
+for that reason. `dev/eval/test_eval.py` proves the harness itself works,
+against a synthetic fixture pair it builds at run time.
+`dev/eval/populate_sample.py` holds the BibDesk attachment resolver
+`select_sample.py` imports, and remains usable on its own against any
+hand-verified `.bib` file - see its own docstring. See
+[`dev/eval/README.md`](dev/eval/README.md).
 
 ## Troubleshooting
 
@@ -315,10 +318,12 @@ ostracon-ai/
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison
 │       ├── test_eval.py          # Self-test, synthetic fixtures, no API call
-│       ├── populate_sample.py    # One-off: sample/ from a .bib's BibDesk attachments
-│       ├── expected.bib          # Hand-verified entries; empty until populated
+│       ├── select_sample.py      # Builds sample/ and expected.bib from biblio.bib
+│       ├── populate_sample.py    # BibDesk attachment resolver select_sample.py imports
+│       ├── expected.bib          # Ground-truth entries; empty until populated
 │       └── sample/
-│           └── manifest.json     # citekey/source/hash list; empty until populated
+│           ├── manifest.json     # citekey/source/hash list; empty until populated
+│           └── selection.json    # Provenance of the last select_sample.py run
 ├── automator/
 │   └── script.sh.example   # Copy to script.sh; set PYTHON and WORKDIR
 ├── pdf-in/                 # Sources for --all
