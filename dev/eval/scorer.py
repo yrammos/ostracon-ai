@@ -10,6 +10,7 @@ written down".
 
 from __future__ import annotations
 
+import re
 import sys
 from collections import Counter
 from dataclasses import dataclass, field as dc_field
@@ -19,6 +20,32 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bib_audit  # noqa: E402
 
 VERDICTS = ('exact', 'different', 'missing', 'spurious')
+
+# Fields that can never appear in the pipeline's output, so counting them
+# would fill 'missing' (expected side) or 'spurious' (produced side) with
+# fields that are correctly absent. Two groups, kept separate because they
+# come from different sources and drift differently:
+#
+#   - CLAUDE.md's suppression list: issn, isbn, keywords, reference,
+#     devonthink. CLAUDE.md is prose, not a file this module can read, so
+#     this set has to be kept in step by hand if that list changes. The
+#     devonthink\d*, local-url(-\d+)? and bdsk- forms below follow this
+#     project's own numbered-attachment convention (dev/bib_audit.py's
+#     PROTECTED regex already treats them the same way).
+#   - BibDesk bookkeeping: rating, read, date-added, date-modified,
+#     local-url (and its numbered siblings for a second/third attachment),
+#     and any bdsk-* field BibDesk itself writes (bdsk-file-N, bdsk-url-N).
+_EXCLUDED_FIELD_RE = re.compile(
+    r"^(?:issn|isbn|keywords|reference|devonthink\d*"
+    r"|rating|read|date-added|date-modified|local-url(?:-\d+)?"
+    r"|bdsk-.*)$"
+)
+
+
+def is_excluded_field(key: str) -> bool:
+    """True for a field that must never be scored 'missing' or 'spurious' -
+    see _EXCLUDED_FIELD_RE above. Case-insensitive on the caller's behalf."""
+    return bool(_EXCLUDED_FIELD_RE.match(key.lower()))
 
 
 @dataclass
@@ -55,11 +82,17 @@ def score_entry(expected: bib_audit.Entry, produced: "bib_audit.Entry | None") -
     type_produced = produced.etype if produced else None
     type_correct = (type_produced == expected.etype)
 
-    expected_keys = {f.key for f in expected.fields}
+    # Filtered once, up front, so an excluded field can't leak back in
+    # through the spurious loop below.
+    expected_fields = [f for f in expected.fields if not is_excluded_field(f.key)]
+    produced_fields = [f for f in produced.fields if not is_excluded_field(f.key)] if produced else []
+
+    expected_keys = {f.key for f in expected_fields}
+    produced_by_key = {f.key: f for f in produced_fields}
     scores = []
 
-    for f in expected.fields:
-        pf = produced.get(f.key) if produced else None
+    for f in expected_fields:
+        pf = produced_by_key.get(f.key)
         if pf is None:
             scores.append(FieldScore(f.key, 'missing', expected=f.value))
         elif _normalize(pf.value) == _normalize(f.value):
@@ -67,10 +100,9 @@ def score_entry(expected: bib_audit.Entry, produced: "bib_audit.Entry | None") -
         else:
             scores.append(FieldScore(f.key, 'different', expected=f.value, produced=pf.value))
 
-    if produced:
-        for f in produced.fields:
-            if f.key not in expected_keys:
-                scores.append(FieldScore(f.key, 'spurious', produced=f.value))
+    for f in produced_fields:
+        if f.key not in expected_keys:
+            scores.append(FieldScore(f.key, 'spurious', produced=f.value))
 
     return EntryScore(
         citekey=expected.citekey,

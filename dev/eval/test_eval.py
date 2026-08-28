@@ -94,6 +94,42 @@ def test_score_entry_extraction_failed():
     return True
 
 
+def test_score_entry_excludes_bookkeeping_fields():
+    # expected side carries a CLAUDE.md-suppressed field (keywords) and
+    # BibDesk bookkeeping (rating, bdsk-file-1) that the pipeline can never
+    # produce - none of these three should register as 'missing'.
+    expected = _entry("""
+@Book{Fixture1,
+  Author = {Doe, Jane},
+  Title = {A Sample Book Title},
+  Keywords = {some-tag; another-tag},
+  Rating = {4},
+  Bdsk-File-1 = {not-real-bookmark-data},
+}
+""")
+    # produced side carries an isbn - a field CLAUDE.md forbids the pipeline
+    # from populating, so if it ever slipped through it must not register
+    # as 'spurious' either.
+    produced = _entry("""
+@Book{Fixture1,
+  Author = {Doe, Jane},
+  Title = {A Sample Book Title},
+  Isbn = {978-0-000-00000-0},
+}
+""")
+    result = score_entry(expected, produced)
+    verdicts = {fs.field: fs.verdict for fs in result.fields}
+
+    assert 'keywords' not in verdicts
+    assert 'rating' not in verdicts
+    assert 'bdsk-file-1' not in verdicts
+    assert 'isbn' not in verdicts
+    # the remaining, non-excluded fields still score normally
+    assert verdicts['author'] == 'exact'
+    assert verdicts['title'] == 'exact'
+    return True
+
+
 def test_aggregate_and_report_do_not_crash_on_empty():
     agg = aggregate([])
     assert agg['n_entries'] == 0
@@ -206,6 +242,7 @@ TESTS = [
     test_score_entry_normalizes_whitespace,
     test_score_entry_wrong_type,
     test_score_entry_extraction_failed,
+    test_score_entry_excludes_bookkeeping_fields,
     test_aggregate_and_report_do_not_crash_on_empty,
     test_evaluate_end_to_end,
     test_load_manifest_missing_is_empty_not_error,
