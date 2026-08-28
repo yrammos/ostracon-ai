@@ -252,7 +252,10 @@ separately, since a wrong type invalidates everything scored under it. Both
 `sample/` and `expected.bib` start empty: populating either is hand work checked
 against the physical source, not something this repository can ship pre-filled.
 `dev/eval/test_eval.py` proves the harness itself works, against a synthetic
-fixture pair it builds at run time. See [`dev/eval/README.md`](dev/eval/README.md).
+fixture pair it builds at run time. `dev/eval/populate_sample.py` is the
+one-off helper that populates `sample/` (source files plus `manifest.json`)
+from a hand-verified `.bib` file's BibDesk attachments - see its own
+docstring. See [`dev/eval/README.md`](dev/eval/README.md).
 
 ## Troubleshooting
 
@@ -312,6 +315,7 @@ ostracon-ai/
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison
 │       ├── test_eval.py          # Self-test, synthetic fixtures, no API call
+│       ├── populate_sample.py    # One-off: sample/ from a .bib's BibDesk attachments
 │       ├── expected.bib          # Hand-verified entries; empty until populated
 │       └── sample/
 │           └── manifest.json     # citekey/source/hash list; empty until populated
