@@ -499,17 +499,23 @@ excerpt's text won't (e.g. an embedded Author field):
 
     def _pdf_extractor_kwargs(self, pdf_path):
         """OCR-related options extract_pdf() needs that only apply to PDFs
-        (interactive language prompting, OCR thresholds/timeout)."""
+        (interactive language prompting, OCR thresholds/timeout).
+
+        interactive_ocr is independent of verbose: verbose controls whether
+        progress is printed, interactive_ocr controls whether OCR is allowed
+        to stop and ask - a caller with no one there to answer (dev/eval/run.py)
+        needs the second off regardless of the first.
+        """
         quiet = not self.config.get('verbose', True)
         default_lang = self.config.get('default_ocr_language', 'eng')
 
-        if quiet:
-            language_prompt_fn = lambda: default_lang
-        else:
+        if self.config.get('interactive_ocr', True):
             def language_prompt_fn():
                 lang = self._ask_ocr_language(pdf_path.name)
                 self._log(f"   OCR language: {lang}", 'info')
                 return lang
+        else:
+            language_prompt_fn = lambda: default_lang
 
         return dict(
             quiet=quiet,

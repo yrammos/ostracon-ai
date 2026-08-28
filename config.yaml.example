@@ -46,7 +46,11 @@ careful_model: "claude-opus-5"
 # process files in one large batch. Set to "5m" for the short tier, or to an
 # empty value to use the API default.
 cache_ttl: "1h"
-default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
+default_ocr_language: "eng"  # Tesseract language code used when interactive_ocr is false
+interactive_ocr: true  # false: never show the OCR-language dropdown, always use
+  # default_ocr_language instead. Independent of verbose - dev/eval/run.py sets
+  # this to false so a scanned sample source can't stall an unattended eval run
+  # on a dialog nobody's there to answer, while still logging normally.
 
 # Enrichment: fill in fields the PDF itself doesn't contain (volume, issue,
 # page range, chapter) via CrossRef and/or Google Scholar (ScrapingDog).

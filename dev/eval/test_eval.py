@@ -227,7 +227,7 @@ def test_evaluate_end_to_end():
             "fixture2.pdf": _entry("@Article{Fixture2, Author = {Roe, John},}"),
         }
 
-        def fake_run_one(source_path):
+        def fake_run_one(citekey, source_path):
             return produced_by_source[source_path.name]
 
         entry_scores, warnings = eval_run.evaluate(
@@ -264,6 +264,60 @@ def test_evaluate_end_to_end():
     return True
 
 
+class _FakeAgent:
+    """Stands in for biblio_agent.BiblioAgent's two methods run_pipeline()
+    calls - enough to test the save/reload round trip without the API."""
+
+    def __init__(self, bibtex_by_source):
+        self._bibtex_by_source = bibtex_by_source
+
+    def extract_bibtex(self, source_path):
+        return self._bibtex_by_source[source_path.name]
+
+    def clean_bibtex(self, bibtex_entry):
+        return bibtex_entry
+
+
+def test_run_pipeline_persists_and_reloads():
+    # A run that costs real API calls must not discard its output - saved
+    # unconditionally, then read back with no agent involved at all.
+    agent = _FakeAgent({
+        "ok.pdf": "@Article{Ok, Author = {Doe, Jane}, Title = {A Title},}",
+        "fails.pdf": "Error: could not extract text",
+    })
+    with tempfile.TemporaryDirectory() as td:
+        save_dir = Path(td)
+
+        entry = eval_run.run_pipeline(agent, Path("ok.pdf"), citekey="Ok", save_dir=save_dir)
+        assert entry is not None and entry.citekey == "Ok"
+        assert (save_dir / "Ok.bib").exists()
+        reloaded = eval_run.load_last_run(save_dir, "Ok")
+        assert reloaded is not None and reloaded.citekey == "Ok"
+
+        # A failed extraction is still saved (as a comment, no parseable
+        # entry) rather than leaving no trace of the attempt.
+        failed = eval_run.run_pipeline(agent, Path("fails.pdf"), citekey="Fails", save_dir=save_dir)
+        assert failed is None
+        assert (save_dir / "Fails.bib").exists()
+        assert eval_run.load_last_run(save_dir, "Fails") is None
+
+        # No save file at all for a citekey never run.
+        assert eval_run.load_last_run(save_dir, "NeverRun") is None
+    return True
+
+
+def test_ocr_language_hint_prefers_langid_over_fallback():
+    entry = _entry("@Book{X, Author = {Doe, Jane}, Langid = {ngerman},}")
+    assert eval_run.ocr_language_hint(entry, fallback="eng") == "deu"
+    # No Langid, unmapped Langid, or no expected entry at all: falls back.
+    assert eval_run.ocr_language_hint(None, fallback="eng") == "eng"
+    no_langid = _entry("@Book{X, Author = {Doe, Jane},}")
+    assert eval_run.ocr_language_hint(no_langid, fallback="eng") == "eng"
+    unmapped = _entry("@Book{X, Author = {Doe, Jane}, Langid = {klingon},}")
+    assert eval_run.ocr_language_hint(unmapped, fallback="rus") == "rus"
+    return True
+
+
 def test_load_manifest_missing_is_empty_not_error():
     with tempfile.TemporaryDirectory() as td:
         assert eval_run.load_manifest(Path(td)) == []
@@ -289,6 +343,8 @@ TESTS = [
     test_unwrap_collapses_both_wrap_forms,
     test_resolve_attachment_reconstructs_wrapped_local_url,
     test_evaluate_end_to_end,
+    test_run_pipeline_persists_and_reloads,
+    test_ocr_language_hint_prefers_langid_over_fallback,
     test_load_manifest_missing_is_empty_not_error,
     test_load_manifest_reads_json,
 ]

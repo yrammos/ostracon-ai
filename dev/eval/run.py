@@ -5,6 +5,14 @@ score the result against dev/eval/expected.bib, field by field.
 
     python3 dev/eval/run.py                       # score the real sample
     python3 dev/eval/run.py --model claude-opus-5  # score with a different model
+    python3 dev/eval/run.py --rescore              # re-score dev/eval/last-run/, no API call
+
+Every produced entry is saved to dev/eval/last-run/<citekey>.bib as it's
+produced, whether or not it scored well - a live run costs real API calls,
+so its output is never just discarded. --rescore reads that directory back
+instead of running the pipeline again: re-scoring and re-extracting are
+different operations, and only the second needs biblio_agent, config.yaml,
+or the anthropic package at all.
 
 See dev/eval/README.md for the sample/manifest.json and expected.bib format,
 and dev/eval/test_eval.py for a self-contained run against a synthetic
@@ -28,6 +36,32 @@ from scorer import score_entry, format_report  # noqa: E402
 
 DEFAULT_SAMPLE_DIR = ROOT / 'dev' / 'eval' / 'sample'
 DEFAULT_EXPECTED = ROOT / 'dev' / 'eval' / 'expected.bib'
+DEFAULT_LAST_RUN_DIR = ROOT / 'dev' / 'eval' / 'last-run'
+
+# Chicago/babel Langid values seen in this project's .bib files (see
+# CLAUDE.md's naming rules - "ngerman" not "german", "norsk" not
+# "norwegian"), mapped to the Tesseract language code OCR needs. Used only
+# as a per-source hint when a sample source needs OCR at all; unmapped or
+# absent Langid falls back to the agent's configured default_ocr_language.
+LANGID_TO_TESSERACT = {
+    'english': 'eng', 'russian': 'rus', 'ngerman': 'deu', 'german': 'deu',
+    'french': 'fra', 'italian': 'ita', 'spanish': 'spa', 'greek': 'ell',
+    'polish': 'pol', 'latin': 'lat', 'ukrainian': 'ukr', 'czech': 'ces',
+    'magyar': 'hun', 'hungarian': 'hun', 'norsk': 'nor', 'nynorsk': 'nor',
+    'dutch': 'nld', 'danish': 'dan',
+}
+
+
+def ocr_language_hint(expected_entry, fallback: str) -> str:
+    """Tesseract code to try first if this source needs OCR - from the
+    expected entry's own Langid where it's both present and mapped, else
+    fallback (the agent's configured default_ocr_language)."""
+    langid_field = expected_entry.get('langid') if expected_entry else None
+    if langid_field:
+        code = LANGID_TO_TESSERACT.get(langid_field.value.strip().lower())
+        if code:
+            return code
+    return fallback
 
 
 def load_bib(path) -> dict:
@@ -51,14 +85,37 @@ def sha256_of(path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def run_pipeline(agent, source_path) -> "bib_audit.Entry | None":
+def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.Entry | None":
     """Run one source through the real pipeline and parse its single output
-    entry. None if extraction failed or produced nothing that parses."""
+    entry. None if extraction failed or produced nothing that parses.
+
+    Saves the raw output to save_dir/<citekey>.bib unconditionally, success
+    or failure, when both are given - see load_last_run()/--rescore.
+    """
     bibtex_entry = agent.extract_bibtex(source_path)
     if bibtex_entry.startswith("Error:"):
+        clean = f"% extraction failed: {bibtex_entry}\n"
+        entry = None
+    else:
+        clean = agent.clean_bibtex(bibtex_entry)
+        entries, _ = bib_audit.scan(clean)
+        entry = entries[0] if entries else None
+
+    if save_dir is not None and citekey is not None:
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        (save_dir / f"{citekey}.bib").write_text(clean, encoding='utf-8')
+
+    return entry
+
+
+def load_last_run(save_dir, citekey) -> "bib_audit.Entry | None":
+    """Read one entry back from a previous run_pipeline() save. No agent, no
+    API - this is what makes --rescore free."""
+    path = Path(save_dir) / f"{citekey}.bib"
+    if not path.exists():
         return None
-    clean = agent.clean_bibtex(bibtex_entry)
-    entries, _ = bib_audit.scan(clean)
+    entries, _ = bib_audit.scan(path.read_text(encoding='utf-8'))
     return entries[0] if entries else None
 
 
@@ -66,11 +123,12 @@ def evaluate(manifest, sample_dir, expected_entries, run_one):
     """Score every manifest item whose source file and matching expected
     entry both exist.
 
-    run_one(source_path) -> Entry|None does the actual extraction. Injected
-    rather than called directly so this loop needs nothing about how
-    extraction works - test_eval.py passes a canned lookup instead of a real
-    agent, exercising the exact same matching, hashing and scoring logic
-    without touching the network or the API.
+    run_one(citekey, source_path) -> Entry|None does the actual extraction
+    (or, under --rescore, reads one back via load_last_run() instead).
+    Injected rather than called directly so this loop needs nothing about
+    how extraction works - test_eval.py passes a canned lookup instead of a
+    real agent, exercising the exact same matching, hashing and scoring
+    logic without touching the network or the API.
 
     Returns (entry_scores, warnings): warnings covers a manifest item with
     no matching expected.bib entry, a source file that's gone missing, or a
@@ -101,7 +159,7 @@ def evaluate(manifest, sample_dir, expected_entries, run_one):
                 f"recorded its hash - re-verify and update manifest.json"
             )
 
-        produced_entry = run_one(source)
+        produced_entry = run_one(citekey, source)
         entry_scores.append(score_entry(expected_entry, produced_entry))
 
     return entry_scores, warnings
@@ -147,6 +205,12 @@ def main(argv=None):
                               'produced for every scored field) to this path - the console '
                               'report only carries aggregate counts, and a run is not worth '
                               'repeating just to see a value that scrolled past')
+    parser.add_argument('--rescore', action='store_true',
+                         help='Score --last-run-dir instead of running the pipeline again - '
+                              'no API call, no config.yaml, no anthropic package needed')
+    parser.add_argument('--last-run-dir', default=str(DEFAULT_LAST_RUN_DIR),
+                         help='Where each produced entry is saved, keyed by citekey, and where '
+                              '--rescore reads them back from (default: dev/eval/last-run/)')
     args = parser.parse_args(argv)
 
     sample_dir = Path(args.sample_dir)
@@ -163,19 +227,30 @@ def main(argv=None):
         return 1
     expected_entries = load_bib(expected_path)
 
-    sys.path.insert(0, str(ROOT / 'src'))
-    import biblio_agent  # noqa: E402 - imported here, not at module load, so
-    # test_eval.py can import this module and drive evaluate() directly
-    # without needing a config.yaml or the anthropic package at all.
+    if args.rescore:
+        def run_one(citekey, source):
+            return load_last_run(args.last_run_dir, citekey)
+    else:
+        sys.path.insert(0, str(ROOT / 'src'))
+        import biblio_agent  # noqa: E402 - imported here, not at module load, so
+        # test_eval.py (and --rescore above) can drive evaluate() directly
+        # without needing a config.yaml or the anthropic package at all.
 
-    agent = biblio_agent.BiblioAgent(args.config)
-    if args.model:
-        agent.config['model'] = args.model
+        agent = biblio_agent.BiblioAgent(args.config)
+        if args.model:
+            agent.config['model'] = args.model
+        # An eval run has no one at the keyboard to answer the OCR-language
+        # dropdown - see interactive_ocr in _pdf_extractor_kwargs(). Each
+        # source's own expected Langid stands in for the human's answer.
+        agent.config['interactive_ocr'] = False
+        base_lang = agent.config.get('default_ocr_language', 'eng')
 
-    entry_scores, warnings = evaluate(
-        manifest, sample_dir, expected_entries,
-        run_one=lambda source: run_pipeline(agent, source),
-    )
+        def run_one(citekey, source):
+            agent.config['default_ocr_language'] = ocr_language_hint(
+                expected_entries.get(citekey), base_lang)
+            return run_pipeline(agent, source, citekey=citekey, save_dir=args.last_run_dir)
+
+    entry_scores, warnings = evaluate(manifest, sample_dir, expected_entries, run_one=run_one)
 
     print(format_report(entry_scores, warnings))
 

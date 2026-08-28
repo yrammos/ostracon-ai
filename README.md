@@ -101,7 +101,8 @@ absent from disk is an error at startup, not a warning.
 | `verbose`               | `true`              | Progress on stderr.                                                                                               |
 | `ocr_threshold`         | `100`               | Words below which a PDF is treated as scanned.                                                                    |
 | `ocr_timeout`           | `180`               | Seconds allowed to `ocrmypdf`.                                                                                    |
-| `default_ocr_language`  | `eng`               | Tesseract language when OCR runs unattended.                                                                      |
+| `default_ocr_language`  | `eng`               | Tesseract language used when `interactive_ocr` is `false`.                                                        |
+| `interactive_ocr`       | `true`              | `false`: never show the OCR-language dropdown, always use `default_ocr_language`. Independent of `verbose`.       |
 | `autofile_bibdesk`      | `false`             | Import into BibDesk directly rather than to the staging file.                                                     |
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
