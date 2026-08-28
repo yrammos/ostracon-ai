@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""
+Self-test for the evaluation harness (scorer.py, run.py's evaluate()), run
+against a synthetic fixture pair built here at run time rather than against
+dev/eval/sample/ and dev/eval/expected.bib, which are real, hand-verified
+data this script has no business needing. Makes no API call, needs no
+config.yaml, and needs no anthropic package installed - it never imports
+biblio_agent.py, only run.py's evaluate() and load_* helpers, with the
+actual extraction step replaced by a canned lookup.
+
+    python3 dev/eval/test_eval.py
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import bib_audit  # noqa: E402
+import run as eval_run  # noqa: E402
+from scorer import score_entry, aggregate, format_report  # noqa: E402
+
+
+def _entry(text: str) -> bib_audit.Entry:
+    """Parse a single .bib entry from literal text - exercises the same
+    scanner production code uses, rather than hand-building Entry objects."""
+    entries, _ = bib_audit.scan(text)
+    assert len(entries) == 1, f"expected exactly one entry in fixture text, got {len(entries)}"
+    return entries[0]
+
+
+# ── scorer.py ────────────────────────────────────────────────────────────
+
+def test_score_entry_all_verdicts():
+    expected = _entry("""
+@Article{Fixture1,
+  Author = {Doe, Jane},
+  Title = {A Sample Article Title},
+  Journaltitle = {A Journal},
+  Date = {2020},
+}
+""")
+    produced = _entry("""
+@Article{Fixture1,
+  Author = {Doe, Jane},
+  Title = {A Sample Article Tile},
+  Note = {an unexpected extra field},
+}
+""")
+    result = score_entry(expected, produced)
+
+    assert result.type_correct is True
+    verdicts = {fs.field: fs.verdict for fs in result.fields}
+    assert verdicts['author'] == 'exact'
+    assert verdicts['title'] == 'different'
+    assert verdicts['journaltitle'] == 'missing'
+    assert verdicts['note'] == 'spurious'
+    return True
+
+
+def test_score_entry_normalizes_whitespace():
+    expected = _entry("@Article{X, Title = {A   Title\nWith Wraps},}")
+    produced = _entry("@Article{X, Title = {A Title With Wraps},}")
+    result = score_entry(expected, produced)
+    assert result.fields[0].verdict == 'exact', result.fields[0]
+    return True
+
+
+def test_score_entry_wrong_type():
+    expected = _entry("@Incollection{X, Author = {Roe, John}, Booktitle = {An Edited Volume},}")
+    produced = _entry("@Article{X, Author = {Roe, John},}")
+    result = score_entry(expected, produced)
+    assert result.type_correct is False
+    assert result.type_expected == 'incollection'
+    assert result.type_produced == 'article'
+    verdicts = {fs.field: fs.verdict for fs in result.fields}
+    assert verdicts['author'] == 'exact'
+    assert verdicts['booktitle'] == 'missing'
+    return True
+
+
+def test_score_entry_extraction_failed():
+    expected = _entry("@Article{X, Author = {Doe, Jane}, Title = {T},}")
+    result = score_entry(expected, produced=None)
+    assert result.type_correct is False
+    assert result.type_produced is None
+    assert all(fs.verdict == 'missing' for fs in result.fields)
+    return True
+
+
+def test_aggregate_and_report_do_not_crash_on_empty():
+    agg = aggregate([])
+    assert agg['n_entries'] == 0
+    assert agg['type_accuracy'] is None
+    report = format_report([], warnings=["X: no matching entry in expected.bib"])
+    assert "Nothing scored" in report
+    assert "no matching entry" in report
+    return True
+
+
+# ── run.py: evaluate() and the load_* helpers, extraction stubbed ─────────
+
+def test_evaluate_end_to_end():
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        sample_dir = td / 'sample'
+        sample_dir.mkdir()
+
+        # Two real (placeholder) source files - content is irrelevant, since
+        # extraction is stubbed below; only their existence and bytes matter,
+        # for the exists()/sha256 checks evaluate() actually performs.
+        (sample_dir / 'fixture1.pdf').write_bytes(b'placeholder bytes for fixture1')
+        (sample_dir / 'fixture2.pdf').write_bytes(b'placeholder bytes for fixture2')
+        correct_hash = hashlib.sha256((sample_dir / 'fixture1.pdf').read_bytes()).hexdigest()
+
+        manifest = [
+            {"citekey": "Fixture1", "source": "fixture1.pdf", "sha256": correct_hash},
+            {"citekey": "Fixture2", "source": "fixture2.pdf", "sha256": "0" * 64},  # deliberately wrong
+            {"citekey": "Fixture3", "source": "missing.pdf"},                       # file absent
+            {"citekey": "NoSuchExpected", "source": "fixture1.pdf"},                # not in expected.bib
+        ]
+
+        expected_path = td / 'expected.bib'
+        expected_path.write_text("""
+@Article{Fixture1,
+  Author = {Doe, Jane},
+  Title = {A Sample Article Title},
+  Journaltitle = {A Journal},
+}
+
+@Incollection{Fixture2,
+  Author = {Roe, John},
+  Title = {A Chapter Title},
+  Booktitle = {An Edited Volume},
+}
+
+@Article{Fixture3,
+  Author = {Poe, Ann},
+  Title = {A Source That Has Gone Missing},
+}
+""", encoding='utf-8')
+        expected_entries = eval_run.load_bib(expected_path)
+        assert set(expected_entries) == {"Fixture1", "Fixture2", "Fixture3"}
+
+        produced_by_source = {
+            "fixture1.pdf": _entry("""
+@Article{Fixture1,
+  Author = {Doe, Jane},
+  Title = {A Sample Article Tile},
+  Note = {spurious},
+}
+"""),
+            # Model got the type wrong (Article instead of Incollection) -
+            # a realistic failure mode this harness exists to catch.
+            "fixture2.pdf": _entry("@Article{Fixture2, Author = {Roe, John},}"),
+        }
+
+        def fake_run_one(source_path):
+            return produced_by_source[source_path.name]
+
+        entry_scores, warnings = eval_run.evaluate(
+            manifest, sample_dir, expected_entries, run_one=fake_run_one,
+        )
+
+        assert len(entry_scores) == 2, entry_scores
+        by_key = {es.citekey: es for es in entry_scores}
+        assert by_key["Fixture1"].type_correct is True
+        assert by_key["Fixture2"].type_correct is False
+
+        warning_text = " | ".join(warnings)
+        assert "Fixture2" in warning_text and "changed" in warning_text
+        assert "Fixture3" in warning_text and "not found" in warning_text
+        assert "NoSuchExpected" in warning_text and "no matching entry" in warning_text
+
+        # The report renders without crashing and mentions the type mismatch.
+        report = format_report(entry_scores, warnings)
+        assert "Fixture2" in report
+        assert "incollection" in report and "article" in report
+
+    return True
+
+
+def test_load_manifest_missing_is_empty_not_error():
+    with tempfile.TemporaryDirectory() as td:
+        assert eval_run.load_manifest(Path(td)) == []
+    return True
+
+
+def test_load_manifest_reads_json():
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        (td / 'manifest.json').write_text(json.dumps([{"citekey": "X", "source": "x.pdf"}]))
+        manifest = eval_run.load_manifest(td)
+        assert manifest == [{"citekey": "X", "source": "x.pdf"}]
+    return True
+
+
+TESTS = [
+    test_score_entry_all_verdicts,
+    test_score_entry_normalizes_whitespace,
+    test_score_entry_wrong_type,
+    test_score_entry_extraction_failed,
+    test_aggregate_and_report_do_not_crash_on_empty,
+    test_evaluate_end_to_end,
+    test_load_manifest_missing_is_empty_not_error,
+    test_load_manifest_reads_json,
+]
+
+
+def main():
+    failures = []
+    for test in TESTS:
+        try:
+            assert test() is True
+            print(f"  ✓ {test.__name__}")
+        except Exception as e:
+            failures.append((test.__name__, e))
+            print(f"  ✗ {test.__name__}: {e}")
+
+    print()
+    if failures:
+        print(f"{len(failures)}/{len(TESTS)} test(s) failed.")
+        return 1
+    print(f"All {len(TESTS)} eval harness self-tests passed.")
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
