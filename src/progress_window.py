@@ -277,21 +277,6 @@ class ProgressWindow:
 
         _on_main(_update)
 
-    def countdown(self, seconds: int) -> None:
-        """Hold before the first file, so the model can still be changed.
-
-        Called from the worker thread: it blocks there while the main thread
-        keeps running the event loop, which is what leaves the popup live. The
-        run starts on its own when the count expires, so an unattended batch is
-        never stranded waiting for a click.
-        """
-        for remaining in range(int(seconds), 0, -1):
-            if self.cancelled:
-                return
-            plural = "" if remaining == 1 else "s"
-            self._set_header(f"Starting in {remaining} second{plural} \u2014 change model now")
-            time.sleep(1)
-
     def set_progress(self, current: int, filename: str) -> None:
         """Update the header progress line. Thread-safe."""
         total = self._total

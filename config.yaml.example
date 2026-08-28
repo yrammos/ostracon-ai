@@ -33,28 +33,19 @@ ocr_timeout: 180 # Seconds to allow ocrmypdf on the extracted page subset before
 max_tokens: 4000 # Maximum tokens for Claude response
 model: "claude-sonnet-4-20250514" # Claude model to use
 
+# Model used automatically for source files placed in pdf-in/careful/ during
+# an --all run, instead of `model` above. Replaces having to notice a
+# reference-work source (Grove, the Stanford Encyclopedia, Wikipedia) and
+# react in time to change a dropdown: drop the file in the subfolder instead.
+# See the operator note in CLAUDE.md.
+careful_model: "claude-opus-5"
+
 # Prompt cache TTL for the shared static context. "1h" costs 2x base input to
 # write (vs 1.25x for the 5-minute default) but survives between separate
 # Quick Action invocations, which is the cheaper trade unless you always
 # process files in one large batch. Set to "5m" for the short tier, or to an
 # empty value to use the API default.
 cache_ttl: "1h"
-
-# Models offered in the progress window's dropdown, so the Finder Quick Action
-# can reach a stronger model without a command line. The first entry is only a
-# default if `model` above is absent from the list. Switching mid-batch applies
-# from the next file and is inexpensive - prompt caches are per-model and
-# coexist, so a run that alternates pays one cache write per model, not one per
-# switch. See the README's Cost Estimate section.
-window_models:
-  - "claude-sonnet-4-6"
-  - "claude-opus-5"
-
-# Seconds the progress window waits before the first file, so the model
-# dropdown can be changed for a batch you already know needs a stronger model.
-# The run starts on its own when the count expires - an unattended batch is
-# never left waiting. Set to 0 to start immediately.
-window_start_delay: 4
 default_ocr_language: "eng"  # Tesseract language code used in quiet/automation mode (eng, rus, deu, fra, etc.)
 
 # Enrichment: fill in fields the PDF itself doesn't contain (volume, issue,
@@ -67,8 +58,22 @@ scrapingdog_api_key: "" # Optional: ScrapingDog API key for Google Scholar fallb
 
 # Logging
 verbose: true
-notifications: false  # Send macOS notifications (batch progress updates and validation failures)
-show_window: false  # Show floating progress window (overridden by --window / --no-window flags)
+
+# Presentation only - none of this affects extraction. A top-level key of the
+# same name (show_window, window_models, notifications) is still read for one
+# release, with a deprecation warning, if this block is absent or omits it.
+interface:
+  show_window: false  # Floating progress window (overridden by --window / --no-window flags)
+  # Models offered in the progress window's dropdown, so the Finder Quick
+  # Action can reach a stronger model without a command line. The first entry
+  # is only a default if `model` above is absent from the list. Switching
+  # mid-batch applies from the next file and is inexpensive - prompt caches
+  # are per-model and coexist, so a run that alternates pays one cache write
+  # per model, not one per switch. See the README's Cost Estimate section.
+  window_models:
+    - "claude-sonnet-4-6"
+    - "claude-opus-5"
+  notifications: false  # Send macOS notifications (batch progress updates and validation failures)
 
 # BibDesk integration
 autofile_bibdesk: false  # After saving each entry, import it into BibDesk and auto-file the linked PDF.

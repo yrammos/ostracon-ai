@@ -93,20 +93,31 @@ absent from disk is an error at startup, not a warning.
 | Key                     | Default             | Effect                                                                                                            |
 | ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `model`                 | `claude-sonnet-4-6` | Price alternatives with `dev/estimate_cost.py --model <id>` first.                                                |
+| `careful_model`         | `claude-opus-5`     | Used automatically for sources in `pdf-in/careful/` during `--all`. See Usage.                                    |
 | `max_tokens`            | `4000`              | Ceiling per response; entries run 400–500 tokens.                                                                 |
 | `cache_ttl`             | `"1h"`              | Prompt-cache lifetime. Cheaper unless runs are genuinely isolated.                                                |
 | `enrich_missing_fields` | `true`              | The CrossRef/Scholar lookups, the grounding audit and reconciliation. `false` leaves only the initial extraction. |
 | `verbose`               | `true`              | Progress on stderr.                                                                                               |
-| `show_window`           | `false`             | The floating progress window; `--window`/`--no-window` override.                                                  |
-| `window_models`         | sonnet-4-6, opus-5  | Models offered in the window's dropdown. Unset hides it.                                                          |
-| `window_start_delay`    | `4`                 | Seconds before the first file, during which the model may be changed.                                             |
-| `notifications`         | `false`             | macOS notifications for batch progress and failures.                                                              |
 | `ocr_threshold`         | `100`               | Words below which a PDF is treated as scanned.                                                                    |
 | `ocr_timeout`           | `180`               | Seconds allowed to `ocrmypdf`.                                                                                    |
 | `default_ocr_language`  | `eng`               | Tesseract language when OCR runs unattended.                                                                      |
 | `autofile_bibdesk`      | `false`             | Import into BibDesk directly rather than to the staging file.                                                     |
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
+
+Presentation settings — nothing below affects extraction — live under one
+`interface:` block:
+
+```yaml
+interface:
+  show_window: false     # The floating progress window; --window/--no-window override.
+  window_models: [...]   # Models offered in the window's dropdown. Unset hides it.
+  notifications: false   # macOS notifications for batch progress and failures.
+```
+
+A bare top-level `show_window`, `window_models` or `notifications` key (the pre-9
+layout) is still read for one release if `interface:` is absent or omits it, with a
+one-time deprecation warning on stderr; move it under `interface:` when convenient.
 
 The remaining paths — `pdf_in_folder`, `pdf_out_folder`, `template_file`,
 `claude_md_file`, `ref_file`, `example_files` — name the files constituting the
@@ -123,9 +134,11 @@ Right-click a PDF or `.webloc` file in Finder — or a mixed selection — and c
 **Extract BibLaTeX-Chicago Bibliography (via Claude)**.
 
 The progress window offers a **Model** dropdown listing whatever `window_models`
-names, and holds for `window_start_delay` seconds before the first file so the
-choice can be changed. Reference works (Grove, the Stanford Encyclopedia,
-Wikipedia) are where the stronger model repays its cost; see the operator note in
+names; a change there applies from the next file onward. Reference works (Grove,
+the Stanford Encyclopedia, Wikipedia) are where the stronger model repays its
+cost — rather than reaching for the dropdown in time, drop such sources into
+`pdf-in/careful/` before an `--all` run and they process with `careful_model`
+automatically, in either windowed or headless mode. See the operator note in
 `CLAUDE.md`.
 
 From the command line:
@@ -278,6 +291,7 @@ ostracon-ai/
 ├── automator/
 │   └── script.sh.example   # Copy to script.sh; set PYTHON and WORKDIR
 ├── pdf-in/                 # Sources for --all
+│   └── careful/            # Same, but processed with careful_model
 └── pdf-out/                # Where they go afterwards
 ```
 
