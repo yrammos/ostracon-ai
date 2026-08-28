@@ -11,6 +11,7 @@ SourceContent.
 import json
 import plistlib
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
@@ -239,6 +240,129 @@ def crossref_fallback(url, crossref_email=None):
     return None
 
 
+# ── Browser DOM fallback (Safari / Chrome) ──────────────────────────────────
+#
+# A Cloudflare challenge keys on TLS fingerprint and JS execution, which no
+# plain HTTP client can satisfy. A browser the operator already has open
+# holds the session cookie and a genuine fingerprint, so when the bookmarked
+# URL happens to still be open in a tab, the DOM is taken from there instead
+# of fetching the page a second time. Requires a one-time setting in each
+# browser (Safari: Develop > Allow JavaScript from Apple Events; Chrome:
+# View > Developer > Allow JavaScript from Apple Events) that cannot be
+# detected in advance, so a missing permission is indistinguishable here from
+# a missing tab - both simply fall through to the existing failure path.
+
+_BROWSER_APPS = ("Safari", "Google Chrome")
+_JS_OUTER_HTML = "document.documentElement.outerHTML"
+
+
+def _osascript(script, timeout=15):
+    """Run an AppleScript snippet, returning its stdout (stripped), or None
+    on any failure: osascript missing, the script errored (no permission, no
+    such window/tab), or it ran past timeout."""
+    try:
+        result = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def _browser_is_running(app_name):
+    """True if app_name is already running - checked so a closed browser is
+    never launched just to look for a tab that, by definition, isn't open."""
+    return _osascript(f'application "{app_name}" is running') == 'true'
+
+
+def _list_tabs(app_name):
+    """(window_index, tab_index, url) for every open tab of app_name, both
+    indices 1-based as AppleScript addresses them. Empty if the app isn't
+    running or has no windows."""
+    if not _browser_is_running(app_name):
+        return []
+    script = f'''
+    tell application "{app_name}"
+        if (count of windows) is 0 then return ""
+        set out to ""
+        set wIdx to 0
+        repeat with w in windows
+            set wIdx to wIdx + 1
+            set tIdx to 0
+            repeat with t in tabs of w
+                set tIdx to tIdx + 1
+                set out to out & wIdx & tab & tIdx & tab & (URL of t) & linefeed
+            end repeat
+        end repeat
+        return out
+    end tell
+    '''
+    output = _osascript(script)
+    if not output:
+        return []
+    tabs = []
+    for line in output.splitlines():
+        parts = line.split('\t')
+        if len(parts) != 3:
+            continue
+        try:
+            tabs.append((int(parts[0]), int(parts[1]), parts[2]))
+        except ValueError:
+            continue
+    return tabs
+
+
+def _find_matching_tab(app_name, target_url):
+    """(window_index, tab_index) of the first open tab of app_name whose URL
+    matches target_url once tracking parameters are stripped from both and a
+    trailing slash is ignored, or None if no tab matches."""
+    target = clean_url(target_url).rstrip('/')
+    for win_idx, tab_idx, tab_url in _list_tabs(app_name):
+        if clean_url(tab_url).rstrip('/') == target:
+            return win_idx, tab_idx
+    return None
+
+
+def _capture_tab_dom(app_name, window_index, tab_index, timeout=20):
+    """The live DOM of one already-identified open tab, via each browser's
+    own JS-execution verb (they differ). None if capture fails - almost
+    always because the one-time Apple Events permission was never granted."""
+    if app_name == "Safari":
+        script = (
+            f'tell application "Safari" to do JavaScript "{_JS_OUTER_HTML}" '
+            f'in tab {tab_index} of window {window_index}'
+        )
+    else:  # Google Chrome
+        script = (
+            f'tell application "Google Chrome" to execute tab {tab_index} '
+            f'of window {window_index} javascript "{_JS_OUTER_HTML}"'
+        )
+    return _osascript(script, timeout=timeout)
+
+
+def browser_tab_dom(url):
+    """The rendered DOM of `url` and the browser it came from, if the page
+    happens to be open in a Safari or Chrome tab right now - (None, None)
+    otherwise (neither browser running, no matching tab, or the Apple Events
+    JS permission was never granted in the browser that does have it open).
+
+    Tried in place of a second HTTP fetch, never as a replacement for one:
+    this never launches a browser that isn't already running, and never
+    fetches or navigates a tab - only reads whatever page is already there.
+    """
+    for app_name in _BROWSER_APPS:
+        match = _find_matching_tab(app_name, url)
+        if not match:
+            continue
+        html = _capture_tab_dom(app_name, *match)
+        if html:
+            return html, app_name
+    return None, None
+
+
 def resolve_webloc(path):
     """Parse a .webloc plist and return its bookmarked URL, or None."""
     with open(path, 'rb') as f:
@@ -365,6 +489,20 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     if not response.ok:
         if not is_bot_challenge(response):
             return f"Error: Could not fetch {url}: HTTP {response.status_code}"
+
+        # A browser already holding the session and a genuine fingerprint
+        # beats a DOI-only CrossRef record when the page is still open in a
+        # tab; falls through untouched below when it isn't.
+        html, browser_app = browser_tab_dom(url)
+        if html:
+            soup = BeautifulSoup(html, 'html.parser')
+            return SourceContent(
+                text=_page_text(soup),
+                metadata=_page_metadata(soup),
+                label=f"webpage (via {browser_app} tab)",
+                url=clean_url(url),
+            )
+
         fallback = crossref_fallback(url, crossref_email)
         if fallback:
             return fallback
