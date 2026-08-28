@@ -4,12 +4,12 @@ attachments. Run by hand, not part of the extraction pipeline.
 
 For each entry in <bib-file>:
   - resolve its source file from local-url (a plain path, preferred when
-    present) or bdsk-file-1 (a base64-encoded macOS bookmark, decoded via
-    the same NSURL bookmark API src/biblio_agent.py's add_bdsk_bookmark()
-    used to write it - never by reading the bookmark plist's own
-    'relativePath' string, since resolving that needs a base directory
-    this script has no reliable way to supply for an arbitrary <bib-file>
-    argument);
+    present, reconstructed from BibDesk's line-wrap first - see _unwrap())
+    or bdsk-file-1 (a base64-encoded macOS bookmark, decoded via the same
+    NSURL bookmark API src/biblio_agent.py's add_bdsk_bookmark() used to
+    write it - never by reading the bookmark plist's own 'relativePath'
+    string, since resolving that needs a base directory this script has no
+    reliable way to supply for an arbitrary <bib-file> argument);
   - if the resolved path exists, copy it into --sample-dir named after the
     entry's citekey, keeping the original extension;
   - record {citekey, source, sha256} in manifest.json, per
@@ -36,6 +36,7 @@ import base64
 import hashlib
 import json
 import plistlib
+import re
 import shutil
 import sys
 from collections import Counter
@@ -59,6 +60,21 @@ ALLOWED_SUFFIXES = {'.pdf', '.webloc'}
 # (e.g. to mount a volume). See Apple's Foundation/NSURL.h.
 _NSURL_BOOKMARK_RESOLUTION_WITHOUT_UI = 1 << 8
 
+# BibDesk wraps long field values at a fixed column, always breaking on a
+# space; the value in the .bib file then carries that break as a literal
+# newline plus 18 trailing spaces of indent (still present verbatim in
+# abstract/annote - see scorer.py's exclusion list). In local-url the
+# newline itself was lost at some point upstream of this file and collapsed
+# into a plain space, leaving a run of exactly 19 spaces where the wrap
+# fell. Both are the same wrap, reconstructed here rather than "normalized":
+# collapsing either form to the single space it replaces is lossless,
+# because the wrap always falls on a space.
+_WRAP_RE = re.compile(r'\n {18}| {19}')
+
+
+def _unwrap(value: str) -> str:
+    return _WRAP_RE.sub(' ', value)
+
 
 def resolve_attachment_verbose(entry: "bib_audit.Entry"):
     """Resolve one entry's source file path, with a reason on failure.
@@ -80,7 +96,7 @@ def resolve_attachment_verbose(entry: "bib_audit.Entry"):
 
     local_url = entry.get('local-url')
     if local_url is not None:
-        path = local_url.value.strip()
+        path = _unwrap(local_url.value).strip()
     else:
         bdsk_file = entry.get('bdsk-file-1')
         if bdsk_file is None:

@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bib_audit  # noqa: E402
 import run as eval_run  # noqa: E402
 from scorer import score_entry, aggregate, format_report  # noqa: E402
+import populate_sample  # noqa: E402
 
 
 def _entry(text: str) -> bib_audit.Entry:
@@ -95,9 +96,10 @@ def test_score_entry_extraction_failed():
 
 
 def test_score_entry_excludes_bookkeeping_fields():
-    # expected side carries a CLAUDE.md-suppressed field (keywords) and
-    # BibDesk bookkeeping (rating, bdsk-file-1) that the pipeline can never
-    # produce - none of these three should register as 'missing'.
+    # expected side carries a CLAUDE.md-suppressed field (keywords), BibDesk
+    # bookkeeping (rating, bdsk-file-1), and a free-text note field carrying
+    # BibDesk's line-wrap artifact (annote) - none of these four should
+    # register as 'missing'.
     expected = _entry("""
 @Book{Fixture1,
   Author = {Doe, Jane},
@@ -105,16 +107,18 @@ def test_score_entry_excludes_bookkeeping_fields():
   Keywords = {some-tag; another-tag},
   Rating = {4},
   Bdsk-File-1 = {not-real-bookmark-data},
+  Annote = {a curatorial note, wrapped by BibDesk},
 }
 """)
-    # produced side carries an isbn - a field CLAUDE.md forbids the pipeline
-    # from populating, so if it ever slipped through it must not register
-    # as 'spurious' either.
+    # produced side carries an isbn (CLAUDE.md forbids the pipeline from
+    # populating it) and an abstract (the pipeline never produces one) - if
+    # either ever slipped through, neither must register as 'spurious'.
     produced = _entry("""
 @Book{Fixture1,
   Author = {Doe, Jane},
   Title = {A Sample Book Title},
   Isbn = {978-0-000-00000-0},
+  Abstract = {should never come from the pipeline},
 }
 """)
     result = score_entry(expected, produced)
@@ -123,7 +127,9 @@ def test_score_entry_excludes_bookkeeping_fields():
     assert 'keywords' not in verdicts
     assert 'rating' not in verdicts
     assert 'bdsk-file-1' not in verdicts
+    assert 'annote' not in verdicts
     assert 'isbn' not in verdicts
+    assert 'abstract' not in verdicts
     # the remaining, non-excluded fields still score normally
     assert verdicts['author'] == 'exact'
     assert verdicts['title'] == 'exact'
@@ -137,6 +143,30 @@ def test_aggregate_and_report_do_not_crash_on_empty():
     report = format_report([], warnings=["X: no matching entry in expected.bib"])
     assert "Nothing scored" in report
     assert "no matching entry" in report
+    return True
+
+
+# ── populate_sample.py: BibDesk line-wrap reconstruction ──────────────────
+
+def test_unwrap_collapses_both_wrap_forms():
+    # Newline+18-space form (surviving as written, e.g. in abstract/annote)
+    # and the 19-space form (the same wrap, with the newline itself lost
+    # upstream of dev/eval/biblio.bib - local-url's actual shape).
+    assert populate_sample._unwrap("Music -\n                  Research") == "Music - Research"
+    assert populate_sample._unwrap("Music -                   Research") == "Music - Research"
+    # A run of ordinary spaces that isn't a wrap (wrong length) is untouched.
+    assert populate_sample._unwrap("a  b") == "a  b"
+    return True
+
+
+def test_resolve_attachment_reconstructs_wrapped_local_url():
+    with tempfile.TemporaryDirectory() as td:
+        target = Path(td) / "Sample File.pdf"
+        target.write_bytes(b"%PDF-1.4 placeholder")
+        wrapped = str(target).replace(" ", " " * 19, 1)
+        assert wrapped != str(target)  # the fixture actually exercises _unwrap
+        entry = _entry(f"@Article{{X, Local-Url = {{{wrapped}}},}}")
+        assert populate_sample.resolve_attachment(entry) == target
     return True
 
 
@@ -244,6 +274,8 @@ TESTS = [
     test_score_entry_extraction_failed,
     test_score_entry_excludes_bookkeeping_fields,
     test_aggregate_and_report_do_not_crash_on_empty,
+    test_unwrap_collapses_both_wrap_forms,
+    test_resolve_attachment_reconstructs_wrapped_local_url,
     test_evaluate_end_to_end,
     test_load_manifest_missing_is_empty_not_error,
     test_load_manifest_reads_json,

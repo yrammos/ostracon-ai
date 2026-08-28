@@ -23,7 +23,7 @@ VERDICTS = ('exact', 'different', 'missing', 'spurious')
 
 # Fields that can never appear in the pipeline's output, so counting them
 # would fill 'missing' (expected side) or 'spurious' (produced side) with
-# fields that are correctly absent. Two groups, kept separate because they
+# fields that are correctly absent. Three groups, kept separate because they
 # come from different sources and drift differently:
 #
 #   - CLAUDE.md's suppression list: issn, isbn, keywords, reference,
@@ -35,10 +35,17 @@ VERDICTS = ('exact', 'different', 'missing', 'spurious')
 #   - BibDesk bookkeeping: rating, read, date-added, date-modified,
 #     local-url (and its numbered siblings for a second/third attachment),
 #     and any bdsk-* field BibDesk itself writes (bdsk-file-N, bdsk-url-N).
+#   - Free-text notes carried over from BibDesk (abstract, annote): the
+#     pipeline never produces either, and in dev/eval/biblio.bib both still
+#     carry BibDesk's line-wrap artifact verbatim (see
+#     populate_sample.py's _unwrap(), which reconstructs the same wrap in
+#     local-url) - scoring them would count formatting the ground truth
+#     never claims to have normalized.
 _EXCLUDED_FIELD_RE = re.compile(
     r"^(?:issn|isbn|keywords|reference|devonthink\d*"
     r"|rating|read|date-added|date-modified|local-url(?:-\d+)?"
-    r"|bdsk-.*)$"
+    r"|bdsk-.*"
+    r"|abstract|annote)$"
 )
 
 
