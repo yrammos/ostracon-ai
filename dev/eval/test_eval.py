@@ -249,6 +249,18 @@ def test_evaluate_end_to_end():
         assert "Fixture2" in report
         assert "incollection" in report and "article" in report
 
+        # --json persists exactly what the console table can't show: the
+        # actual expected/produced strings behind a 'different' verdict.
+        json_path = td / 'detail.json'
+        eval_run.write_json_report(json_path, entry_scores, warnings)
+        detail = json.loads(json_path.read_text(encoding='utf-8'))
+        assert detail['warnings'] == warnings
+        fixture1 = next(e for e in detail['entries'] if e['citekey'] == 'Fixture1')
+        title_field = next(f for f in fixture1['fields'] if f['field'] == 'title')
+        assert title_field['verdict'] == 'different'
+        assert title_field['expected'] == 'A Sample Article Title'
+        assert title_field['produced'] == 'A Sample Article Tile'
+
     return True
 
 

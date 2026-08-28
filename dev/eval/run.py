@@ -107,6 +107,31 @@ def evaluate(manifest, sample_dir, expected_entries, run_one):
     return entry_scores, warnings
 
 
+def write_json_report(path, entry_scores, warnings) -> None:
+    """Serialize what format_report()'s console table discards: the actual
+    expected/produced value behind every 'different' and 'spurious' verdict.
+    Pure serialization of EntryScore/FieldScore, already computed by
+    evaluate() - no comparison logic here, that stays in scorer.py."""
+    payload = {
+        "entries": [
+            {
+                "citekey": es.citekey,
+                "type_expected": es.type_expected,
+                "type_produced": es.type_produced,
+                "type_correct": es.type_correct,
+                "fields": [
+                    {"field": fs.field, "verdict": fs.verdict,
+                     "expected": fs.expected, "produced": fs.produced}
+                    for fs in es.fields
+                ],
+            }
+            for es in entry_scores
+        ],
+        "warnings": warnings,
+    }
+    Path(path).write_text(json.dumps(payload, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -117,6 +142,11 @@ def main(argv=None):
     parser.add_argument('--config', default='config.yaml',
                          help='Path to config file (default: config.yaml)')
     parser.add_argument('--model', help='Claude model to use (overrides config)')
+    parser.add_argument('--json',
+                         help='Also write full per-field detail (citekey, verdict, expected, '
+                              'produced for every scored field) to this path - the console '
+                              'report only carries aggregate counts, and a run is not worth '
+                              'repeating just to see a value that scrolled past')
     args = parser.parse_args(argv)
 
     sample_dir = Path(args.sample_dir)
@@ -148,6 +178,11 @@ def main(argv=None):
     )
 
     print(format_report(entry_scores, warnings))
+
+    if args.json:
+        write_json_report(args.json, entry_scores, warnings)
+        print(f"\nFull per-field detail written to {args.json}")
+
     return 0
 
 

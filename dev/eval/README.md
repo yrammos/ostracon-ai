@@ -7,8 +7,14 @@ Measures whether an entry is right, rather than just what a run costs
 ```bash
 python3 dev/eval/run.py                       # score dev/eval/sample/ against dev/eval/expected.bib
 python3 dev/eval/run.py --model claude-opus-5  # score with a different model
+python3 dev/eval/run.py --json out.json        # also persist per-field expected/produced values
 python3 dev/eval/test_eval.py                  # exercise the harness itself, no sample/API needed
 ```
+
+`--json` exists because the console report only carries aggregate counts - the
+actual string behind a `different` or `spurious` verdict is otherwise gone the
+moment the process exits, and this makes live API calls, so a run is not worth
+repeating just to see a value that scrolled past.
 
 ## How it fits together
 
