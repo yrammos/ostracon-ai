@@ -9,8 +9,13 @@ python3 dev/eval/run.py                       # score dev/eval/sample/ against d
 python3 dev/eval/run.py --model claude-opus-5  # score with a different model
 python3 dev/eval/run.py --json out.json        # also persist per-field expected/produced values
 python3 dev/eval/run.py --rescore              # re-score dev/eval/last-run/, no API call
+python3 dev/eval/run.py --only Foo2019,Bar2020 # extract/score only these citekeys
 python3 dev/eval/test_eval.py                  # exercise the harness itself, no sample/API needed
 ```
+
+`--only` restricts a live run to the named citekeys - for a targeted
+diagnostic (does fixing X also fix this one entry?) without paying to
+re-extract the other 50-odd.
 
 `--json` exists because the console report only carries aggregate counts - the
 actual string behind a `different` or `spurious` verdict is otherwise gone the

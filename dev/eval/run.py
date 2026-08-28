@@ -211,6 +211,10 @@ def main(argv=None):
     parser.add_argument('--last-run-dir', default=str(DEFAULT_LAST_RUN_DIR),
                          help='Where each produced entry is saved, keyed by citekey, and where '
                               '--rescore reads them back from (default: dev/eval/last-run/)')
+    parser.add_argument('--only',
+                         help='Comma-separated citekeys: extract/score only these manifest '
+                              'items instead of the whole sample - for a targeted diagnostic '
+                              'run without paying for the other 50-odd entries')
     args = parser.parse_args(argv)
 
     sample_dir = Path(args.sample_dir)
@@ -219,6 +223,17 @@ def main(argv=None):
         print(f"No manifest entries in {sample_dir / 'manifest.json'} - nothing to score.\n"
               f"See dev/eval/README.md for the sample format.", file=sys.stderr)
         return 1
+
+    if args.only:
+        wanted = set(args.only.split(','))
+        manifest = [item for item in manifest if item['citekey'] in wanted]
+        missing = wanted - {item['citekey'] for item in manifest}
+        if missing:
+            print(f"--only named citekey(s) not in the manifest: {', '.join(sorted(missing))}",
+                  file=sys.stderr)
+        if not manifest:
+            print("--only matched nothing in the manifest.", file=sys.stderr)
+            return 1
 
     expected_path = Path(args.expected)
     if not expected_path.exists() or not expected_path.read_text(encoding='utf-8').strip():

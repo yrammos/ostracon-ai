@@ -14,9 +14,11 @@ actual extraction step replaced by a canned lookup.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sys
 import tempfile
+from contextlib import redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -318,6 +320,48 @@ def test_ocr_language_hint_prefers_langid_over_fallback():
     return True
 
 
+def test_main_rescore_only_restricts_to_named_citekeys():
+    # --rescore + --only together: no API, no config.yaml, and only the
+    # named citekey scored even though the manifest holds two.
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        sample_dir = td / 'sample'
+        sample_dir.mkdir()
+        last_run_dir = td / 'last-run'
+        last_run_dir.mkdir()
+
+        (sample_dir / 'one.pdf').write_bytes(b'placeholder')
+        (sample_dir / 'two.pdf').write_bytes(b'placeholder')
+        (sample_dir / 'manifest.json').write_text(json.dumps([
+            {"citekey": "One", "source": "one.pdf"},
+            {"citekey": "Two", "source": "two.pdf"},
+        ]), encoding='utf-8')
+
+        (td / 'expected.bib').write_text("""
+@Article{One, Author = {Doe, Jane}, Title = {First},}
+@Article{Two, Author = {Roe, John}, Title = {Second},}
+""", encoding='utf-8')
+
+        (last_run_dir / 'One.bib').write_text(
+            "@Article{One, Author = {Doe, Jane}, Title = {First},}", encoding='utf-8')
+        (last_run_dir / 'Two.bib').write_text(
+            "@Article{Two, Author = {Roe, John}, Title = {Not Second},}", encoding='utf-8')
+
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = eval_run.main([
+                '--sample-dir', str(sample_dir),
+                '--expected', str(td / 'expected.bib'),
+                '--last-run-dir', str(last_run_dir),
+                '--rescore', '--only', 'One',
+            ])
+        report = out.getvalue()
+        assert rc == 0
+        assert 'One' in report or '1 entr' in report  # scored exactly one entry
+        assert 'Two' not in report
+    return True
+
+
 def test_load_manifest_missing_is_empty_not_error():
     with tempfile.TemporaryDirectory() as td:
         assert eval_run.load_manifest(Path(td)) == []
@@ -345,6 +389,7 @@ TESTS = [
     test_evaluate_end_to_end,
     test_run_pipeline_persists_and_reloads,
     test_ocr_language_hint_prefers_langid_over_fallback,
+    test_main_rescore_only_restricts_to_named_citekeys,
     test_load_manifest_missing_is_empty_not_error,
     test_load_manifest_reads_json,
 ]
