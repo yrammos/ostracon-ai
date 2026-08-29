@@ -559,8 +559,17 @@ excerpt's text won't (e.g. an embedded Author field):
         if suffix == '.pdf':
             kwargs = self._pdf_extractor_kwargs(path)
         elif suffix == '.webloc':
-            # For the CrossRef fallback when the page is behind a bot wall.
-            kwargs = {'crossref_email': self.config.get('crossref_email')}
+            # crossref_email is for the CrossRef fallback when the page is
+            # behind a bot wall. `log` routes web_source's own path reporting
+            # (which source produced the text, why each rejected one was
+            # rejected, which browser tabs were examined) through _log, so it
+            # reaches the progress window and not only stderr - the windowed
+            # run shows _log messages exclusively, so a bare print there is
+            # invisible exactly when a .webloc is hardest to diagnose.
+            kwargs = {
+                'crossref_email': self.config.get('crossref_email'),
+                'log': lambda msg: self._log(f"   {msg}", 'info'),
+            }
         else:
             kwargs = {}
         content = extractor(path, **kwargs)

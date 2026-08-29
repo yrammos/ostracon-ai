@@ -156,12 +156,14 @@ def _fake_webloc(tmp_path_url=BOOKMARK_URL):
     return _patched(web_source, "resolve_webloc", lambda path: tmp_path_url)
 
 
-def _no_browser_tab():
-    return _patched(web_source, "browser_tab_dom", lambda url: (None, None))
+def _no_browser_tab(summary="Safari: no matching tab (3 tab(s) examined)"):
+    return _patched(web_source, "browser_tab_dom",
+                     lambda url, log=None: (None, None, summary))
 
 
 def _browser_returns(html, app="Safari"):
-    return _patched(web_source, "browser_tab_dom", lambda url: (html, app))
+    return _patched(web_source, "browser_tab_dom",
+                     lambda url, log=None: (html, app, f"{app}: match"))
 
 
 def _no_crossref():
@@ -199,6 +201,129 @@ def _run(url=BOOKMARK_URL):
         with redirect_stderr(err):
             result = web_source.extract_webloc("dummy.webloc")
         return result, err.getvalue()
+
+
+# ── browser_tab_dom: the three states, via a stubbed subprocess.run ──────
+#
+# These are the only tests that exercise browser_tab_dom itself rather than
+# stubbing it. osascript is never invoked and no browser is touched: a fake
+# subprocess.run answers each AppleScript by what it asks for.
+
+class _Osa:
+    """Canned osascript results, keyed by what the script is asking.
+
+    `tabs` is [(window, tab, url)]; `running` and the two refusal switches
+    select which of the distinguishable failures to simulate.
+    """
+
+    def __init__(self, running=True, tabs=(), refuse_events=False,
+                 refuse_js=False, capture=""):
+        self.running = running
+        self.tabs = tabs
+        self.refuse_events = refuse_events
+        self.refuse_js = refuse_js
+        self.capture = capture
+        self.scripts = []
+
+    class _R:
+        def __init__(self, returncode=0, stdout="", stderr=""):
+            self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+    # Wording taken from a real macOS -1743; only the numeric code is matched on.
+    _REFUSAL = ("execution error: Not authorized to send Apple events to "
+                "Safari. (-1743)")
+
+    def __call__(self, argv, capture_output=None, text=None, timeout=None):
+        script = argv[-1]
+        self.scripts.append(script)
+        if self.refuse_events:
+            return self._R(1, "", self._REFUSAL)
+        if "is running" in script:
+            return self._R(0, "true" if self.running else "false")
+        if "repeat with w in windows" in script:
+            out = "".join(f"{w}\t{t}\t{u}\n" for w, t, u in self.tabs)
+            return self._R(0, out)
+        # the JS capture
+        if self.refuse_js:
+            return self._R(1, "", self._REFUSAL)
+        return self._R(0, self.capture)
+
+
+def _osa(**kw):
+    return _patched(web_source.subprocess, "run", _Osa(**kw))
+
+
+def _probe(url=BOOKMARK_URL):
+    lines = []
+    html, app, summary = web_source.browser_tab_dom(url, log=lines.append)
+    return html, app, summary, "\n".join(lines)
+
+
+def test_browser_probe_reports_apple_events_refusal():
+    # State 1 of 3. Previously indistinguishable from "no tab" - this is the
+    # conflation that made a single failure take three rounds to diagnose.
+    with _osa(refuse_events=True):
+        html, app, summary, log = _probe()
+    assert html is None and app is None
+    assert "Apple Events refused" in summary, summary
+    assert "-1743" in summary, summary
+    assert "Apple Events refused" in log, log
+    return True
+
+
+def test_browser_probe_reports_not_running():
+    # State 2 of 3.
+    with _osa(running=False):
+        html, app, summary, log = _probe()
+    assert html is None
+    assert "not running" in summary, summary
+    assert "Apple Events refused" not in summary, summary
+    return True
+
+
+def test_browser_probe_names_the_tabs_it_saw_on_no_match():
+    # State 3 of 3, and the diagnostic that makes a matching bug visible:
+    # without the tab URLs there is no way to tell "the tab wasn't open"
+    # from "the tab was open and matching is wrong."
+    tabs = (
+        (1, 1, "https://academic.oup.com/jaac/doi/10.1093/jaac/OTHER/999?utm_source=x"),
+        (1, 2, "https://example.com/unrelated"),
+    )
+    with _osa(tabs=tabs):
+        html, app, summary, log = _probe()
+    assert html is None
+    assert "no matching tab" in summary, summary
+    # Same-host tabs are named in full, and cleaned (utm_source stripped).
+    assert "10.1093/jaac/OTHER/999" in log, log
+    assert "utm_source" not in log, log
+    assert "academic.oup.com" in log, log
+    # The off-host tab is named too, under its own heading.
+    assert "example.com/unrelated" in log, log
+    return True
+
+
+def test_browser_probe_distinguishes_js_refusal_from_missing_tab():
+    # A tab WAS found; only the separate "Allow JavaScript from Apple Events"
+    # switch refused. Reported as its own state, not as "no matching tab".
+    with _osa(tabs=((1, 1, BOOKMARK_URL),), refuse_js=True):
+        html, app, summary, log = _probe()
+    assert html is None
+    assert "JavaScript from Apple Events refused" in summary, summary
+    assert "no matching tab" not in summary, summary
+    assert "matched window 1 tab 1" in log, log
+    return True
+
+
+def test_browser_probe_captures_a_matching_tab():
+    # The success path, so the four failure tests above can't pass trivially
+    # on a probe that never works at all.
+    with _osa(tabs=((2, 3, BOOKMARK_URL + "?utm_campaign=news"),), capture="<html>ok</html>"):
+        html, app, summary, log = _probe()
+    assert html == "<html>ok</html>", html
+    assert app == "Safari"
+    assert "match" in summary, summary
+    assert "matched window 2 tab 3" in log, log
+    return True
 
 
 # ── tests ────────────────────────────────────────────────────────────────
@@ -262,7 +387,7 @@ def test_title_and_urldate_only_produces_amber():
     with _fake_webloc(), _fetch_returns(FakeResponse(text=_consent_wall_html())), \
          _crossref_raises():
         with _patched(web_source, "browser_tab_dom",
-                      lambda url: (_ for _ in ()).throw(
+                      lambda url, log=None: (_ for _ in ()).throw(
                           AssertionError("browser_tab_dom() should not have been called"))):
             result, log = _run()
     assert not isinstance(result, str), result
@@ -283,7 +408,7 @@ def test_thin_body_at_fetch_produces_amber():
     )
     with _fake_webloc(), _fetch_returns(FakeResponse(text=html)), _crossref_raises():
         with _patched(web_source, "browser_tab_dom",
-                      lambda url: (_ for _ in ()).throw(
+                      lambda url, log=None: (_ for _ in ()).throw(
                           AssertionError("browser_tab_dom() should not have been called"))):
             result, log = _run()
     assert not isinstance(result, str), result
@@ -344,25 +469,46 @@ def test_no_tab_falls_back_to_crossref():
     return True
 
 
-def test_no_tab_no_doi_clean_failure_unchanged_text():
+def test_no_tab_no_doi_failure_names_the_browser_outcome():
     # #11 item 4, case 6 (the plain-failure branch), challenge classified:
-    # no tab, no CrossRef hit - the pre-#11 error text, unchanged.
+    # no tab, no CrossRef hit. The error text deliberately NO LONGER matches
+    # the pre-#11 wording byte for byte: keeping it identical is what made a
+    # real failure indistinguishable from the old code path for three
+    # rounds. It must now name what the browser probe actually found.
     with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
-         _no_browser_tab(), _no_crossref():
+         _no_browser_tab("Safari: no matching tab (3 tab(s) examined)"), _no_crossref():
         result, log = _run()
-    assert result == (f"Error: {BOOKMARK_URL} is behind a bot challenge (HTTP 403) "
-                       f"and its URL carries no DOI to fall back on")
+    assert result.startswith(
+        f"Error: {BOOKMARK_URL} is behind a bot challenge (HTTP 403) "
+        f"and its URL carries no DOI to fall back on"), result
+    assert "browser tab: Safari: no matching tab (3 tab(s) examined)" in result, result
     assert "Source: failure for" in log, log
     return True
 
 
-def test_non_challenge_failure_skips_crossref_unchanged_text():
+def test_failure_text_distinguishes_refusal_from_absent_tab():
+    # The three states must be legible in the RETURNED text, not only in the
+    # log - the windowed run shows the returned error and little else.
+    for summary, expected in [
+        ("Safari: Apple Events refused (-1743)", "Apple Events refused"),
+        ("Safari: not running; Google Chrome: not running", "not running"),
+        ("Safari: no matching tab (12 tab(s) examined)", "no matching tab"),
+    ]:
+        with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
+             _no_browser_tab(summary), _no_crossref():
+            result, _ = _run()
+        assert expected in result, (summary, result)
+    return True
+
+
+def test_non_challenge_failure_skips_crossref():
     # A plain 404 never satisfies is_bot_challenge, so crossref_fallback()
     # must never even be called for it - the original gate, preserved.
     with _fake_webloc(), _fetch_returns(PLAIN_404()), \
          _no_browser_tab(), _crossref_raises():
         result, log = _run()
-    assert result == f"Error: Could not fetch {BOOKMARK_URL}: HTTP 404"
+    assert result.startswith(f"Error: Could not fetch {BOOKMARK_URL}: HTTP 404"), result
+    assert "browser tab:" in result, result
     assert "Source: failure for" in log, log
     return True
 
@@ -413,7 +559,7 @@ def test_doi_meta_ignored_when_url_has_no_doi():
     response = FakeResponse(text=html, url=url)
     with _fake_webloc(url), _fetch_returns(response), _crossref_raises():
         with _patched(web_source, "browser_tab_dom",
-                      lambda u: (_ for _ in ()).throw(
+                      lambda u, log=None: (_ for _ in ()).throw(
                           AssertionError("browser_tab_dom() should not have been called"))):
             result, log = _run(url=url)
     assert not isinstance(result, str), result
@@ -428,7 +574,7 @@ def test_ordinary_fetch_success_does_not_touch_fallbacks():
     response = FakeResponse(text=_article_html(), url=BOOKMARK_URL)
     with _fake_webloc(), _fetch_returns(response), _crossref_raises():
         with _patched(web_source, "browser_tab_dom",
-                      lambda url: (_ for _ in ()).throw(
+                      lambda url, log=None: (_ for _ in ()).throw(
                           AssertionError("browser_tab_dom() should not have been called"))):
             result, log = _run()
     assert not isinstance(result, str), result
@@ -439,6 +585,11 @@ def test_ordinary_fetch_success_does_not_touch_fallbacks():
 
 
 TESTS = [
+    test_browser_probe_reports_apple_events_refusal,
+    test_browser_probe_reports_not_running,
+    test_browser_probe_names_the_tabs_it_saw_on_no_match,
+    test_browser_probe_distinguishes_js_refusal_from_missing_tab,
+    test_browser_probe_captures_a_matching_tab,
     test_browser_challenge_markup_produces_amber_entry,
     test_browser_thin_dom_produces_amber_entry,
     test_browser_genuine_article_succeeds,
@@ -448,8 +599,9 @@ TESTS = [
     test_correspondence_mismatch_hard_fails_regardless_of_metadata_completeness,
     test_browser_wrong_doi_falls_through,
     test_no_tab_falls_back_to_crossref,
-    test_no_tab_no_doi_clean_failure_unchanged_text,
-    test_non_challenge_failure_skips_crossref_unchanged_text,
+    test_no_tab_no_doi_failure_names_the_browser_outcome,
+    test_failure_text_distinguishes_refusal_from_absent_tab,
+    test_non_challenge_failure_skips_crossref,
     test_browser_tried_on_non_challenge_status,
     test_fetch_canonical_matches_redirected_url_not_bookmark,
     test_doi_meta_ignored_when_url_has_no_doi,
