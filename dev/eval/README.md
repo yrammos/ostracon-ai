@@ -112,6 +112,7 @@ checked against the physical source, never automatically:
 |---|---|---|---|---|
 | 2026-08-29 | Drabkin1983 | Title | `Riemman`→`Riemann`, `Kunth`→`Kurth` | Misspelled names; both spelled correctly elsewhere in this same sample and in the pipeline's own output for this entry. |
 | 2026-08-29 | Dunsby2020 | Title | `piano`→`Piano`, `Op. 27`→`Op.~27` | Chicago title case (`Piano` is a noun, not a function word) and the house `~` non-breaking space before an opus number - CLAUDE.md rules `expected.bib` itself hadn't been swept for. |
+| 2026-08-29 | Menke2004 | Author | `Johaness`→`Johannes` | Misspelled given name, found via the `author` field's run-1/run-2 comparison in `dev/eval/baselines/2026-08-29.md`; correctly spelled in the pipeline's own output for this entry. |
 
 Jeong2017's `Score-Informed`/`score-informed` disagreement is deliberately
 *not* here: that one is the pipeline's error (a hyphenated-compound
