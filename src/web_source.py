@@ -656,8 +656,85 @@ _IDENTIFYING_FIELDS = ('Author', 'Doi', 'PublicationDate')
 MIN_BODY_WORDS = 100
 
 
+# Path segments that describe the *form* a publisher serves a work in rather
+# than which work it is. A segment built entirely of these is structural and
+# identifies nothing: /article/, /article-abstract/, /advance-article-pdf/
+# and their kin all name the same underlying article. Kept as words rather
+# than whole segments so unseen combinations are covered too.
+_STRUCTURAL_PATH_WORDS = {
+    'article', 'articles', 'advance', 'abstract', 'full', 'fulltext', 'text',
+    'pdf', 'epdf', 'html', 'view', 'viewer', 'download', 'content', 'doi',
+    'lookup', 'issue', 'cover', 'search', 'results', 'citation', 'cite',
+    'supplemental', 'supplementary', 'figure', 'table', 'print', 'summary',
+}
+
+# A run of digits long enough to be a publisher's article id rather than a
+# volume, issue, page or year. Five is deliberate: it clears four-digit years,
+# which appear in many publishers' paths and would otherwise let two unrelated
+# articles from the same year look like the same work.
+_ARTICLE_ID_RE = re.compile(r'^\d{5,}$')
+
+
+def _is_structural_segment(segment):
+    parts = [p for p in segment.lower().split('-') if p]
+    return bool(parts) and all(p in _STRUCTURAL_PATH_WORDS for p in parts)
+
+
+def _identifying_segments(path):
+    """The path segments that identify *which work* a URL names.
+
+    Two kinds qualify: a long numeric article id, and a title slug. A slug
+    must carry at least two hyphens and sixteen characters and must not be
+    built purely of structural words - `music-theory` or `article-abstract`
+    would otherwise match two entirely different articles on the same host,
+    which is the one error this check exists to prevent.
+    """
+    found = set()
+    for segment in path.split('/'):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if _ARTICLE_ID_RE.match(segment):
+            found.add(segment)
+        elif (len(segment) >= 16 and segment.count('-') >= 2
+                and not _is_structural_segment(segment)):
+            found.add(segment.lower())
+    return found
+
+
 def _url_matches(a, b):
-    return clean_url(a).rstrip('/') == clean_url(b).rstrip('/')
+    """True when two URLs name the same work - identity, not path equality.
+
+    A publisher serves one article at several addresses (/article/ vs
+    /article-abstract/, an `epdf` view, a `redirectedFrom` parameter), and
+    its canonical link states the definitive one. Requiring the strings to
+    agree treated the publisher's own statement about a work as evidence
+    against it, and would have rejected every Silverchair platform - Oxford
+    Academic, UC Press, most of what this feature exists for.
+
+    So: identical after cleaning, or the same host plus something that names
+    the same work - a shared DOI where both carry one, otherwise a shared
+    article id or title slug. Host alone is deliberately not enough, and
+    neither is a path difference alone: a tab showing a different article on
+    the same site must still be refused, since a false match here produces a
+    confident wrong entry, which is the failure this whole check is for.
+    """
+    clean_a, clean_b = clean_url(a).rstrip('/'), clean_url(b).rstrip('/')
+    if clean_a == clean_b:
+        return True
+
+    parts_a, parts_b = urlsplit(clean_a), urlsplit(clean_b)
+    if parts_a.netloc.lower() != parts_b.netloc.lower():
+        return False
+
+    # A DOI on both sides settles it outright, either way.
+    dois_a = {d.lower() for d in doi_candidates(clean_a)}
+    dois_b = {d.lower() for d in doi_candidates(clean_b)}
+    if dois_a and dois_b:
+        return bool(dois_a & dois_b)
+
+    ids_a, ids_b = _identifying_segments(parts_a.path), _identifying_segments(parts_b.path)
+    return bool(ids_a and ids_b and (ids_a & ids_b))
 
 
 def _url_correspondence(candidate_urls, soup, metadata):

@@ -121,6 +121,33 @@ def _wrong_canonical_but_complete_html():
     )
 
 
+# The reported Silverchair case, recorded from the real failure: the
+# publisher serves the work at /article-abstract/ (what the bookmark holds,
+# with a ?redirectedFrom parameter) and declares /article/ as canonical.
+# Everything identifying is shared - host, journal, volume, issue, page,
+# article id 218886 and title slug; only the path *form* differs.
+UCPRESS_CANONICAL = ("https://online.ucpress.edu/ncm/article/50/1/54/218886/"
+                     "Fatigued-Voices-and-Vocal-Health-in-fine-secolo")
+# Same host and journal, different work: different article id AND slug.
+UCPRESS_OTHER_ARTICLE = ("https://online.ucpress.edu/ncm/article/50/1/70/218999/"
+                         "A-Completely-Different-Article-Title")
+
+
+def _ucpress_html(canonical):
+    """A real-shaped Silverchair article page, parameterised by the canonical
+    link so the same fixture serves the positive and negative cases."""
+    return (
+        "<html><head>"
+        "<title>Fatigued Voices and Vocal Health in fine secolo Italy</title>"
+        '<meta name="citation_title" content="Fatigued Voices and Vocal Health '
+        'in fine secolo Italy">'
+        '<meta name="citation_author" content="Rothstein, Edward">'
+        '<meta name="citation_publication_date" content="2026/07/01">'
+        f'<link rel="canonical" href="{canonical}">'
+        "</head><body><p>" + _words(200, prefix="prose") + "</p></body></html>"
+    )
+
+
 class FakeResponse:
     def __init__(self, status_code=200, text="", headers=None, url=None):
         self.status_code = status_code
@@ -532,6 +559,71 @@ def test_thin_body_at_fetch_produces_amber():
     return True
 
 
+def test_canonical_differing_only_in_path_form_is_accepted():
+    # The reported case. The publisher's canonical link is its own statement
+    # of where this work lives; treating /article/ vs /article-abstract/ as
+    # a different document rejected a correctly captured 114KB article page
+    # and would fire on every Silverchair platform.
+    with _fake_webloc(UCPRESS_URL), _fetch_returns(CLOUDFLARE_403()), \
+         _browser_returns(_ucpress_html(UCPRESS_CANONICAL)), _crossref_raises():
+        result, log = _run()
+    assert not isinstance(result, str), result
+    assert result.metadata.get("Title") == ("Fatigued Voices and Vocal Health "
+                                             "in fine secolo Italy")
+    assert "Source: browser tab (Safari)" in log, log
+    return True
+
+
+def test_same_host_different_article_id_is_still_rejected():
+    # The negative the loosening must not cost: a tab on the same host
+    # showing an unrelated article. Host agreement alone is not identity -
+    # a false match here files a confident wrong entry, which is worse than
+    # any failure.
+    with _fake_webloc(UCPRESS_URL), _fetch_returns(CLOUDFLARE_403()), \
+         _browser_returns(_ucpress_html(UCPRESS_OTHER_ARTICLE)), _no_crossref():
+        result, log = _run()
+    assert isinstance(result, str) and result.startswith("Error:"), result
+    assert "browser tab" in log and "rejected" in log, log
+    return True
+
+
+def test_url_identity_accepts_path_forms_and_refuses_other_works():
+    # _url_matches directly, over the shapes a publisher actually serves.
+    same = [
+        UCPRESS_CANONICAL,
+        "https://online.ucpress.edu/ncm/article-pdf/50/1/54/218886/"
+        "Fatigued-Voices-and-Vocal-Health-in-fine-secolo.pdf",
+        "https://online.ucpress.edu/ncm/advance-article-abstract/50/1/54/218886/"
+        "Fatigued-Voices-and-Vocal-Health-in-fine-secolo",
+    ]
+    for other in same:
+        assert web_source._url_matches(UCPRESS_URL, other), other
+
+    different = [
+        UCPRESS_OTHER_ARTICLE,                                  # another article
+        "https://online.ucpress.edu/ncm/issue/50/1",            # the issue, not the work
+        "https://online.ucpress.edu/login",                     # a login wall
+        # Same path entirely, different host - never the same work.
+        "https://academic.oup.com/ncm/article/50/1/54/218886/"
+        "Fatigued-Voices-and-Vocal-Health-in-fine-secolo",
+        # A shared four-digit year must not read as a shared article id,
+        # which is why the id pattern requires five digits.
+        "https://x.org/j/2020/article/A-Long-Enough-Slug-Two",
+    ]
+    for other in different:
+        assert not web_source._url_matches(UCPRESS_URL, other), other
+    assert not web_source._url_matches(
+        "https://x.org/j/2020/article/A-Long-Enough-Slug-One",
+        "https://x.org/j/2020/article/A-Long-Enough-Slug-Two")
+
+    # A segment built only of structural words identifies nothing, however
+    # long: two different works both carry `advance-article-abstract`.
+    assert not web_source._url_matches(
+        "https://x.org/j/advance-article-abstract/1/2",
+        "https://x.org/j/advance-article-abstract/9/9")
+    return True
+
+
 def test_browser_wrong_canonical_falls_through():
     # #11 item 4, case 5. Still a hard failure under the amber split: this
     # is the one condition that stays a failure regardless.
@@ -714,6 +806,9 @@ TESTS = [
     test_browser_genuine_article_succeeds,
     test_title_and_urldate_only_produces_amber,
     test_thin_body_at_fetch_produces_amber,
+    test_canonical_differing_only_in_path_form_is_accepted,
+    test_same_host_different_article_id_is_still_rejected,
+    test_url_identity_accepts_path_forms_and_refuses_other_works,
     test_browser_wrong_canonical_falls_through,
     test_correspondence_mismatch_hard_fails_regardless_of_metadata_completeness,
     test_browser_wrong_doi_falls_through,
