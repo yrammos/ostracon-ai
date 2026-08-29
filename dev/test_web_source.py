@@ -203,23 +203,79 @@ def _run(url=BOOKMARK_URL):
         return result, err.getvalue()
 
 
-# ── browser_tab_dom: the three states, via a stubbed subprocess.run ──────
+# ── browser_tab_dom, against Safari's REAL tab listing ───────────────────
 #
 # These are the only tests that exercise browser_tab_dom itself rather than
 # stubbing it. osascript is never invoked and no browser is touched: a fake
-# subprocess.run answers each AppleScript by what it asks for.
+# subprocess.run answers each AppleScript with recorded output.
+#
+# SAFARI_TAB_LISTING is a verbatim capture from a running Safari (26 tabs
+# across 2 windows), with unrelated URLs replaced by stand-ins through a
+# stable mapping, so everything structural survives:
+#
+#   - TWO windows, 14 tabs and 12 tabs, indices restarting per window;
+#   - 11 URLs open in BOTH windows, so a matcher that assumed tab URLs are
+#     unique, or that only window 1 exists, is caught;
+#   - the target at window 1, tab 12 - NOT tab 1, and not in the last window;
+#   - a non-http `favorites://` entry (Safari's Start Page) as the final tab.
+#
+# The previous version of these tests invented the listing format from the
+# AppleScript's apparent intent rather than recording what it actually
+# emits. It therefore encoded tab-separated fields that the real script
+# never produced, and passed while the enumeration was completely broken -
+# `tab` inside a `tell application "Safari"` block binds to Safari's `tab`
+# class, not the tab character, so every line came out as
+# "1tab1tabhttps://..." and every one was silently discarded. Recording the
+# real output is the whole point; do not hand-write this fixture.
+
+SAFARI_TAB_LISTING = (
+    "1\t1\thttps://example1.invalid/page1\n"
+    "1\t2\thttps://example2.invalid/page2\n"
+    "1\t3\thttps://example3.invalid/page3\n"
+    "1\t4\thttps://example4.invalid/page4\n"
+    "1\t5\thttps://example5.invalid/page5\n"
+    "1\t6\thttps://example6.invalid/page6\n"
+    "1\t7\thttps://example7.invalid/page7\n"
+    "1\t8\thttps://example8.invalid/page8\n"
+    "1\t9\thttps://example9.invalid/page9\n"
+    "1\t10\thttps://example10.invalid/page10\n"
+    "1\t11\thttps://example11.invalid/page11\n"
+    "1\t12\thttps://online.ucpress.edu/ncm/article-abstract/50/1/54/218886/"
+    "Fatigued-Voices-and-Vocal-Health-in-fine-secolo?redirectedFrom=fulltext\n"
+    "1\t13\thttps://example12.invalid/page12\n"
+    "1\t14\thttps://example13.invalid/page13\n"
+    "2\t1\thttps://example1.invalid/page1\n"
+    "2\t2\thttps://example2.invalid/page2\n"
+    "2\t3\thttps://example3.invalid/page3\n"
+    "2\t4\thttps://example4.invalid/page4\n"
+    "2\t5\thttps://example5.invalid/page5\n"
+    "2\t6\thttps://example6.invalid/page6\n"
+    "2\t7\thttps://example7.invalid/page7\n"
+    "2\t8\thttps://example8.invalid/page8\n"
+    "2\t9\thttps://example9.invalid/page9\n"
+    "2\t10\thttps://example10.invalid/page10\n"
+    "2\t11\thttps://example11.invalid/page11\n"
+    "2\t12\tfavorites://\n"
+)
+
+UCPRESS_URL = ("https://online.ucpress.edu/ncm/article-abstract/50/1/54/218886/"
+               "Fatigued-Voices-and-Vocal-Health-in-fine-secolo?redirectedFrom=fulltext")
+
+# What the pre-fix script actually emitted, recorded from the same Safari:
+# `tab` bound to Safari's tab class and stringified to the literal word.
+BROKEN_TAB_LISTING = (
+    "1tab1tabhttps://example1.invalid/page1\n"
+    f"1tab12tab{UCPRESS_URL}\n"
+)
+
 
 class _Osa:
-    """Canned osascript results, keyed by what the script is asking.
+    """Canned osascript results, keyed by what the script is asking."""
 
-    `tabs` is [(window, tab, url)]; `running` and the two refusal switches
-    select which of the distinguishable failures to simulate.
-    """
-
-    def __init__(self, running=True, tabs=(), refuse_events=False,
-                 refuse_js=False, capture=""):
+    def __init__(self, running=True, listing=SAFARI_TAB_LISTING,
+                 refuse_events=False, refuse_js=False, capture=""):
         self.running = running
-        self.tabs = tabs
+        self.listing = listing
         self.refuse_events = refuse_events
         self.refuse_js = refuse_js
         self.capture = capture
@@ -241,9 +297,10 @@ class _Osa:
         if "is running" in script:
             return self._R(0, "true" if self.running else "false")
         if "repeat with w in windows" in script:
-            out = "".join(f"{w}\t{t}\t{u}\n" for w, t, u in self.tabs)
-            return self._R(0, out)
-        # the JS capture
+            # Chrome is not running in these fixtures; only Safari answers.
+            if 'application "Safari"' not in script:
+                return self._R(0, "")
+            return self._R(0, self.listing)
         if self.refuse_js:
             return self._R(1, "", self._REFUSAL)
         return self._R(0, self.capture)
@@ -253,15 +310,85 @@ def _osa(**kw):
     return _patched(web_source.subprocess, "run", _Osa(**kw))
 
 
-def _probe(url=BOOKMARK_URL):
+def _probe(url=UCPRESS_URL):
     lines = []
     html, app, summary = web_source.browser_tab_dom(url, log=lines.append)
     return html, app, summary, "\n".join(lines)
 
 
+def test_applescript_does_not_use_tab_inside_the_tell_block():
+    # The root cause, asserted directly on the generated script rather than
+    # only through its output: `tab` and `linefeed` must be bound BEFORE
+    # `tell application`, where no app terminology can shadow them.
+    scripts = []
+
+    def spy(script, timeout=15):
+        scripts.append(script)
+        return web_source.OSA_OK, "true" if "is running" in script else ""
+
+    with _patched(web_source, "_osascript", spy):
+        web_source._list_tabs("Safari")
+
+    listing = [s for s in scripts if "repeat with w in windows" in s][0]
+    before, _, after = listing.partition("tell application")
+    assert "set d to tab" in before, listing
+    assert " & tab & " not in after, "bare `tab` is shadowed by Safari's tab class"
+    return True
+
+
+def test_browser_probe_finds_the_target_in_the_real_listing():
+    # The regression test for the terminology collision: against Safari's
+    # actual output the target must be found - at window 1 tab 12, past ten
+    # non-matching tabs, with a second window holding 11 of the same URLs.
+    with _osa(capture="<html>ok</html>"):
+        html, app, summary, log = _probe()
+    assert html == "<html>ok</html>", html
+    assert app == "Safari"
+    assert "matched window 1 tab 12" in log, log
+    return True
+
+
+def test_broken_listing_is_reported_as_a_parse_error_not_as_no_tabs():
+    # The pre-fix output must never again present itself as an empty browser.
+    # This is the exact string that produced "no tabs open" and "0 tab(s)
+    # examined" against a Safari with 26 tabs open.
+    with _osa(listing=BROKEN_TAB_LISTING):
+        html, app, summary, log = _probe()
+    assert html is None
+    assert "could not parse" in summary, summary
+    assert "no tabs open" not in log, log
+    assert "no matching tab" not in summary, summary
+    return True
+
+
+def test_non_http_scheme_does_not_break_the_listing():
+    # favorites:// is the last tab of the last window in the real capture.
+    # A parser that assumed every entry is an http URL would drop it, or
+    # worse, abandon the rest - so assert the full count survives it.
+    with _osa(capture="<html>ok</html>"):
+        tabs, status, detail = web_source._list_tabs("Safari")
+    assert status == web_source.OSA_OK, (status, detail)
+    assert len(tabs) == 26, len(tabs)
+    assert (2, 12, "favorites://") in tabs, tabs[-3:]
+    return True
+
+
+def test_duplicate_windows_do_not_confuse_the_index():
+    # 11 URLs are open in both windows. The reported (window, tab) pair must
+    # be the one actually matched, not the last seen or a window-1 default.
+    dup = "https://example11.invalid/page11"          # window 1 tab 11, window 2 tab 11
+    with _osa(capture="<html>ok</html>"):
+        lines = []
+        html, app, summary = web_source.browser_tab_dom(dup, log=lines.append)
+    assert html == "<html>ok</html>"
+    # First match in enumeration order - window 1, not window 2.
+    assert "matched window 1 tab 11" in "\n".join(lines), lines
+    return True
+
+
 def test_browser_probe_reports_apple_events_refusal():
-    # State 1 of 3. Previously indistinguishable from "no tab" - this is the
-    # conflation that made a single failure take three rounds to diagnose.
+    # State 1. Previously indistinguishable from "no tab" - the conflation
+    # that made a single failure take three rounds to diagnose.
     with _osa(refuse_events=True):
         html, app, summary, log = _probe()
     assert html is None and app is None
@@ -272,7 +399,7 @@ def test_browser_probe_reports_apple_events_refusal():
 
 
 def test_browser_probe_reports_not_running():
-    # State 2 of 3.
+    # State 2.
     with _osa(running=False):
         html, app, summary, log = _probe()
     assert html is None
@@ -282,47 +409,35 @@ def test_browser_probe_reports_not_running():
 
 
 def test_browser_probe_names_the_tabs_it_saw_on_no_match():
-    # State 3 of 3, and the diagnostic that makes a matching bug visible:
-    # without the tab URLs there is no way to tell "the tab wasn't open"
-    # from "the tab was open and matching is wrong."
-    tabs = (
-        (1, 1, "https://academic.oup.com/jaac/doi/10.1093/jaac/OTHER/999?utm_source=x"),
-        (1, 2, "https://example.com/unrelated"),
-    )
-    with _osa(tabs=tabs):
-        html, app, summary, log = _probe()
+    # State 3, and the diagnostic that makes a matching bug visible: without
+    # the tab URLs there is no way to tell "the tab wasn't open" from "the
+    # tab was open and matching is wrong." Asked for a URL on the same host
+    # as the target, so the same-host section is exercised too.
+    other = "https://online.ucpress.edu/ncm/article/99/9/9/999999/Some-Other-Article"
+    with _osa():
+        lines = []
+        html, app, summary = web_source.browser_tab_dom(other, log=lines.append)
+    log = "\n".join(lines)
     assert html is None
     assert "no matching tab" in summary, summary
-    # Same-host tabs are named in full, and cleaned (utm_source stripped).
-    assert "10.1093/jaac/OTHER/999" in log, log
-    assert "utm_source" not in log, log
-    assert "academic.oup.com" in log, log
-    # The off-host tab is named too, under its own heading.
-    assert "example.com/unrelated" in log, log
+    assert "26 tab(s) examined" in summary, summary
+    # The real target is on the same host, so it is named in full.
+    assert "Fatigued-Voices" in log, log
+    assert "online.ucpress.edu" in log, log
+    # Off-host tabs are named too, under their own heading, and capped.
+    assert "example1.invalid" in log, log
     return True
 
 
 def test_browser_probe_distinguishes_js_refusal_from_missing_tab():
     # A tab WAS found; only the separate "Allow JavaScript from Apple Events"
     # switch refused. Reported as its own state, not as "no matching tab".
-    with _osa(tabs=((1, 1, BOOKMARK_URL),), refuse_js=True):
+    with _osa(refuse_js=True):
         html, app, summary, log = _probe()
     assert html is None
     assert "JavaScript from Apple Events refused" in summary, summary
     assert "no matching tab" not in summary, summary
-    assert "matched window 1 tab 1" in log, log
-    return True
-
-
-def test_browser_probe_captures_a_matching_tab():
-    # The success path, so the four failure tests above can't pass trivially
-    # on a probe that never works at all.
-    with _osa(tabs=((2, 3, BOOKMARK_URL + "?utm_campaign=news"),), capture="<html>ok</html>"):
-        html, app, summary, log = _probe()
-    assert html == "<html>ok</html>", html
-    assert app == "Safari"
-    assert "match" in summary, summary
-    assert "matched window 2 tab 3" in log, log
+    assert "matched window 1 tab 12" in log, log
     return True
 
 
@@ -585,11 +700,15 @@ def test_ordinary_fetch_success_does_not_touch_fallbacks():
 
 
 TESTS = [
+    test_applescript_does_not_use_tab_inside_the_tell_block,
+    test_browser_probe_finds_the_target_in_the_real_listing,
+    test_broken_listing_is_reported_as_a_parse_error_not_as_no_tabs,
+    test_non_http_scheme_does_not_break_the_listing,
+    test_duplicate_windows_do_not_confuse_the_index,
     test_browser_probe_reports_apple_events_refusal,
     test_browser_probe_reports_not_running,
     test_browser_probe_names_the_tabs_it_saw_on_no_match,
     test_browser_probe_distinguishes_js_refusal_from_missing_tab,
-    test_browser_probe_captures_a_matching_tab,
     test_browser_challenge_markup_produces_amber_entry,
     test_browser_thin_dom_produces_amber_entry,
     test_browser_genuine_article_succeeds,

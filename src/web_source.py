@@ -332,21 +332,44 @@ def _list_tabs(app_name):
     if not running:
         return [], BROWSER_NOT_RUNNING, ''
 
+    # `tab` and `linefeed` are bound OUTSIDE the tell block on purpose. Inside
+    # `tell application "Safari"` (and Chrome, whose dictionary also defines
+    # one) the word `tab` resolves to the application's own `tab` class, not
+    # to AppleScript's tab-character constant - so the delimiter came out as
+    # the literal three-letter text "tab":
+    #
+    #     1tab1tabhttps://example.com/...
+    #
+    # which split('\t') could not divide into three fields, so every line was
+    # discarded and the browser reported zero tabs open against a Safari with
+    # 26 of them. Verified by hand against the running Safari, before and
+    # after. Binding the constants first, where no application terminology is
+    # in scope, is what makes them mean what they say.
+    #
+    # `URL of t` is read through a try: a Start Page or Tab Group tab can
+    # answer `missing value`, and concatenating that aborts the whole script -
+    # one such tab would otherwise cost the entire listing.
     script = f'''
+    set d to tab
+    set lf to linefeed
+    set out to ""
     tell application "{app_name}"
         if (count of windows) is 0 then return ""
-        set out to ""
         set wIdx to 0
         repeat with w in windows
             set wIdx to wIdx + 1
             set tIdx to 0
             repeat with t in tabs of w
                 set tIdx to tIdx + 1
-                set out to out & wIdx & tab & tIdx & tab & (URL of t) & linefeed
+                set u to ""
+                try
+                    set u to (URL of t) as text
+                end try
+                set out to out & wIdx & d & tIdx & d & u & lf
             end repeat
         end repeat
-        return out
     end tell
+    return out
     '''
     status, output = _osascript(script)
     if status == OSA_REFUSED:
@@ -356,15 +379,27 @@ def _list_tabs(app_name):
     if not output:
         return [], BROWSER_NO_WINDOWS, ''
 
-    tabs = []
+    tabs, unparsed = [], []
     for line in output.splitlines():
+        if not line.strip():
+            continue
         parts = line.split('\t')
         if len(parts) != 3:
+            unparsed.append(line)
             continue
         try:
             tabs.append((int(parts[0]), int(parts[1]), parts[2]))
         except ValueError:
-            continue
+            unparsed.append(line)
+
+    # Output arrived but nothing in it parsed: the script ran and the format
+    # is not what this expects. Reported as an error naming the first line
+    # rather than as an empty tab list - silently dropping unparsable lines
+    # is what let the `tab` terminology collision above present itself as
+    # "no tabs open" against a browser that had 26.
+    if unparsed and not tabs:
+        return [], BROWSER_ERROR, (f"could not parse the tab listing "
+                                    f"({len(unparsed)} line(s)); first: {unparsed[0][:120]!r}")
     return tabs, OSA_OK, ''
 
 
