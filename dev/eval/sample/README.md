@@ -43,6 +43,9 @@ A JSON array of objects:
 - `container_source` (optional) - a sentence saying that the attached file is
   the whole containing volume rather than the fragment the entry describes,
   and what the fragment is. Present on four sources so far. See below.
+- `insufficient_source` (optional) - a sentence saying that the attached file,
+  though the right one, yields too little text to build the entry from, and
+  the figures. Present on one source so far. See below.
 
 ## `container_source`: entries no extraction can score
 
@@ -75,6 +78,27 @@ one but yields almost no text. The two are kept apart deliberately.
 did not itself generate, across a regeneration of this file. It computes
 `citekey`, `source`, `sha256` and `note`; everything else belongs to whoever
 wrote it.
+
+## `insufficient_source`: the right file, and nothing in it
+
+`Motte2004` yields **232 words** across every page, after OCR, where comparable
+sources in this sample yield 1,000-3,100. The pages carry no bibliographic data
+at all - a person reading them would fail too - and the expected entry was
+written from the physical volume. No extraction can score it right.
+
+The pipeline nonetheless produced a correctly typed entry from it in the
+2026-08-29 baseline, indistinguishable in confidence from one built off a full
+title page. That is the failure this marks, and it is the same shape as a
+bot-challenge page answering HTTP 200: the process succeeded and the content
+did not.
+
+Distinct from `container_source`, which is the *wrong granularity* rather than
+too little text - there the file is a whole volume and the entry is one chapter
+of it. Both are entries no extraction can score, for different reasons, and the
+names are kept apart so a report can say which.
+
+Nothing consumes either key yet. `dev/eval/select_sample.py` carries them, and
+any other key it did not itself generate, across a regeneration of the manifest.
 
 ## Composition
 
