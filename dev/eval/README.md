@@ -98,6 +98,10 @@ or an author, which is exactly what this table is for.
 
 ## Corrections
 
+`expected.bib` is edited by the maintainer only. It is the one file here
+whose plausible-looking error is invisible, because everything else in this
+harness is measured against it.
+
 `expected.bib` entries are copied verbatim from `biblio.bib` by
 `select_sample.py` - they're ground truth by provenance (written before the
 pipeline existed), not by construction, so a hand error in the source
