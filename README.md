@@ -44,12 +44,18 @@ leaves the entry amber in BibDesk.
 
 Some publishers — Oxford Academic and other Silverchair platforms among them — front every page
 with a Cloudflare bot challenge that no HTTP client can pass, so a `.webloc` pointing at one
-cannot be fetched at all. Two fallbacks apply, in order: if the bookmarked URL happens to still
-be open in a Safari or Chrome tab, the page's DOM is read from there instead of fetched again -
-a browser already holds the session cookie and a genuine TLS fingerprint, which is what the
-challenge actually checks (see Troubleshooting). Failing that, if the URL carries a DOI in its
-path, the entry is built from the CrossRef record instead. Any other fetch failure is still
-reported rather than papered over, so a dead bookmark stays visible as one.
+cannot be fetched at all; others (login walls, consent gates, DataDome/Kasada) answer a plain
+HTTP 200 with an interstitial instead, which arrives looking exactly like a real page. Every
+page - fetched, read from a browser tab, or built from CrossRef - is checked for plausibility
+before it's trusted: the metadata has to identify a work, and the content has to correspond to
+the URL requested, or it's discarded and the next source is tried rather than handed to Claude
+as if it were the article. If the bookmarked URL happens to still be open in a Safari or Chrome
+tab, the page's DOM is read from there instead of fetched again - a browser already holds the
+session cookie and a genuine TLS fingerprint, which is what a Cloudflare challenge actually
+checks (see Troubleshooting) - tried on any fetch failure, not only a Cloudflare one. Failing
+that, if the fetch hit a classified bot challenge and the URL carries a DOI in its path, the
+entry is built from the CrossRef record instead. Any other fetch failure is still reported
+rather than papered over, so a dead bookmark stays visible as one.
 
 ![Progress window](screenshot.png)
 
@@ -79,6 +85,10 @@ availability, and confirms the documentation still names every configuration key
 every command-line flag and every tracked file. The quick action runs
 `dev/test_setup.py --preflight` before each batch: silent when all is well, and
 abandoning the run with a message when it is not.
+
+`python3 dev/test_web_source.py` self-tests `web_source.py`'s fetch/browser-tab/CrossRef
+fallback and plausibility check against canned fixtures - the live failures it guards
+against (an actual bot challenge, a half-loaded tab) can't be staged by hand.
 
 ## Configuration
 
