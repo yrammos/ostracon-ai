@@ -432,9 +432,9 @@ excerpt's text won't (e.g. an embedded Author field):
      because a chapter's opening pages tend to cite the literature heavily.
      If nothing in the given text presents itself as the container, OMIT
      Booktitle rather than supplying a plausible one, exactly as instructed
-     for Location at step 5. An @Incollection or @Inproceedings that is
-     missing its Booktitle is reported as incomplete and can be finished by
-     hand; one carrying a confident wrong Booktitle is not reported at all.
+     for Location at step 5. A field left empty is a gap someone can see and
+     fill; a field filled with the wrong work reads as evidence and will not
+     be questioned.
    - Exception: if the piece is UNTITLED supplemental material (a generic
      preface, foreword, introduction, or index with no title of its own,
      written by someone other than the book's main author) rather than a
