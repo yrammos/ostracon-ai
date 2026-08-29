@@ -274,6 +274,35 @@ def select(candidates, quota, seed):
     return chosen, have, by_author
 
 
+# The keys this script computes for every manifest item. Anything else in an
+# existing manifest.json was put there by a person and is carried across a
+# rerun unchanged - see manifest_extras() and dev/eval/sample/README.md.
+GENERATED_MANIFEST_KEYS = frozenset({"citekey", "source", "sha256", "note"})
+
+
+def manifest_extras(manifest_path):
+    """citekey -> {hand-added key: value} from an existing manifest.json.
+
+    Empty for a missing, empty or malformed file: this exists to preserve
+    annotations when there are any, and must never be the reason a fresh
+    selection cannot be written.
+    """
+    try:
+        items = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(items, list):
+        return {}
+    extras = {}
+    for item in items:
+        if not isinstance(item, dict) or "citekey" not in item:
+            continue
+        kept = {k: v for k, v in item.items() if k not in GENERATED_MANIFEST_KEYS}
+        if kept:
+            extras[item["citekey"]] = kept
+    return extras
+
+
 # ── Main ─────────────────────────────────────────────────────────────────
 
 
@@ -383,6 +412,14 @@ def main(argv=None):
     sample_dir = Path(args.sample_dir)
     sample_dir.mkdir(parents=True, exist_ok=True)
 
+    # Keys a person added to the existing manifest by hand, so a rerun does not
+    # silently drop them. Everything this script generates is recomputed;
+    # anything else belongs to whoever wrote it. `container_source` is the case
+    # this was written for - a judgement about the source that no amount of
+    # re-selection can rederive - but the rule is deliberately about unknown
+    # keys in general, not about that one name.
+    kept = manifest_extras(sample_dir / "manifest.json")
+
     manifest, bib_out = [], []
     for c in chosen:
         dest = sample_dir / f"{c['citekey']}{c['path'].suffix.lower()}"
@@ -392,14 +429,14 @@ def main(argv=None):
             if c["feat"]
             else "plain (control)"
         )
-        manifest.append(
-            {
-                "citekey": c["citekey"],
-                "source": dest.name,
-                "sha256": hashlib.sha256(dest.read_bytes()).hexdigest(),
-                "note": note,
-            }
-        )
+        item = {
+            "citekey": c["citekey"],
+            "source": dest.name,
+            "sha256": hashlib.sha256(dest.read_bytes()).hexdigest(),
+            "note": note,
+        }
+        item.update(kept.get(c["citekey"], {}))
+        manifest.append(item)
         # Verbatim source bytes: expected.bib keeps the entry exactly as it was
         # written. Fields the pipeline never produces are excluded at scoring
         # time by scorer.py, not stripped here.

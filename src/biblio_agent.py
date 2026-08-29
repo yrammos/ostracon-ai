@@ -399,6 +399,15 @@ excerpt's text won't (e.g. an embedded Author field):
    - Use @Incollection if it's one chapter of an edited volume where
      different chapters have different authors (an Editor field for the
      volume, distinct from this chapter's Author).
+     An editor's name on the title page is NOT what decides this. Plenty of
+     single-author volumes are edited by someone else - a selection from one
+     writer's work, a collected-essays volume, a critical edition - and those
+     are @Inbook WITH an Editor field, not @Incollection. The question is
+     always who wrote the OTHER contributions: several hands means
+     @Incollection, one hand throughout means @Inbook however prominent the
+     editor is. A title page reading "<Author>, <Title>, edited by <Editor>",
+     or a series list on the endpapers naming only that one author's books,
+     both point to @Inbook.
    - Use @Inproceedings if it's one paper within a conference proceedings
      volume (Booktitle = the proceedings volume, Booktitleaddon = the
      conference name/location if given). The discriminator against
@@ -413,6 +422,19 @@ excerpt's text won't (e.g. an embedded Author field):
      visible in a running header, distinct from the piece's own heading) -
      do NOT use the container's title as the entry's Title when the excerpt
      is clearly one part of a larger work.
+   - Booktitle, Booktitleaddon, Eventtitle, Series and the volume's Editor
+     must come from the CONTAINER presenting itself as such: a title page, a
+     running header or footer, a half-title, a copyright page, a "Proceedings
+     of ..." or series statement. A book, journal or conference NAMED IN THE
+     BODY TEXT - discussed, quoted, cited, or sitting in a reference list -
+     is a work this piece talks about, not the volume it appears in, and must
+     never be used for these fields. The two are easy to confuse precisely
+     because a chapter's opening pages tend to cite the literature heavily.
+     If nothing in the given text presents itself as the container, OMIT
+     Booktitle rather than supplying a plausible one, exactly as instructed
+     for Location at step 5. An @Incollection or @Inproceedings that is
+     missing its Booktitle is reported as incomplete and can be finished by
+     hand; one carrying a confident wrong Booktitle is not reported at all.
    - Exception: if the piece is UNTITLED supplemental material (a generic
      preface, foreword, introduction, or index with no title of its own,
      written by someone other than the book's main author) rather than a
