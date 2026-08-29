@@ -460,10 +460,23 @@ excerpt's text won't (e.g. an embedded Author field):
    clause, is incomplete. Where one review covers several works, each keeps
    its own \\bibstring{by} clause in both fields.
 
-   Title holds the reviewed work's own title and author and nothing else.
-   Volume/series/translator/editor detail printed alongside it on the review's
-   first page ("Vol. III of ...", "translated and edited by ...") belongs to
-   the volume being reviewed, not to this entry's Title - leave it out.
+   Title holds the reviewed work's own title and author and nothing else. The
+   publishing apparatus printed alongside them on the review's first page -
+   volume or series position ("Vol. III of ..."), translator and editor
+   credits ("translated and edited by ..."), publisher, place, price - belongs
+   to the volume under review, not to this entry's Title. Leave it out.
+
+   That is a rule about which FACTS Title carries. It is not licence to
+   simplify how the title and author are written: inside Title and Shorttitle
+   alike, encode them exactly as the guidelines require of any other entry.
+   In particular, and these are the two that go wrong -
+   - a reviewed title, or the part of one, in a language other than the
+     review's own still takes its \\foreignlanguage{<language>}{...} wrapper,
+     inside \\mkbibemph; and
+   - a forename followed by an initial still takes the non-breaking tie:
+     \\bibstring{by} Lee~A. Rothfarb, never "Lee A. Rothfarb".
+   The Kivy example above is short only because that title is English and that
+   author has no initial; it is not a model for stripping either.
 
    Do not use a generic @Article for a review. Conversely, an article that
    merely discusses, cites or responds to other publications is NOT a review:
