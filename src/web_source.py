@@ -496,9 +496,16 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
         html, browser_app = browser_tab_dom(url)
         if html:
             soup = BeautifulSoup(html, 'html.parser')
+            # Metadata before text: _page_text() decomposes <script> tags,
+            # which destroys the JSON-LD block _page_metadata() reads from -
+            # keyword arguments evaluate left to right regardless of the
+            # order they're written in, so text=/metadata=/... below would
+            # silently lose Author/PublicationDate from JSON-LD-only pages.
+            metadata = _page_metadata(soup)
+            text = _page_text(soup)
             return SourceContent(
-                text=_page_text(soup),
-                metadata=_page_metadata(soup),
+                text=text,
+                metadata=metadata,
                 label=f"webpage (via {browser_app} tab)",
                 url=clean_url(url),
             )
@@ -511,9 +518,13 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
 
     soup = BeautifulSoup(response.text, 'html.parser')
 
+    # Metadata before text - see the identical comment in the browser-DOM
+    # branch above.
+    metadata = _page_metadata(soup)
+    text = _page_text(soup)
     return SourceContent(
-        text=_page_text(soup),
-        metadata=_page_metadata(soup),
+        text=text,
+        metadata=metadata,
         label="webpage",
         # Final URL after any redirects (e.g. DOI resolvers), minus tracking.
         url=clean_url(response.url),
