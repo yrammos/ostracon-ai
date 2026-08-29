@@ -77,6 +77,18 @@ def _consent_wall_html():
     )
 
 
+def _wrong_doi_html():
+    """Otherwise-plausible content with no canonical/og:url at all, whose
+    embedded Doi names a different work - the one signal the DOI gate exists
+    to still catch, at a URL that does carry a DOI of its own."""
+    return (
+        "<html><head><title>A Study of Musical Form</title>"
+        '<meta name="citation_author" content="Doe, Jane">'
+        '<meta name="citation_doi" content="10.9999/not-the-same-doi"></head>'
+        "<body><p>" + _words(150) + "</p></body></html>"
+    )
+
+
 def _wrong_canonical_html():
     """Otherwise-plausible content whose canonical link names a different
     page entirely - no og:url or Doi present to rescue it."""
@@ -230,6 +242,21 @@ def test_browser_wrong_canonical_falls_through():
     return True
 
 
+def test_browser_wrong_doi_falls_through():
+    # The DOI gate added after the initial pass exists precisely so this
+    # case is still caught: BOOKMARK_URL carries a DOI of its own
+    # (doi_candidates() finds one), so a page declaring a *different* DOI -
+    # with no canonical/og:url to override it - is a genuine contradiction,
+    # not merely unverifiable. A captured tab that navigated to a different
+    # article entirely would look like this.
+    with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
+         _browser_returns(_wrong_doi_html()), _no_crossref():
+        result, log = _run()
+    assert isinstance(result, str) and result.startswith("Error:"), result
+    assert "browser tab" in log and "rejected" in log, log
+    return True
+
+
 def test_no_tab_falls_back_to_crossref():
     # #11 item 4, case 6 (the DOI-fallback branch): unchanged from #8/#10.
     with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
@@ -337,6 +364,7 @@ TESTS = [
     test_browser_genuine_article_succeeds,
     test_200_interstitial_rejected,
     test_browser_wrong_canonical_falls_through,
+    test_browser_wrong_doi_falls_through,
     test_no_tab_falls_back_to_crossref,
     test_no_tab_no_doi_clean_failure_unchanged_text,
     test_non_challenge_failure_skips_crossref_unchanged_text,
