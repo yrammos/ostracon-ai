@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Self-test for web_source.py's fallback/plausibility redesign (#11).
+Self-test for web_source.py's fallback/plausibility redesign (#11), and its
+amber-vs-fail follow-up: only a URL-correspondence mismatch (the wrong
+document) is a hard failure; a genuine source that's merely thin or sparse
+(no Author/Doi/PublicationDate beyond Urldate, or a short body) still
+produces a SourceContent, marked amber for a human glance rather than
+trusted blind or discarded.
 
 No network, no browser, no API call: requests.get(), browser_tab_dom() and
 crossref_fallback() are all monkeypatched to canned values. The failure this
@@ -100,6 +105,22 @@ def _wrong_canonical_html():
     )
 
 
+def _wrong_canonical_but_complete_html():
+    """Complete identifying metadata (Author, PublicationDate) and a long
+    body - deliberately no Doi, since a Doi embedded in BOOKMARK_URL's own
+    path would itself be a correspondence signal and could rescue a wrong
+    canonical, defeating the point. Complete by every OTHER measure except
+    the one that matters: its canonical link names a different page. The
+    hard-failure case must fire regardless of how complete the rest looks."""
+    return (
+        "<html><head><title>A Study of Musical Form</title>"
+        '<meta name="citation_author" content="Doe, Jane">'
+        '<meta name="citation_publication_date" content="2020/01/01">'
+        '<link rel="canonical" href="https://academic.oup.com/login"></head>'
+        "<body><p>" + _words(150) + "</p></body></html>"
+    )
+
+
 class FakeResponse:
     def __init__(self, status_code=200, text="", headers=None, url=None):
         self.status_code = status_code
@@ -182,28 +203,35 @@ def _run(url=BOOKMARK_URL):
 
 # ── tests ────────────────────────────────────────────────────────────────
 
-def test_browser_challenge_markup_falls_through():
-    # #11 item 4, case 1: browser_tab_dom() hands back an actual Cloudflare
-    # interstitial - no entry, and the rejection is logged against the
-    # browser path.
+def test_browser_challenge_markup_produces_amber_entry():
+    # #11 item 4, case 1, updated for the amber follow-up: a Cloudflare
+    # interstitial has no correspondence-contradicting signal of its own
+    # (no canonical/og:url/Doi), so it's no longer a hard failure - it's the
+    # sparsest possible source (no identifying field, a two-word body), and
+    # comes back amber on both counts rather than discarded.
     with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
-         _browser_returns(_challenge_html()), _no_crossref():
+         _browser_returns(_challenge_html()), _crossref_raises():
         result, log = _run()
-    assert isinstance(result, str) and result.startswith("Error:"), result
-    assert "browser tab" in log and "rejected" in log, log
+    assert not isinstance(result, str), result
+    assert result.amber is True
+    assert "Author/Doi/PublicationDate" in result.amber_reason, result.amber_reason
+    assert "words" in result.amber_reason, result.amber_reason
+    assert "Source: browser tab (Safari)" in log and "[amber:" in log, log
     return True
 
 
-def test_browser_thin_dom_falls_through():
-    # #11 item 4, case 2: identifying metadata is present, but the body is
-    # a handful of words - a tab still loading, not an interstitial. Length
-    # guard fires specifically (metadata check alone would pass this one).
+def test_browser_thin_dom_produces_amber_entry():
+    # #11 item 4, case 2, updated: identifying metadata is present (Title,
+    # Author), so only the length guard fires - a tab still loading, not an
+    # interstitial. Required new case: "Body under MIN_BODY_WORDS, content
+    # corresponding -> amber, not failure."
     with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
-         _browser_returns(_thin_html()), _no_crossref():
+         _browser_returns(_thin_html()), _crossref_raises():
         result, log = _run()
-    assert isinstance(result, str) and result.startswith("Error:"), result
-    assert "browser tab" in log and "rejected" in log, log
-    assert "words" in log, log
+    assert not isinstance(result, str), result
+    assert result.amber is True
+    assert result.amber_reason == f"body text under {web_source.MIN_BODY_WORDS} words"
+    assert "[amber:" in log, log
     return True
 
 
@@ -217,25 +245,72 @@ def test_browser_genuine_article_succeeds():
     assert result.metadata.get("Title") == "A Study of Musical Form"
     assert result.metadata.get("Author") == "Doe, Jane"
     assert "Safari" in result.label
-    assert "Source: browser tab (Safari)" in log, log
+    assert result.amber is False and result.amber_reason is None
+    assert "Source: browser tab (Safari)" in log and "[amber:" not in log, log
     return True
 
 
-def test_200_interstitial_rejected():
-    # #11 item 4, case 4: the hole the whole redesign is for - a 200
-    # response is never routed through is_bot_challenge at all.
+def test_title_and_urldate_only_produces_amber():
+    # #11 item 4, case 4 (the hole the original redesign was for), now
+    # folded into the amber split, and the first of the follow-up's three
+    # required new cases verbatim: "Title + Urldate only, content
+    # corresponding -> amber entry produced, not a failure." A 200 consent
+    # wall with a substantial body and no correspondence-contradicting
+    # signal is exactly this shape - no Author/Doi/PublicationDate, only
+    # Urldate (implied by having a URL at all) left to date it by. Resolved
+    # straight from the fetch: the browser path is never even tried.
     with _fake_webloc(), _fetch_returns(FakeResponse(text=_consent_wall_html())), \
-         _no_browser_tab():
-        result, log = _run()
-    assert isinstance(result, str) and result.startswith("Error:"), result
-    assert "fetch" in log and "rejected" in log, log
+         _crossref_raises():
+        with _patched(web_source, "browser_tab_dom",
+                      lambda url: (_ for _ in ()).throw(
+                          AssertionError("browser_tab_dom() should not have been called"))):
+            result, log = _run()
+    assert not isinstance(result, str), result
+    assert result.amber is True
+    assert result.amber_reason == "no Author/Doi/PublicationDate - only Urldate available to date it"
+    assert "Source: fetch for" in log and "[amber:" in log, log
+    return True
+
+
+def test_thin_body_at_fetch_produces_amber():
+    # Required new case, at the plain-fetch level rather than via a browser
+    # tab: full identifying metadata (Title, Author), but a body under
+    # MIN_BODY_WORDS - amber for length alone, nothing else.
+    html = (
+        "<html><head><title>A Study of Musical Form</title>"
+        '<meta name="citation_author" content="Doe, Jane"></head>'
+        "<body><p>Loading…</p></body></html>"
+    )
+    with _fake_webloc(), _fetch_returns(FakeResponse(text=html)), _crossref_raises():
+        with _patched(web_source, "browser_tab_dom",
+                      lambda url: (_ for _ in ()).throw(
+                          AssertionError("browser_tab_dom() should not have been called"))):
+            result, log = _run()
+    assert not isinstance(result, str), result
+    assert result.amber is True
+    assert result.amber_reason == f"body text under {web_source.MIN_BODY_WORDS} words"
     return True
 
 
 def test_browser_wrong_canonical_falls_through():
-    # #11 item 4, case 5.
+    # #11 item 4, case 5. Still a hard failure under the amber split: this
+    # is the one condition that stays a failure regardless.
     with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
          _browser_returns(_wrong_canonical_html()), _no_crossref():
+        result, log = _run()
+    assert isinstance(result, str) and result.startswith("Error:"), result
+    assert "browser tab" in log and "rejected" in log, log
+    return True
+
+
+def test_correspondence_mismatch_hard_fails_regardless_of_metadata_completeness():
+    # Required new case, verbatim: "Content not corresponding to the
+    # requested URL -> hard failure, no entry, regardless of how complete
+    # its metadata looks." Every identifying field present (Author, Doi,
+    # PublicationDate) and a long body - only the canonical link is wrong,
+    # and that alone must still fail it.
+    with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
+         _browser_returns(_wrong_canonical_but_complete_html()), _no_crossref():
         result, log = _run()
     assert isinstance(result, str) and result.startswith("Error:"), result
     assert "browser tab" in log and "rejected" in log, log
@@ -264,7 +339,8 @@ def test_no_tab_falls_back_to_crossref():
         result, log = _run()
     assert not isinstance(result, str), result
     assert result.label == "CrossRef record"
-    assert "Source: CrossRef for" in log, log
+    assert result.amber is False and result.amber_reason is None
+    assert "Source: CrossRef for" in log and "[amber:" not in log, log
     return True
 
 
@@ -300,7 +376,8 @@ def test_browser_tried_on_non_challenge_status():
         result, log = _run()
     assert not isinstance(result, str), result
     assert "Chrome" in result.label
-    assert "Source: browser tab (Chrome) for" in log, log
+    assert result.amber is False
+    assert "Source: browser tab (Chrome) for" in log and "[amber:" not in log, log
     return True
 
 
@@ -314,7 +391,8 @@ def test_fetch_canonical_matches_redirected_url_not_bookmark():
     with _fake_webloc(doi_url), _fetch_returns(response):
         result, log = _run(url=doi_url)
     assert not isinstance(result, str), result
-    assert "Source: fetch" in log, log
+    assert result.amber is False
+    assert "Source: fetch" in log and "[amber:" not in log, log
     return True
 
 
@@ -339,7 +417,8 @@ def test_doi_meta_ignored_when_url_has_no_doi():
                           AssertionError("browser_tab_dom() should not have been called"))):
             result, log = _run(url=url)
     assert not isinstance(result, str), result
-    assert "Source: fetch for" in log, log
+    assert result.amber is False
+    assert "Source: fetch for" in log and "[amber:" not in log, log
     return True
 
 
@@ -354,16 +433,19 @@ def test_ordinary_fetch_success_does_not_touch_fallbacks():
             result, log = _run()
     assert not isinstance(result, str), result
     assert result.label == "webpage"
-    assert "Source: fetch for" in log, log
+    assert result.amber is False
+    assert "Source: fetch for" in log and "[amber:" not in log, log
     return True
 
 
 TESTS = [
-    test_browser_challenge_markup_falls_through,
-    test_browser_thin_dom_falls_through,
+    test_browser_challenge_markup_produces_amber_entry,
+    test_browser_thin_dom_produces_amber_entry,
     test_browser_genuine_article_succeeds,
-    test_200_interstitial_rejected,
+    test_title_and_urldate_only_produces_amber,
+    test_thin_body_at_fetch_produces_amber,
     test_browser_wrong_canonical_falls_through,
+    test_correspondence_mismatch_hard_fails_regardless_of_metadata_completeness,
     test_browser_wrong_doi_falls_through,
     test_no_tab_falls_back_to_crossref,
     test_no_tab_no_doi_clean_failure_unchanged_text,
