@@ -11,6 +11,8 @@ SourceContent.
 import json
 import plistlib
 import re
+import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
@@ -239,6 +241,309 @@ def crossref_fallback(url, crossref_email=None):
     return None
 
 
+# ── Browser DOM fallback (Safari / Chrome) ──────────────────────────────────
+#
+# A Cloudflare challenge keys on TLS fingerprint and JS execution, which no
+# plain HTTP client can satisfy. A browser the operator already has open
+# holds the session cookie and a genuine fingerprint, so when the bookmarked
+# URL happens to still be open in a tab, the DOM is taken from there instead
+# of fetching the page a second time.
+#
+# Every distinguishable way this can come up empty is reported separately.
+# The first version collapsed them all into None on the theory that the
+# caller only needed to know whether it had a DOM; that cost three rounds of
+# diagnosis on a single failure, because "Apple Events refused", "browser not
+# running" and "no tab matches" are the same symptom with entirely different
+# remedies. Nothing here launches a browser that isn't already running, and
+# nothing navigates a tab - it only reads what is already loaded.
+
+_BROWSER_APPS = ("Safari", "Google Chrome")
+_JS_OUTER_HTML = "document.documentElement.outerHTML"
+
+# osascript outcomes.
+OSA_OK = 'ok'
+OSA_REFUSED = 'refused'      # the Apple Events grant is missing or denied
+OSA_ERROR = 'error'          # anything else: no such tab, osascript absent, timeout
+
+# macOS reports a denied Apple Events grant as error -1743; the accompanying
+# wording varies by OS version and locale, so the numeric code is what this
+# matches on, with the English phrasings as a secondary net. Safari's separate
+# "Allow JavaScript from Apple Events" switch reports -1743 as well when off.
+_REFUSED_MARKERS = ('-1743', 'not authorized', 'not authorised', 'not allowed',
+                    'not permitted')
+
+# How many non-matching tab URLs to name before summarising the rest. Tabs on
+# the target's own host are always named in full regardless of this cap: they
+# are the ones worth eyeballing when a match was expected and didn't happen.
+_TAB_LOG_LIMIT = 12
+
+
+def _osascript(script, timeout=15):
+    """(status, text) - status is one of OSA_*; text is the script's stdout
+    when it ran, and osascript's stderr (or the exception) when it didn't."""
+    try:
+        result = subprocess.run(
+            ['osascript', '-e', script],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return OSA_ERROR, f"osascript timed out after {timeout}s"
+    except (subprocess.SubprocessError, OSError) as e:
+        return OSA_ERROR, str(e)
+    if result.returncode == 0:
+        return OSA_OK, result.stdout.strip()
+    stderr = (result.stderr or '').strip()
+    lowered = stderr.lower()
+    if any(marker in lowered for marker in _REFUSED_MARKERS):
+        return OSA_REFUSED, stderr
+    return OSA_ERROR, stderr or f"osascript exited {result.returncode}"
+
+
+# What one browser had to say about the target URL.
+BROWSER_MATCH = 'match'
+BROWSER_NOT_RUNNING = 'not running'
+BROWSER_NO_WINDOWS = 'running, no windows open'
+BROWSER_NO_MATCH = 'no matching tab'
+BROWSER_REFUSED = 'Apple Events refused'
+BROWSER_CAPTURE_REFUSED = 'tab matched, JavaScript from Apple Events refused'
+BROWSER_ERROR = 'error'
+
+
+def _browser_is_running(app_name):
+    """(is_running, status, detail). Checked before anything else so a closed
+    browser is never launched just to look for a tab that, by definition,
+    isn't open - and so a refused Apple Events grant is named as such rather
+    than silently read as "not running"."""
+    status, text = _osascript(f'application "{app_name}" is running')
+    if status == OSA_OK:
+        return text == 'true', OSA_OK, text
+    return False, status, text
+
+
+def _list_tabs(app_name):
+    """(tabs, status, detail) - tabs is [(window_index, tab_index, url)] for
+    every open tab of app_name, both indices 1-based as AppleScript addresses
+    them."""
+    running, status, detail = _browser_is_running(app_name)
+    if status == OSA_REFUSED:
+        return [], BROWSER_REFUSED, detail
+    if status == OSA_ERROR:
+        return [], BROWSER_ERROR, detail
+    if not running:
+        return [], BROWSER_NOT_RUNNING, ''
+
+    # `tab` and `linefeed` are bound OUTSIDE the tell block on purpose. Inside
+    # `tell application "Safari"` (and Chrome, whose dictionary also defines
+    # one) the word `tab` resolves to the application's own `tab` class, not
+    # to AppleScript's tab-character constant - so the delimiter came out as
+    # the literal three-letter text "tab":
+    #
+    #     1tab1tabhttps://example.com/...
+    #
+    # which split('\t') could not divide into three fields, so every line was
+    # discarded and the browser reported zero tabs open against a Safari with
+    # 26 of them. Verified by hand against the running Safari, before and
+    # after. Binding the constants first, where no application terminology is
+    # in scope, is what makes them mean what they say.
+    #
+    # `URL of t` is read through a try: a Start Page or Tab Group tab can
+    # answer `missing value`, and concatenating that aborts the whole script -
+    # one such tab would otherwise cost the entire listing.
+    script = f'''
+    set d to tab
+    set lf to linefeed
+    set out to ""
+    tell application "{app_name}"
+        if (count of windows) is 0 then return ""
+        set wIdx to 0
+        repeat with w in windows
+            set wIdx to wIdx + 1
+            set tIdx to 0
+            repeat with t in tabs of w
+                set tIdx to tIdx + 1
+                set u to ""
+                try
+                    set u to (URL of t) as text
+                end try
+                set out to out & wIdx & d & tIdx & d & u & lf
+            end repeat
+        end repeat
+    end tell
+    return out
+    '''
+    status, output = _osascript(script)
+    if status == OSA_REFUSED:
+        return [], BROWSER_REFUSED, output
+    if status == OSA_ERROR:
+        return [], BROWSER_ERROR, output
+    if not output:
+        return [], BROWSER_NO_WINDOWS, ''
+
+    tabs, unparsed = [], []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split('\t')
+        if len(parts) != 3:
+            unparsed.append(line)
+            continue
+        try:
+            tabs.append((int(parts[0]), int(parts[1]), parts[2]))
+        except ValueError:
+            unparsed.append(line)
+
+    # Output arrived but nothing in it parsed: the script ran and the format
+    # is not what this expects. Reported as an error naming the first line
+    # rather than as an empty tab list - silently dropping unparsable lines
+    # is what let the `tab` terminology collision above present itself as
+    # "no tabs open" against a browser that had 26.
+    if unparsed and not tabs:
+        return [], BROWSER_ERROR, (f"could not parse the tab listing "
+                                    f"({len(unparsed)} line(s)); first: {unparsed[0][:120]!r}")
+    return tabs, OSA_OK, ''
+
+
+def _describe_tabs(tabs, target_url):
+    """The cleaned URLs of the tabs that did not match, as a list of log
+    lines - without this there is no way to tell a matching bug from an
+    absent tab.
+
+    Returned as separate lines, never one string with newlines in it: the
+    caller's log callback prefixes each message it is given, so an embedded
+    newline produces a ragged block in the progress window.
+
+    Tabs sharing the target's host are named in full however many there are;
+    everything else is capped, since a browser session can carry hundreds of
+    tabs that have no bearing on the question.
+    """
+    if not tabs:
+        return ["no tabs open"]
+    target_host = urlsplit(clean_url(target_url)).netloc.lower()
+    same_host, other = [], []
+    for _, _, tab_url in tabs:
+        cleaned = clean_url(tab_url).rstrip('/')
+        (same_host if urlsplit(cleaned).netloc.lower() == target_host else other).append(cleaned)
+
+    lines = [f"{len(tabs)} tab(s) open; none matched"]
+    if same_host:
+        lines.append(f"on {target_host} ({len(same_host)}):")
+        lines.extend(f"  {u}" for u in same_host)
+    else:
+        lines.append(f"none on {target_host}")
+    shown = other[:_TAB_LOG_LIMIT]
+    if shown:
+        lines.append(f"elsewhere ({len(other)}):")
+        lines.extend(f"  {u}" for u in shown)
+        if len(other) > len(shown):
+            lines.append(f"  ... and {len(other) - len(shown)} more")
+    return lines
+
+
+def _capture_tab_dom(app_name, window_index, tab_index, timeout=20):
+    """(html, status, detail) for one already-identified open tab, via each
+    browser's own JS-execution verb (they differ). A refusal here is the
+    browser's separate "Allow JavaScript from Apple Events" switch, distinct
+    from the Apple Events grant that listing tabs already cleared."""
+    if app_name == "Safari":
+        script = (
+            f'tell application "Safari" to do JavaScript "{_JS_OUTER_HTML}" '
+            f'in tab {tab_index} of window {window_index}'
+        )
+    else:  # Google Chrome
+        script = (
+            f'tell application "Google Chrome" to execute tab {tab_index} '
+            f'of window {window_index} javascript "{_JS_OUTER_HTML}"'
+        )
+    status, text = _osascript(script, timeout=timeout)
+    if status == OSA_REFUSED:
+        return None, BROWSER_CAPTURE_REFUSED, text
+    if status == OSA_ERROR:
+        return None, BROWSER_ERROR, text
+    if not text:
+        return None, BROWSER_ERROR, "the tab returned an empty document"
+    return text, BROWSER_MATCH, ''
+
+
+def browser_tab_dom(url, log=None):
+    """(html, app_name, summary) - the rendered DOM of `url` and the browser
+    it came from, if the page happens to be open in a Safari or Chrome tab
+    right now; (None, None, summary) otherwise.
+
+    `summary` says what each browser reported, so the caller can tell a
+    refused Apple Events grant from a closed browser from a tab that simply
+    isn't there. `log`, if given, receives the same information as it is
+    discovered, including the cleaned URLs of the tabs that were examined and
+    did not match.
+    """
+    log = log or (lambda msg: None)
+    target = clean_url(url).rstrip('/')
+    log(f"Browser capture: looking for {target}")
+
+    outcomes = []
+    for app_name in _BROWSER_APPS:
+        tabs, status, detail = _list_tabs(app_name)
+
+        if status in (BROWSER_REFUSED, BROWSER_ERROR):
+            outcomes.append(f"{app_name}: {status}" + (f" ({detail})" if detail else ""))
+            log(f"  {app_name}: {status}" + (f" - {detail}" if detail else ""))
+            continue
+        if status in (BROWSER_NOT_RUNNING, BROWSER_NO_WINDOWS):
+            outcomes.append(f"{app_name}: {status}")
+            log(f"  {app_name}: {status}")
+            continue
+
+        # Exact first, identity only as a fallback. A publisher serves one
+        # work at several addresses (/article/ vs /article-abstract/), and
+        # clean_url() already absorbs the query-parameter half of that, which
+        # is why a ?redirectedFrom bookmark matches its tab; the path half it
+        # cannot reach, so _url_matches - the same rule the correspondence
+        # check uses - decides that. One rule over both steps, rather than
+        # two that nearly agree.
+        #
+        # Preference order matters and is not merely tidiness: with the same
+        # article open in two forms, the tab actually asked for is the one to
+        # capture. `tabs` is already in window-then-tab order, so taking the
+        # first identity match makes the fallback deterministic too.
+        #
+        # Unlike the correspondence check, this has no backstop: capture the
+        # wrong tab and the wrong document is what gets read. Should the two
+        # sites ever need to diverge, this is the one that stays stricter.
+        exact = identity = None
+        for win_idx, tab_idx, tab_url in tabs:
+            if clean_url(tab_url).rstrip('/') == target:
+                exact = (win_idx, tab_idx, tab_url)
+                break
+            if identity is None and _url_matches(url, tab_url):
+                identity = (win_idx, tab_idx, tab_url)
+
+        chosen, kind = (exact, 'exact') if exact else (identity, 'identity')
+
+        if not chosen:
+            outcomes.append(f"{app_name}: {BROWSER_NO_MATCH} ({len(tabs)} tab(s) examined)")
+            described = _describe_tabs(tabs, url)
+            log(f"  {app_name}: {described[0]}")
+            for line in described[1:]:
+                log(f"    {line}")
+            continue
+
+        win_idx, tab_idx, tab_url = chosen
+        # An identity match names the tab's own URL: it is not the address
+        # that was asked for, so the log has to show which page was taken.
+        where = (f"window {win_idx} tab {tab_idx} ({kind} match)" if kind == 'exact'
+                 else f"window {win_idx} tab {tab_idx} ({kind} match: "
+                      f"{clean_url(tab_url).rstrip('/')})")
+
+        html, cap_status, cap_detail = _capture_tab_dom(app_name, win_idx, tab_idx)
+        if html:
+            log(f"  {app_name}: matched {where}; captured {len(html)} characters")
+            return html, app_name, f"{app_name}: {BROWSER_MATCH} ({kind})"
+        outcomes.append(f"{app_name}: {cap_status}" + (f" ({cap_detail})" if cap_detail else ""))
+        log(f"  {app_name}: matched {where}, but {cap_status}"
+            + (f" - {cap_detail}" if cap_detail else ""))
+
+    return None, None, '; '.join(outcomes)
+
+
 def resolve_webloc(path):
     """Parse a .webloc plist and return its bookmarked URL, or None."""
     with open(path, 'rb') as f:
@@ -330,16 +635,329 @@ def _page_text(soup):
     return snap_to_sentence_end(text, TEXT_WORD_BUDGET, from_end=False)
 
 
-def extract_webloc(webloc_path, timeout=20, crossref_email=None):
+def _content_from_html(html, source_url, label):
+    """Parse raw page HTML into a SourceContent - the same construction
+    whether the HTML came from a live HTTP fetch or a captured browser tab,
+    so the plausibility check below runs identically over both. Returns the
+    soup alongside the content, since the caller needs it again to check the
+    page's own canonical link / og:url."""
+    soup = BeautifulSoup(html, 'html.parser')
+    # Metadata before text: _page_text() decomposes every <script> tag
+    # (deliberately, to keep chrome out of the body text), which destroys
+    # the JSON-LD block _page_metadata() reads from.
+    metadata = _page_metadata(soup)
+    text = _page_text(soup)
+    return SourceContent(text=text, metadata=metadata, label=label,
+                          url=clean_url(source_url)), soup
+
+
+# ── Content plausibility ─────────────────────────────────────────────────
+#
+# Classifying the *failure* (is_bot_challenge, above) only ever catches a
+# gatekeeper that answers with an error status. DataDome, Kasada, consent
+# gates and login walls commonly answer 200 with an interstitial instead -
+# there is no error to classify, so the only thing that tells it apart from
+# the article is what actually came back. Applied identically to every path
+# that can produce a SourceContent (fetch, browser tab, CrossRef).
+#
+# Only one thing here is a hard failure: the content doesn't correspond to
+# the URL requested - that's the wrong document, not a sparse one, and no
+# amount of metadata completeness excuses it. Everything else this checks
+# (missing identifying fields, a thin body) is genuine-but-sparse rather
+# than wrong, and is flagged amber (SourceContent.amber, folded into
+# biblio_agent.py's existing "needs_color" mechanism) instead of discarded -
+# this library carries plenty of real @Online sources (a personal page, a
+# manufacturer's spec sheet) with a Title and nothing else, for which
+# Urldate is the normal, correct dating evidence per CLAUDE.md, not a
+# consolation prize.
+
+_IDENTIFYING_FIELDS = ('Author', 'Doi', 'PublicationDate')
+
+# Provisional floor pending #16's own thin-yield threshold; borrowed from
+# extract_pages.py's OCR-retry threshold (also 100 words), the closest
+# existing precedent in this codebase for "too little text to trust." HTML-
+# derived content only (fetch, browser tab) - a CrossRef record isn't a DOM
+# that can still be loading, so it has no length to check; its guard is the
+# identifying-metadata check below instead (see _content_plausible).
+MIN_BODY_WORDS = 100
+
+
+# Path segments that describe the *form* a publisher serves a work in rather
+# than which work it is. A segment built entirely of these is structural and
+# identifies nothing: /article/, /article-abstract/, /advance-article-pdf/
+# and their kin all name the same underlying article. Kept as words rather
+# than whole segments so unseen combinations are covered too.
+_STRUCTURAL_PATH_WORDS = {
+    'article', 'articles', 'advance', 'abstract', 'full', 'fulltext', 'text',
+    'pdf', 'epdf', 'html', 'view', 'viewer', 'download', 'content', 'doi',
+    'lookup', 'issue', 'cover', 'search', 'results', 'citation', 'cite',
+    'supplemental', 'supplementary', 'figure', 'table', 'print', 'summary',
+}
+
+# A run of digits long enough to be a publisher's article id rather than a
+# volume, issue, page or year. Five is deliberate: it clears four-digit years,
+# which appear in many publishers' paths and would otherwise let two unrelated
+# articles from the same year look like the same work.
+_ARTICLE_ID_RE = re.compile(r'^\d{5,}$')
+
+# An opaque record token: Cambridge Core's 32-character hex, arXiv's
+# 2401.01234, a handle's mdp.39015012345678, a DOI suffix. Letters and digits
+# and dots only - no hyphens, which is what keeps title slugs out of this
+# class - and at least one digit, so an ordinary word never qualifies.
+_OPAQUE_ID_RE = re.compile(r'^(?=[^\d]*\d)[A-Za-z0-9.]{8,}$')
+
+# A file extension naming how a work is served, not which work it is.
+_SERVING_EXTENSION_RE = re.compile(r'\.(pdf|html?|xml|epub|txt|full)$', re.I)
+
+
+def _is_structural_segment(segment):
+    parts = [p for p in segment.lower().split('-') if p]
+    return bool(parts) and all(p in _STRUCTURAL_PATH_WORDS for p in parts)
+
+
+def _identifying_segments(path):
+    """(ids, slugs) - the path segments that identify *which work* a URL names.
+
+    Kept apart because they carry different authority. An id names one
+    record; a slug is usually a title, but on some platforms it is the
+    *container*: Cambridge Core writes
+    /core/journals/twentieth-century-music/article/abs/<title>/<hex id>,
+    where the journal name is a long hyphenated segment shared by every
+    article in the journal. Treating that as identifying matched two
+    unrelated articles - the exact publisher-shaped assumption this
+    separation exists to remove. See _url_matches for how a conflicting id
+    now overrules a shared slug.
+
+    A slug must carry at least two hyphens and sixteen characters and must
+    not be built purely of structural words, so `music-theory` or
+    `article-abstract` cannot stand in for a title.
+    """
+    ids, slugs = set(), set()
+    for segment in path.split('/'):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if _ARTICLE_ID_RE.match(segment) or _OPAQUE_ID_RE.match(segment):
+            ids.add(segment.lower())
+            continue
+        # A serving extension is a form, not an identity: the same work is
+        # <slug> as a landing page and <slug>.pdf as a download.
+        bare = _SERVING_EXTENSION_RE.sub('', segment)
+        if (len(bare) >= 16 and bare.count('-') >= 2
+                and not _is_structural_segment(bare)):
+            slugs.add(bare.lower())
+    return ids, slugs
+
+
+def _url_matches(a, b):
+    """True when two URLs name the same work - identity, not path equality.
+
+    A publisher serves one article at several addresses (/article/ vs
+    /article-abstract/, an `epdf` view, a `redirectedFrom` parameter), and
+    its canonical link states the definitive one. Requiring the strings to
+    agree treated the publisher's own statement about a work as evidence
+    against it, and would have rejected every Silverchair platform - Oxford
+    Academic, UC Press, most of what this feature exists for.
+
+    So: identical after cleaning, or the same host plus something that names
+    the same work - a shared DOI where both carry one, otherwise a shared
+    article id or title slug. Host alone is deliberately not enough, and
+    neither is a path difference alone: a tab showing a different article on
+    the same site must still be refused, since a false match here produces a
+    confident wrong entry, which is the failure this whole check is for.
+    """
+    clean_a, clean_b = clean_url(a).rstrip('/'), clean_url(b).rstrip('/')
+    if clean_a == clean_b:
+        return True
+
+    parts_a, parts_b = urlsplit(clean_a), urlsplit(clean_b)
+    if parts_a.netloc.lower() != parts_b.netloc.lower():
+        return False
+
+    # A DOI on both sides settles it outright, either way - but only the
+    # LONGEST candidate may be compared, never the truncation ladder
+    # doi_candidates() offers for CrossRef lookups. Intersecting the ladders
+    # matched two different Grove Music entries, whose paths share the
+    # dictionary's own DOI stem (10.1093/gmo) and differ only past it.
+    #
+    # One DOI extending the other by a further path segment is still the
+    # same work: Silverchair appends its article id, so
+    # 10.1093/jaac/kpag034/8725072 and 10.1093/jaac/kpag034 are one record.
+    doi_a = (doi_candidates(clean_a) or [''])[0].lower().rstrip('/')
+    doi_b = (doi_candidates(clean_b) or [''])[0].lower().rstrip('/')
+    if doi_a and doi_b:
+        return (doi_a == doi_b
+                or doi_a.startswith(doi_b + '/')
+                or doi_b.startswith(doi_a + '/'))
+
+    ids_a, slugs_a = _identifying_segments(parts_a.path)
+    ids_b, slugs_b = _identifying_segments(parts_b.path)
+
+    # Disagreement within a class that BOTH sides populate settles it: these
+    # are different records, however much of the rest of the path agrees.
+    # The veto has to run over both classes, because which class carries the
+    # discriminating token is a per-publisher accident:
+    #
+    #   Cambridge Core  /journals/<journal-slug>/article/abs/<title>/<hex id>
+    #     - the journal slug is shared by every article, so the ID vetoes;
+    #   Grove Music     /view/10.1093/gmo/<dictionary id>/<entry slug>
+    #     - the dictionary id is shared by every entry, so the SLUG vetoes.
+    #
+    # Checking only ids matched two unrelated Grove entries; checking only
+    # slugs matched two unrelated Cambridge articles. Both were real.
+    if ids_a and ids_b and not (ids_a & ids_b):
+        return False
+    if slugs_a and slugs_b and not (slugs_a & slugs_b):
+        return False
+
+    # A class only one side populates is not a conflict: /article/<id>/<slug>
+    # and a bare /<slug> form can be the same work.
+    return bool((ids_a & ids_b) or (slugs_a & slugs_b))
+
+
+def _url_correspondence(candidate_urls, soup, metadata):
+    """(ok, reason) - whether at least one of the page's own self-identifying
+    signals (canonical link, og:url, embedded Doi) points back at one of the
+    URLs this content might legitimately be found at.
+
+    Every present signal is checked against every candidate URL, rather than
+    stopping at the first signal found or requiring all of them to agree:
+    `candidate_urls` normally holds both the bookmarked .webloc URL and, for
+    a live fetch, the URL requests.get() actually landed on after following
+    redirects - a doi.org bookmark resolves to the publisher's own URL, whose
+    canonical link then names the publisher URL rather than the redirector,
+    while its embedded DOI still matches the original bookmark. Requiring
+    the first signal present to match would reject that page over a mismatch
+    that was never a contradiction.
+
+    No signal present at all is neither confirmed nor contradicted, so it
+    passes: plenty of legitimate pages carry none of the three, and this
+    check exists to catch a genuine *contradiction* (a login wall's
+    canonical link pointing at the login page, a captured tab that has
+    navigated elsewhere) - a page too thin to carry any of these tags is
+    already caught by the identifying-metadata and length checks.
+    """
+    signals = []
+    if soup is not None:
+        canonical = soup.find('link', rel='canonical')
+        href = canonical.get('href') if canonical else None
+        if href and href.startswith('http'):
+            signals.append(('canonical link', href))
+        og_url = soup.find('meta', attrs={'property': 'og:url'})
+        content = og_url.get('content') if og_url else None
+        if content and content.startswith('http'):
+            signals.append(('og:url', content))
+    doi = metadata.get('Doi')
+    # A contradiction only if some candidate URL actually advertises a DOI in
+    # its own path - most publisher URLs don't (an Oxford Academic
+    # /article/80/1/1/1234567 carries none), so the page's own citation_doi
+    # meta tag would otherwise be the only signal available and reject a
+    # perfectly ordinary article on every such URL. Absent that, the DOI is
+    # unverifiable rather than contradicted, which is the same reasoning as
+    # "no signal present" below.
+    if doi and any(doi_candidates(c) for c in candidate_urls):
+        signals.append(('embedded Doi', doi))
+
+    if not signals:
+        return True, None
+
+    for label, value in signals:
+        for candidate in candidate_urls:
+            if label == 'embedded Doi':
+                if value.lower() in candidate.lower():
+                    return True, None
+            elif _url_matches(candidate, value):
+                return True, None
+    described = '; '.join(f"{label} = {value}" for label, value in signals)
+    return False, f"none of its self-identifying signals match the requested URL ({described})"
+
+
+def _content_plausible(content, candidate_urls, soup=None):
+    """(ok, reason, amber, amber_reason).
+
+    `ok=False` only for a URL-correspondence mismatch - the one case this
+    treats as the wrong document rather than a sparse one. Every other
+    outcome is `ok=True`: `amber=True` marks content worth a human glance
+    (no Title, or identifying fields thin enough that only Urldate is left
+    to date it, or - for HTML-derived content only - a body under
+    MIN_BODY_WORDS) without discarding it. `candidate_urls` is every URL the
+    content may legitimately declare itself as (see _url_correspondence);
+    `soup` is the parsed page for the fetch/browser-tab paths, or None for
+    CrossRef, which has no page to read a canonical link or og:url from (and
+    whose own metadata block is exempt from the length check - see
+    MIN_BODY_WORDS).
+    """
+    metadata = content.metadata
+
+    ok, reason = _url_correspondence(candidate_urls, soup, metadata)
+    if not ok:
+        return False, reason, False, None
+
+    amber_bits = []
+    if not metadata.get('Title'):
+        amber_bits.append("no Title in the extracted metadata")
+    if not any(metadata.get(f) for f in _IDENTIFYING_FIELDS):
+        # Not a hard fail: a Title with no Author/Doi/PublicationDate still
+        # has Urldate to date it by (this project's own convention for an
+        # entry with no stated Date - CLAUDE.md), which is a normal, valid
+        # @Online source, not a defective one. Flagged amber rather than
+        # passed clean, though, since it's the sparsest shape that's still
+        # usable at all.
+        amber_bits.append("no Author/Doi/PublicationDate - only Urldate available to date it")
+    if soup is not None and len(split_into_words(content.text)) < MIN_BODY_WORDS:
+        amber_bits.append(f"body text under {MIN_BODY_WORDS} words")
+
+    if amber_bits:
+        return True, None, True, '; '.join(amber_bits)
+    return True, None, False, None
+
+
+def _stderr_log(msg):
+    """Default sink when no caller-supplied log is given - direct module use,
+    tests, and the CLI without the progress window."""
+    print(f"   {msg}", file=sys.stderr)
+
+
+def extract_webloc(webloc_path, timeout=20, crossref_email=None, log=None):
     """
     Extract a .webloc bookmark's target page as a SourceContent.
 
-    Where the publisher answers a bot challenge rather than the page, falls
-    back to the CrossRef record for the DOI in the URL's own path.
+    Three paths are tried in order - an ordinary fetch, a browser tab already
+    open on the bookmarked URL, and the CrossRef record for a DOI in the
+    URL's own path - and every one of them is checked for plausibility
+    before being trusted (see _content_plausible). Only a URL-correspondence
+    mismatch is treated as a failed path (nothing produced, next path
+    tried); missing identifying metadata or a thin body still return the
+    content, marked amber (SourceContent.amber/amber_reason) for a human to
+    glance at rather than trust blind.
+
+    The browser tab is tried on any failure of the fetch (a non-2xx status,
+    or a 200 that failed the plausibility check) - a tab rendering the page
+    is proof of life no HTTP response can provide, whatever its status code.
+    CrossRef stays gated on a classified bot challenge (is_bot_challenge):
+    unlike the browser path it has no page to check against, only a DOI
+    mined from the URL, so trying it on every failure would risk filing a
+    record for a URL that's simply dead (a plain 404) - the original
+    rationale for that gate, unchanged here.
+
+    `log`, if given, is called with short human-readable strings naming which
+    path produced the text and why each rejected path was rejected - the same
+    shape enrich.verify_recollection(log=...) uses, so biblio_agent can route
+    it through _log() and it reaches the progress window as well as stderr.
+    Defaults to stderr alone, which is invisible in the windowed run.
 
     Returns:
         SourceContent on success, or a string starting with "Error:" on failure.
     """
+    log = log or _stderr_log
+
+    def log_source(chosen, amber_reason=None):
+        suffix = f" [amber: {amber_reason}]" if amber_reason else ""
+        log(f"Source: {chosen} for {url}{suffix}")
+
+    def log_rejected(path_label, reason, next_step):
+        log(f"⚠️  {path_label} rejected ({reason}); trying {next_step}")
+
     webloc_path = Path(webloc_path)
 
     if not webloc_path.exists():
@@ -358,25 +976,63 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     except requests.RequestException as e:
         return f"Error: Could not fetch {url}: {e}"
 
-    # A challenge is the one failure worth routing around: the work exists and
-    # is citable, only this client is unwelcome. Every other non-2xx is left to
-    # fail loudly - a 404 masked by a CrossRef hit would file an entry whose
-    # Url points at a dead page, which is worse than a reported failure.
-    if not response.ok:
-        if not is_bot_challenge(response):
-            return f"Error: Could not fetch {url}: HTTP {response.status_code}"
+    challenge = is_bot_challenge(response)
+    rejected = []  # (path label, reason), in the order tried
+
+    if response.ok:
+        content, soup = _content_from_html(response.text, response.url, "webpage")
+        ok, reason, amber, amber_reason = _content_plausible(content, {url, response.url}, soup)
+        if ok:
+            content.amber, content.amber_reason = amber, amber_reason
+            log_source("fetch", amber_reason)
+            return content
+        rejected.append(("fetch", reason))
+        log_rejected("fetch", reason, "a browser tab")
+
+    # Tried on ANY failure - non-2xx status or a 200 that didn't pass the
+    # plausibility check - not only a classified bot challenge: a browser
+    # already holding the session and a genuine TLS fingerprint beats
+    # whatever the plain HTTP client got back, and DataDome/Kasada/consent-
+    # wall interstitials never trip is_bot_challenge at all.
+    html, browser_app, browser_summary = browser_tab_dom(url, log=log)
+    if html:
+        label = f"browser tab ({browser_app})"
+        content, soup = _content_from_html(html, url, f"webpage (via {browser_app} tab)")
+        ok, reason, amber, amber_reason = _content_plausible(content, {url}, soup)
+        if ok:
+            content.amber, content.amber_reason = amber, amber_reason
+            log_source(label, amber_reason)
+            return content
+        # Distinct from "no tab was found": a tab WAS captured and its
+        # content examined, and it is the content that was refused.
+        rejected.append((label, reason))
+        log_rejected(label, reason, "CrossRef" if challenge else "reporting failure")
+
+    if challenge:
         fallback = crossref_fallback(url, crossref_email)
         if fallback:
-            return fallback
+            ok, reason, amber, amber_reason = _content_plausible(fallback, {url}, soup=None)
+            if ok:
+                fallback.amber, fallback.amber_reason = amber, amber_reason
+                log_source("CrossRef", amber_reason)
+                return fallback
+            rejected.append(("CrossRef", reason))
+            log_rejected("CrossRef", reason, "reporting failure")
+
+    log_source("failure")
+
+    # The browser summary goes into the error text whether or not a tab was
+    # found, and says which of the distinguishable outcomes occurred. Without
+    # it the returned string cannot tell "no browser was consulted" from "the
+    # grant was refused" from "no tab matched" - the conflation that made a
+    # single failure take three rounds to diagnose.
+    browser_note = f"; browser tab: {browser_summary}" if browser_summary else ""
+
+    if rejected:
+        detail = '; '.join(f"{path}: {reason}" for path, reason in rejected)
+        return f"Error: {url} yielded no plausible source ({detail}){browser_note}"
+    if challenge:
         return (f"Error: {url} is behind a bot challenge (HTTP "
-                f"{response.status_code}) and its URL carries no DOI to fall back on")
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    return SourceContent(
-        text=_page_text(soup),
-        metadata=_page_metadata(soup),
-        label="webpage",
-        # Final URL after any redirects (e.g. DOI resolvers), minus tracking.
-        url=clean_url(response.url),
-    )
+                f"{response.status_code}) and its URL carries no DOI to fall back on"
+                f"{browser_note}")
+    return f"Error: Could not fetch {url}: HTTP {response.status_code}{browser_note}"
