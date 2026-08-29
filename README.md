@@ -4,6 +4,13 @@ A macOS agent that reads a PDF or a `.webloc` bookmark and writes a
 BibLaTeX-Chicago entry (notes and bibliography), optionally filing it straight into
 BibDesk.
 
+**NOTE: Early-stage software, developed against one ~5,500-item library.** The prompt rules,
+entry-type quotas, and normalization conventions follow one scholar's
+biblatex-chicago practice. Measured accuracy is approximately 83% on entry-type identification against
+hand-verified ground truth; see `dev/eval/baselines/` for the field-level tables
+and `dev/eval/README.md` for what the evaluation suite cannot measure. Assume entries need
+checking before you cite from them. macOS only; BibDesk is optional.
+
 Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 
 - [Rationale](#rationale)
