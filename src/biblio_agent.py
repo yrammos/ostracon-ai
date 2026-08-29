@@ -439,10 +439,36 @@ excerpt's text won't (e.g. an embedded Author field):
    @Unpublished (anything else unpublished, including a conference paper with
    no proceedings volume - see the guidelines for the required Note field).
    For a review of another work (rather than a standalone article), use
-   @Review and encode the reviewed work's title/author directly into Title
-   per the convention in the guidelines and demonstrated in
-   biblio-template.bib's Dunsby1997 entry - do not use a generic @Article for
-   a review.
+   @Review. The reviewed work is encoded directly into Title, and a
+   compressed form of it into Shorttitle, using exactly this construction:
+
+     Title = {\\bibstring{reviewof} \\mkbibemph{Authenticities: Philosophical
+       Reflections on Musical Performance}, \\bibstring{by} Peter Kivy},
+     Shorttitle = {\\bibstring{reviewof} \\mkbibemph{Authenticities},
+       \\bibstring{by} Kivy},
+
+   The name after \\bibstring{by} is the author of the work BEING REVIEWED. It
+   is never the reviewer, who is this entry's own Author and appears nowhere
+   in Title or Shorttitle - identify the two people separately.
+
+   Shorttitle compresses in two ways at once, and BOTH are required:
+   - the reviewed title is cut back to its first few words (at the colon,
+     where there is one), and
+   - the reviewed author is reduced to a bare surname, no forenames or
+     initials.
+   A Shorttitle that stops after the reviewed title, with no \\bibstring{by}
+   clause, is incomplete. Where one review covers several works, each keeps
+   its own \\bibstring{by} clause in both fields.
+
+   Title holds the reviewed work's own title and author and nothing else.
+   Volume/series/translator/editor detail printed alongside it on the review's
+   first page ("Vol. III of ...", "translated and edited by ...") belongs to
+   the volume being reviewed, not to this entry's Title - leave it out.
+
+   Do not use a generic @Article for a review. Conversely, an article that
+   merely discusses, cites or responds to other publications is NOT a review:
+   @Review is for a piece whose subject is one or more named works under
+   notice, normally announced as such on its own first page.
 2. Extract all relevant bibliographic fields
 3. Split a colon-separated title into Title (before the colon) and Subtitle
    (after it), omitting the colon itself - biblatex-chicago supplies it. Same
