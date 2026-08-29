@@ -117,6 +117,31 @@ is one chapter of it) and `insufficient_source` (the right file, yielding almost
 no text). Neither is consumed by the scorer yet: they are read by whoever reads
 a report. See [`sample/README.md`](sample/README.md).
 
+**Nor can it tell a field read from the source apart from one the model
+recalled.** Both score `exact`. The harness compares strings; it has no view of
+where a value came from, so a correct guess and a correct reading are worth the
+same to it.
+
+Gollin2011a is the worked example. Its source is three pages of glossary text,
+and of the six values in the ground-truth entry, **five appear nowhere in the
+PDF** - not `Oxford Handbook`, not `Neo-Riemannian`, not `Oxford University
+Press`, not `Oxford`, not `2011`, not `579`. Only the page-3 running header
+(`GLOSSARY 581`) is actually in the file. The 2026-08-29 baseline scored this
+entry as correct; it was correct by recollection.
+
+So **a fall in `exact` is not necessarily a regression.** A change that stops
+the model supplying values the source does not contain will score as a loss on
+every entry whose ground truth was only ever reachable by supplying them. This
+bears directly on how the `exact 249 -> 240` in
+[`baselines/2026-08-29-integration.md`](baselines/2026-08-29-integration.md) is
+read: part of that -9 is the pipeline declining to guess, and the table cannot
+say which part. Read `spurious` and `missing` alongside it, and read the entries
+themselves before calling any of it a regression.
+
+The grounding audit (`verify_and_flag_recollection()`) is the mechanism that
+does know the difference, and its verdict reaches BibDesk as a colour rather
+than the report - which is the previous point again, from the other side.
+
 ## Corrections
 
 `expected.bib` is edited by the maintainer only. It is the one file here
