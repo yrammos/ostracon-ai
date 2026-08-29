@@ -1214,6 +1214,20 @@ end tell'''
         # clean_bibtex() strips anything before the first '@', so pull it out
         # first and re-attach it once cleaning is done (outermost marker -
         # see the prepend order in extract_bibtex).
+        #
+        # Until fixed here, this pattern's \b sat right after the literal
+        # ':' (`Source:\b`) - impossible, since neither side of that
+        # position is a word character - so it never matched anything.
+        # Because % Source: is always the outermost/first line and re.match
+        # anchors at position 0, that didn't just drop this comment: with
+        # bibtex_entry left unstripped, EVERY marker regex below it also
+        # failed to match against the unrelated text still sitting at
+        # position 0, for every entry this method ever saved - PDF or
+        # .webloc alike. needs_color could never become True by this path
+        # before this fix, so BibDesk's amber coloring (UNVERIFIED_COLOR)
+        # was inert from the day it was introduced, not merely blind to
+        # .webloc sources as the comments below (written after this fix)
+        # describe for the design going forward.
         source_comment = ''
         marker_match = re.match(r'(%\s*Source\b:[^\n]*\n)', bibtex_entry)
         if marker_match:
