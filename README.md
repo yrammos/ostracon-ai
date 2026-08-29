@@ -14,6 +14,7 @@ Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 - [Cost](#cost)
 - [BibDesk integration](#bibdesk-integration)
 - [Normalizing an existing library](#normalizing-an-existing-library)
+- [Evaluating extraction accuracy](#evaluating-extraction-accuracy)
 - [Troubleshooting](#troubleshooting)
 - [Repository layout](#repository-layout)
 - [License](#license)
@@ -234,6 +235,25 @@ are in [`dev/normalization-plan.md`](dev/normalization-plan.md), which also expl
 why the audit's steady state is not zero and why a compile against your own preamble
 is the check that cannot be skipped.
 
+## Evaluating extraction accuracy
+
+`NOTES.md` measures what a run costs; this measures whether an entry is right.
+
+```bash
+python3 dev/eval/run.py           # score dev/eval/sample/ against dev/eval/expected.bib
+python3 dev/eval/test_eval.py     # exercise the harness itself - no sample, no API call
+```
+
+`dev/eval/run.py` runs the real pipeline over `dev/eval/sample/` - real sources,
+matched by `dev/eval/sample/manifest.json` to hand-verified entries in
+`dev/eval/expected.bib` - and scores each field as exact, present-but-different,
+missing or spurious via `dev/eval/scorer.py`; entry-type accuracy is reported
+separately, since a wrong type invalidates everything scored under it. Both
+`sample/` and `expected.bib` start empty: populating either is hand work checked
+against the physical source, not something this repository can ship pre-filled.
+`dev/eval/test_eval.py` proves the harness itself works, against a synthetic
+fixture pair it builds at run time. See [`dev/eval/README.md`](dev/eval/README.md).
+
 ## Troubleshooting
 
 **Entry saved to `failed_bib_file`.** Unbalanced braces. Repair it by hand and move
@@ -288,6 +308,13 @@ ostracon-ai/
 │   ├── cms-notes-intro-guide.md       # Entry types by kind of source
 │   └── biblatex-chicago-fields.md     # Manual §4.2; consulted, not loaded
 ├── dev/                    # Tooling; see NOTES.md. Nothing here runs during extraction
+│   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
+│       ├── run.py                # Scores dev/eval/sample/ against expected.bib
+│       ├── scorer.py             # Field-level comparison
+│       ├── test_eval.py          # Self-test, synthetic fixtures, no API call
+│       ├── expected.bib          # Hand-verified entries; empty until populated
+│       └── sample/
+│           └── manifest.json     # citekey/source/hash list; empty until populated
 ├── automator/
 │   └── script.sh.example   # Copy to script.sh; set PYTHON and WORKDIR
 ├── pdf-in/                 # Sources for --all

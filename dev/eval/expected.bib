@@ -1,0 +1,28 @@
+% dev/eval/expected.bib - hand-verified ground truth for the evaluation
+% harness (dev/eval/run.py). Empty until populated by hand: every entry
+% below must be checked against the PHYSICAL source, not a catalogue -
+% populating this file is not something the pipeline, or anything short of
+% actually reading each source, can do. See dev/eval/README.md.
+%
+% Format: ordinary BibLaTeX-Chicago entries (the same shape produced entries
+% take), one per source in dev/eval/sample/. The citekey here must match
+% that source's "citekey" in dev/eval/sample/manifest.json exactly - that is
+% the only link between the two files.
+%
+%     @Article{Smith2020,
+%       Author  = {Smith, Jane},
+%       Title   = {A Title Exactly As It Should Extract},
+%       ...
+%     }
+%
+% Include every field the pipeline is expected to get right. Omit a field
+% only when its correct value is genuinely unknowable from the source - the
+% scorer then can't count its absence against a produced entry, but also
+% can't reward a produced value that happens to be right; a source that
+% itself states "n.d." or similar should still have that value recorded
+% here, not be treated as unknowable.
+%
+% dev/eval/run.py scores each entry field-by-field against the pipeline's
+% output for the same citekey; dev/eval/scorer.py is what actually compares
+% them. Both are exercised without this file, or any real sample, by
+% dev/eval/test_eval.py's synthetic fixture pair.
