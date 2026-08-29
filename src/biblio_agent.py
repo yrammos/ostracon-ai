@@ -610,14 +610,13 @@ excerpt's text won't (e.g. an embedded Author field):
             # content.amber is web_source.py's plausibility check flagging a
             # source that's genuine but thin or sparse (no Author/Doi/
             # PublicationDate beyond Urldate, or a short body) - not wrong,
-            # just worth a glance. Folded into the same needs_color signal
-            # a recollection-audit failure uses, but with its own persistent
-            # "% AMBER: ..." comment (see save_entry): needs_color alone
-            # only ever reaches BibDesk's own color for a PDF with
-            # autofile_bibdesk on, and a .webloc source - the only kind
-            # web_source.py produces - is never fileable (see save_entry),
-            # so without a comment the flag would otherwise vanish into a
-            # stderr warning nobody reads after the fact.
+            # just worth a glance. Folded into the same needs_color signal a
+            # recollection-audit failure uses, so it reaches BibDesk's review
+            # color by exactly the path a PDF's review state does. The
+            # additional "% AMBER: ..." comment carries the same flag on the
+            # other branch, where entries are appended as text and no color
+            # is possible; each survives where the other cannot (see
+            # save_entry).
             if content.amber:
                 needs_color = True
                 self._log(f"   ⚠️  Thin/sparse source ({content.amber_reason}) - flagging for review", 'warning')
@@ -1055,13 +1054,21 @@ BibLaTeX entry, with no additional commentary."""
     # Scholar could neither confirm nor refute (see verify_and_flag_
     # recollection); (2) the source itself is genuine but thin or sparse -
     # web_source.py's content-plausibility check (see extract_bibtex's use
-    # of content.amber). Only ever reaches this BibDesk color for a PDF with
-    # autofile_bibdesk on; see save_entry's "% AMBER: ..." comment for the
-    # case that doesn't (every .webloc source, among others).
+    # of content.amber). Applied whenever autofile_bibdesk is on, whatever
+    # the source type; with it off, entries are appended as text and the
+    # flag travels as save_entry's "% AMBER: ..." comment instead.
     UNVERIFIED_COLOR = "{65535, 40000, 0, 65535}"
 
-    def _save_via_bibdesk(self, entry, bib_path, needs_color=False):
-        """Open the staging file in BibDesk (if needed), import the entry, and auto-file it.
+    def _save_via_bibdesk(self, entry, bib_path, needs_color=False, auto_file=True):
+        """Open the staging file in BibDesk (if needed), import the entry, and
+        (for a source with a document behind it) auto-file that document.
+
+        `auto_file=False` for a source that has no document to file - a
+        .webloc bookmarks a webpage, so there is nothing for BibDesk to
+        rename and move. Everything else here still applies to it: the import
+        and, above all, the review color, which is the only form the amber
+        flag can take once BibDesk owns the file (its importer re-serializes
+        the entry and discards every % comment).
 
         Uses a temp file for the import to avoid AppleScript quoting issues.
         Raises RuntimeError on failure so the caller can log and fall through.
@@ -1076,6 +1083,7 @@ BibLaTeX entry, with no additional commentary."""
             tmp_path = tmp.name
 
         color_line = f"set color of pub to {self.UNVERIFIED_COLOR}\n    " if needs_color else ""
+        file_line = "auto file pub" if auto_file else ""
         script = f'''
 tell application "BibDesk"
     set bibPath to "{bib_path}"
@@ -1093,7 +1101,7 @@ tell application "BibDesk"
     if thePubs is missing value or (count of thePubs) is 0 then return "import failed"
     set pub to item 1 of thePubs
     set cite key of pub to (generated cite key of pub)
-    {color_line}auto file pub
+    {color_line}{file_line}
     return "ok"
 end tell'''
 
@@ -1104,7 +1112,8 @@ end tell'''
             )
             output = result.stdout.strip()
             if output == "ok":
-                self._log("   ✓ Imported into BibDesk and auto-filed", 'success')
+                self._log("   ✓ Imported into BibDesk" + (" and auto-filed" if auto_file else ""),
+                          'success')
             else:
                 raise RuntimeError(output or result.stderr.strip())
         except RuntimeError:
@@ -1302,27 +1311,41 @@ end tell'''
         # Attach a BibDesk file bookmark and auto-file the linked document -
         # PDF sources only. A .webloc is just a bookmark to a webpage used to
         # extract bibliographic data; it has no document worth filing into
-        # BibDesk's library, so it's left untouched (not bookmarked, not moved).
-        is_fileable_source = pdf_path.suffix.lower() == '.pdf'
-        if is_fileable_source:
+        # BibDesk's library, so it is neither bookmarked nor moved.
+        #
+        # Having a document to file is NOT the same question as belonging in
+        # BibDesk, though, and conflating the two is what left web-sourced
+        # entries with no review flag at all: under autofile_bibdesk the
+        # importer re-serializes each entry and discards every % comment, so
+        # the color is the only surviving form of the flag - and a .webloc
+        # entry, excluded from the import path entirely, could not be colored
+        # and could not keep its comment either. It goes through the import
+        # like any other entry now; only `auto file` (which needs a document)
+        # is withheld.
+        has_document = pdf_path.suffix.lower() == '.pdf'
+        if has_document:
             entry = self.add_bdsk_bookmark(entry, pdf_path)
 
-        if is_fileable_source and self.config.get('autofile_bibdesk', False):
+        if self.config.get('autofile_bibdesk', False):
             output_path = Path(self.config['main_bib_file']).expanduser()
             if not output_path.exists():
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.touch()
             bib_path = str(output_path.resolve())
             try:
-                self._save_via_bibdesk(entry, bib_path, needs_color=needs_color)
+                self._save_via_bibdesk(entry, bib_path, needs_color=needs_color,
+                                        auto_file=has_document)
                 return True
             except RuntimeError as e:
                 self._log(f"   ⚠️  BibDesk import failed: {e}", 'warning')
                 return False
 
+        # Plain-text append: no BibDesk, so no color is possible - but here
+        # the % comments do survive into the file, which is what the AMBER
+        # comment is for. The two carriers are complementary, not redundant.
         if needs_color:
-            reason = "not a PDF source" if not is_fileable_source else "autofile_bibdesk to apply"
-            self._log(f"   ⚠️  Unverified field(s) or a thin source - color flag needs {reason}"
+            self._log("   ⚠️  Unverified field(s) or a thin source - color flag needs "
+                      "autofile_bibdesk to apply"
                       + (" (see the % AMBER comment in the saved entry)" if amber_comment else ""),
                       'warning')
 

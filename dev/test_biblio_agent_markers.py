@@ -35,11 +35,24 @@ sys.path.insert(0, str(ROOT / "src"))
 import biblio_agent  # noqa: E402
 
 
-def _agent(tmp_bib_path):
+def _agent(tmp_bib_path, autofile=False):
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config["main_bib_file"] = str(tmp_bib_path)
-    agent.config["autofile_bibdesk"] = False
+    agent.config["autofile_bibdesk"] = autofile
     return agent
+
+
+def _capture_bibdesk(agent):
+    """Replace _save_via_bibdesk with a recorder - no osascript, no BibDesk,
+    nothing launched. Returns the dict the call's kwargs land in."""
+    calls = {}
+
+    def _fake(entry, bib_path, needs_color=False, auto_file=True):
+        calls.update(entry=entry, bib_path=bib_path,
+                     needs_color=needs_color, auto_file=auto_file)
+
+    agent._save_via_bibdesk = _fake
+    return calls
 
 
 def test_source_and_amber_comments_survive_needs_color_flag_is_discarded():
@@ -100,9 +113,87 @@ def test_entry_without_amber_marker_is_unaffected():
     return True
 
 
+def test_webloc_reaches_bibdesk_and_is_colored_without_auto_file():
+    # The whole point of the routing fix: under autofile_bibdesk the importer
+    # discards every % comment, so the color is the ONLY surviving carrier of
+    # the amber flag - and a .webloc entry used to be excluded from the import
+    # path entirely, so it got neither. It must now be imported and colored,
+    # with only `auto file` withheld (there is no document to file).
+    entry_text = (
+        "% Source: webpage (https://example.org/x)\n"
+        "% NEEDS_COLOR_FLAG\n"
+        "% AMBER: no Author/Doi/PublicationDate - only Urldate available to date it\n"
+        "@Online{WeblocTest2026,\n  Title = {A Study of Musical Form},\n}\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        bib_path = Path(td) / "staging.bib"
+        agent = _agent(bib_path, autofile=True)
+        calls = _capture_bibdesk(agent)
+        err = io.StringIO()
+        with redirect_stderr(err):
+            ok = agent.save_entry(entry_text, "smoketest.webloc")
+
+    assert ok is True
+    assert calls, "a .webloc entry never reached _save_via_bibdesk"
+    assert calls["needs_color"] is True, calls
+    assert calls["auto_file"] is False, calls
+    # No document, so no file bookmark should have been attached either.
+    assert "bdsk-file-1" not in calls["entry"], calls["entry"]
+    return True
+
+
+def test_pdf_still_auto_files():
+    # The other side of the same split: a PDF has a document, so auto_file
+    # stays on. Guards against "fix the .webloc case, silently stop filing
+    # every PDF."
+    entry_text = (
+        "% Source: PDF (paper.pdf)\n"
+        "% NEEDS_COLOR_FLAG\n"
+        "@Article{PdfTest2026,\n  Title = {An Ordinary Article},\n  Author = {Doe, Jane},\n}\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        bib_path = Path(td) / "staging.bib"
+        agent = _agent(bib_path, autofile=True)
+        calls = _capture_bibdesk(agent)
+        # add_bdsk_bookmark would try to bookmark a file that isn't there;
+        # the bookmark itself isn't what this test is about.
+        agent.add_bdsk_bookmark = lambda entry, path: entry
+        err = io.StringIO()
+        with redirect_stderr(err):
+            ok = agent.save_entry(entry_text, "paper.pdf")
+
+    assert ok is True
+    assert calls["auto_file"] is True, calls
+    assert calls["needs_color"] is True, calls
+    return True
+
+
+def test_no_color_flag_means_no_color():
+    # needs_color must not become sticky: an entry carrying no
+    # NEEDS_COLOR_FLAG has to reach BibDesk uncolored.
+    entry_text = (
+        "% Source: webpage (https://example.org/x)\n"
+        "@Online{CleanTest2026,\n  Title = {A Study of Musical Form},\n}\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        bib_path = Path(td) / "staging.bib"
+        agent = _agent(bib_path, autofile=True)
+        calls = _capture_bibdesk(agent)
+        err = io.StringIO()
+        with redirect_stderr(err):
+            ok = agent.save_entry(entry_text, "clean.webloc")
+
+    assert ok is True
+    assert calls["needs_color"] is False, calls
+    return True
+
+
 TESTS = [
     test_source_and_amber_comments_survive_needs_color_flag_is_discarded,
     test_entry_without_amber_marker_is_unaffected,
+    test_webloc_reaches_bibdesk_and_is_colored_without_auto_file,
+    test_pdf_still_auto_files,
+    test_no_color_flag_means_no_color,
 ]
 
 
