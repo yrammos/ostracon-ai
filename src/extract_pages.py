@@ -28,6 +28,12 @@ class SourceContent:
     metadata: dict = field(default_factory=dict)
     label: str = "PDF"          # human-readable source kind, used once in build_prompt
     url: Optional[str] = None   # set only when the source has a canonical access URL
+    # Set by web_source.py's plausibility check: the content genuinely came
+    # from the requested URL but is thin or sparse (missing metadata, short
+    # body) - not wrong, just worth a human glance. biblio_agent.py folds
+    # this into the existing "needs_color" (BibDesk amber) mechanism.
+    amber: bool = False
+    amber_reason: Optional[str] = None
 
 
 def extract_pdf_metadata(pdf_path):

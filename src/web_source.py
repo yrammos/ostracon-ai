@@ -478,8 +478,18 @@ def _content_from_html(html, source_url, label):
 # gates and login walls commonly answer 200 with an interstitial instead -
 # there is no error to classify, so the only thing that tells it apart from
 # the article is what actually came back. Applied identically to every path
-# that can produce a SourceContent (fetch, browser tab, CrossRef), so none
-# of the three can hand the model a confident wrong entry.
+# that can produce a SourceContent (fetch, browser tab, CrossRef).
+#
+# Only one thing here is a hard failure: the content doesn't correspond to
+# the URL requested - that's the wrong document, not a sparse one, and no
+# amount of metadata completeness excuses it. Everything else this checks
+# (missing identifying fields, a thin body) is genuine-but-sparse rather
+# than wrong, and is flagged amber (SourceContent.amber, folded into
+# biblio_agent.py's existing "needs_color" mechanism) instead of discarded -
+# this library carries plenty of real @Online sources (a personal page, a
+# manufacturer's spec sheet) with a Title and nothing else, for which
+# Urldate is the normal, correct dating evidence per CLAUDE.md, not a
+# consolation prize.
 
 _IDENTIFYING_FIELDS = ('Author', 'Doi', 'PublicationDate')
 
@@ -554,31 +564,51 @@ def _url_correspondence(candidate_urls, soup, metadata):
 
 
 def _content_plausible(content, candidate_urls, soup=None):
-    """(is_plausible, reason) - whether `content` genuinely describes the
-    bookmarked work, applied the same way regardless of which path produced
-    it. `candidate_urls` is every URL the content may legitimately declare
-    itself as (see _url_correspondence); `soup` is the parsed page for the
-    fetch/browser-tab paths, or None for CrossRef, which has no page to read
-    a canonical link or og:url from.
+    """(ok, reason, amber, amber_reason).
+
+    `ok=False` only for a URL-correspondence mismatch - the one case this
+    treats as the wrong document rather than a sparse one. Every other
+    outcome is `ok=True`: `amber=True` marks content worth a human glance
+    (no Title, or identifying fields thin enough that only Urldate is left
+    to date it, or - for HTML-derived content only - a body under
+    MIN_BODY_WORDS) without discarding it. `candidate_urls` is every URL the
+    content may legitimately declare itself as (see _url_correspondence);
+    `soup` is the parsed page for the fetch/browser-tab paths, or None for
+    CrossRef, which has no page to read a canonical link or og:url from (and
+    whose own metadata block is exempt from the length check - see
+    MIN_BODY_WORDS).
     """
     metadata = content.metadata
-    if not metadata.get('Title'):
-        return False, "no Title in the extracted metadata"
-    if not any(metadata.get(f) for f in _IDENTIFYING_FIELDS):
-        return False, "Title but no Author/Doi/PublicationDate - looks like an interstitial"
+
     ok, reason = _url_correspondence(candidate_urls, soup, metadata)
     if not ok:
-        return False, reason
+        return False, reason, False, None
+
+    amber_bits = []
+    if not metadata.get('Title'):
+        amber_bits.append("no Title in the extracted metadata")
+    if not any(metadata.get(f) for f in _IDENTIFYING_FIELDS):
+        # Not a hard fail: a Title with no Author/Doi/PublicationDate still
+        # has Urldate to date it by (this project's own convention for an
+        # entry with no stated Date - CLAUDE.md), which is a normal, valid
+        # @Online source, not a defective one. Flagged amber rather than
+        # passed clean, though, since it's the sparsest shape that's still
+        # usable at all.
+        amber_bits.append("no Author/Doi/PublicationDate - only Urldate available to date it")
     if soup is not None and len(split_into_words(content.text)) < MIN_BODY_WORDS:
-        return False, f"body text under {MIN_BODY_WORDS} words - looks like a page still loading"
-    return True, None
+        amber_bits.append(f"body text under {MIN_BODY_WORDS} words")
+
+    if amber_bits:
+        return True, None, True, '; '.join(amber_bits)
+    return True, None, False, None
 
 
-def _log_source(chosen, url):
+def _log_source(chosen, url, amber_reason=None):
     """State which path produced the text for `url` - printed unconditionally
     (matching extract_pages.py's OCR-retry warnings) so this is visible in
     normal output with nothing to instrument."""
-    print(f"   Source: {chosen} for {url}", file=sys.stderr)
+    suffix = f" [amber: {amber_reason}]" if amber_reason else ""
+    print(f"   Source: {chosen} for {url}{suffix}", file=sys.stderr)
 
 
 def _log_rejected(path_label, reason, next_step):
@@ -592,10 +622,11 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     Three paths are tried in order - an ordinary fetch, a browser tab already
     open on the bookmarked URL, and the CrossRef record for a DOI in the
     URL's own path - and every one of them is checked for plausibility
-    before being trusted (see _content_plausible): the metadata must
-    identify a work, and the content must correspond to the requested URL.
-    A path that fails the check is treated exactly like a path that produced
-    nothing at all, and the next one is tried.
+    before being trusted (see _content_plausible). Only a URL-correspondence
+    mismatch is treated as a failed path (nothing produced, next path
+    tried); missing identifying metadata or a thin body still return the
+    content, marked amber (SourceContent.amber/amber_reason) for a human to
+    glance at rather than trust blind.
 
     The browser tab is tried on any failure of the fetch (a non-2xx status,
     or a 200 that failed the plausibility check) - a tab rendering the page
@@ -632,9 +663,10 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
 
     if response.ok:
         content, soup = _content_from_html(response.text, response.url, "webpage")
-        ok, reason = _content_plausible(content, {url, response.url}, soup)
+        ok, reason, amber, amber_reason = _content_plausible(content, {url, response.url}, soup)
         if ok:
-            _log_source("fetch", url)
+            content.amber, content.amber_reason = amber, amber_reason
+            _log_source("fetch", url, amber_reason)
             return content
         rejected.append(("fetch", reason))
         _log_rejected("fetch", reason, "a browser tab")
@@ -648,9 +680,10 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     if html:
         label = f"browser tab ({browser_app})"
         content, soup = _content_from_html(html, url, f"webpage (via {browser_app} tab)")
-        ok, reason = _content_plausible(content, {url}, soup)
+        ok, reason, amber, amber_reason = _content_plausible(content, {url}, soup)
         if ok:
-            _log_source(label, url)
+            content.amber, content.amber_reason = amber, amber_reason
+            _log_source(label, url, amber_reason)
             return content
         rejected.append((label, reason))
         _log_rejected(label, reason, "CrossRef" if challenge else "reporting failure")
@@ -658,9 +691,10 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     if challenge:
         fallback = crossref_fallback(url, crossref_email)
         if fallback:
-            ok, reason = _content_plausible(fallback, {url}, soup=None)
+            ok, reason, amber, amber_reason = _content_plausible(fallback, {url}, soup=None)
             if ok:
-                _log_source("CrossRef", url)
+                fallback.amber, fallback.amber_reason = amber, amber_reason
+                _log_source("CrossRef", url, amber_reason)
                 return fallback
             rejected.append(("CrossRef", reason))
             _log_rejected("CrossRef", reason, "reporting failure")
