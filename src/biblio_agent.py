@@ -15,6 +15,7 @@ import yaml
 from anthropic import Anthropic
 
 from extract_pages import extract_pdf
+from extraction_result import ExtractionResult
 import web_source
 import enrich
 
@@ -535,16 +536,20 @@ excerpt's text won't (e.g. an embedded Author field):
                 config['model'] - for pdf-in/careful/ sources (see process_batch).
 
         Returns:
-            str: BibLaTeX entry or error message
+            ExtractionResult: the entry text plus the review state that
+            belongs to it (source label, needs_color, amber reason, field
+            provenance), or one carrying `error`. The state used to travel as
+            `%` markers prepended to the text and parsed back out by
+            save_entry(); see extraction_result.py for why it no longer does.
         """
         path = Path(path)
 
         if not path.exists():
-            return f"Error: File not found: {path}"
+            return ExtractionResult(error=f"Error: File not found: {path}")
 
         extractor = EXTRACTORS.get(path.suffix.lower())
         if extractor is None:
-            return f"Error: Unsupported file type: {path.name}"
+            return ExtractionResult(error=f"Error: Unsupported file type: {path.name}")
 
         if batch_info:
             i, total = batch_info
@@ -575,7 +580,7 @@ excerpt's text won't (e.g. an embedded Author field):
         content = extractor(path, **kwargs)
 
         if isinstance(content, str):  # error message
-            return content
+            return ExtractionResult(error=content)
 
         # Load context files
         self._log("   Loading context...", 'info')
@@ -612,8 +617,9 @@ excerpt's text won't (e.g. an embedded Author field):
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
             needs_color = False
+            field_sources = None
             if self.config.get('enrich_missing_fields', True):
-                bibtex_entry = self.enrich_entry(bibtex_entry, content)
+                bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
                 bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
 
             # content.amber is web_source.py's plausibility check flagging a
@@ -622,27 +628,29 @@ excerpt's text won't (e.g. an embedded Author field):
             # just worth a glance. Folded into the same needs_color signal a
             # recollection-audit failure uses, so it reaches BibDesk's review
             # color by exactly the path a PDF's review state does. The
-            # additional "% AMBER: ..." comment carries the same flag on the
-            # other branch, where entries are appended as text and no color
-            # is possible; each survives where the other cannot (see
-            # save_entry).
+            # "% AMBER: ..." comment save_entry writes from amber_reason
+            # carries the same flag on the other branch, where entries are
+            # appended as text and no color is possible; each survives where
+            # the other cannot.
+            amber_reason = None
             if content.amber:
                 needs_color = True
+                amber_reason = content.amber_reason
                 self._log(f"   ⚠️  Thin/sparse source ({content.amber_reason}) - flagging for review", 'warning')
-                bibtex_entry = f"% AMBER: {content.amber_reason}\n" + bibtex_entry
-
-            if needs_color:
-                bibtex_entry = "% NEEDS_COLOR_FLAG\n" + bibtex_entry
-
-            bibtex_entry = f"% Source: {content.label} ({content.url or path.name})\n" + bibtex_entry
 
             self._log("   Validating entry...", 'info')
             self._log("   ✓ Complete", 'success')
 
-            return bibtex_entry
+            return ExtractionResult(
+                entry=bibtex_entry,
+                source_label=f"{content.label} ({content.url or path.name})",
+                needs_color=needs_color,
+                amber_reason=amber_reason,
+                field_sources=field_sources,
+            )
 
         except Exception as e:
-            return f"Error: {e}"
+            return ExtractionResult(error=f"Error: {e}")
 
     def _build_enrich_prompt(self, entry, found_fields):
         """Build a prompt asking Claude to merge externally-sourced fields
@@ -680,14 +688,19 @@ commentary."""
             entry_text: The BibLaTeX entry produced so far
             content: The SourceContent (PDF or webpage) the entry was drawn from
 
-        Returns the (possibly unchanged) entry text.
+        Returns (entry_text, field_sources): the possibly-unchanged entry, and
+        a one-line per-field provenance summary, or None when nothing was
+        enriched. The summary used to be prepended to the returned text as a
+        "% Sources -- ..." comment and sliced back off by save_entry(); it is
+        now returned beside the text and rendered once, at the point of
+        writing. See extraction_result.py.
         """
         entry_type = enrich.get_entry_type(entry_text)
         fields = enrich.parse_bibtex_fields(entry_text)
         required, desired = enrich.missing_fields(entry_type, fields)
         if not required and not desired:
             self._log(f"   Source: {content.label} (all fields present, no enrichment needed)", 'info')
-            return entry_text
+            return entry_text, None
 
         title = enrich.strip_latex(fields.get('title', ''))
         found, field_sources = enrich.gather_enrichment(
@@ -697,7 +710,7 @@ commentary."""
         )
         if not found:
             self._log(f"   ⚠️  Missing fields not found via CrossRef/Scholar: {', '.join(required + desired)}", 'warning')
-            return entry_text
+            return entry_text, None
 
         by_source = {}
         for field, source in field_sources.items():
@@ -716,22 +729,22 @@ commentary."""
             merged = self.clean_bibtex(response_text(message))
             valid, _ = self.validate_braces(merged)
             if not valid:
-                return entry_text
+                return entry_text, None
         except Exception as e:
             self._log(f"   ⚠️  Enrichment merge failed: {e}", 'warning')
-            return entry_text
+            return entry_text, None
 
-        # Record per-field provenance as a persistent comment so it survives
-        # past this run's log, rather than only being visible in the console/window.
+        # Per-field provenance, returned so save_entry can persist it as a
+        # comment - it should survive past this run's log rather than being
+        # visible only in the console/window.
         source_fields = sorted(f for f, v in fields.items() if v)
         source_lines = []
         if source_fields:
             source_lines.append(f"{content.label}: {', '.join(source_fields)}")
         for src, fs in by_source.items():
             source_lines.append(f"{src}: {', '.join(sorted(fs))}")
-        comment = f"% Sources -- {'; '.join(source_lines)}\n"
 
-        return comment + merged
+        return merged, '; '.join(source_lines)
 
     def _build_audit_prompt(self, entry, content):
         """Build a prompt asking Claude to self-audit which of its own field
@@ -1223,69 +1236,30 @@ end tell'''
             f.write("\n\n")
         self._log(f"   ✗ Failed entry saved to {failed_path}", 'error')
 
-    def save_entry(self, bibtex_entry, pdf_path):
-        """Validate, enrich with a BibDesk bookmark, and append to the main bib file."""
+    def save_entry(self, result, pdf_path):
+        """Validate, enrich with a BibDesk bookmark, and append to the main bib file.
+
+        `result` is the ExtractionResult extract_bibtex() returned. Its review
+        state arrives as attributes; it is no longer prepended to the entry
+        text as `%` markers for this method to match positionally and slice
+        off. That protocol is what made the amber-colouring regression both
+        possible and silent - one marker's regex could never match, and
+        because re.match anchors at position 0, every matcher below it then
+        failed too, for every entry and every source type, reporting nothing.
+        See extraction_result.py and issues #17/#18.
+
+        The `%` comments still reach the saved file, rendered here from the
+        result rather than parsed out of it.
+        """
         pdf_path = Path(pdf_path)
 
-        # extract_bibtex() prepends a "% Source: ..." comment recording which
-        # kind of source (PDF/webpage) and locator produced this entry;
-        # clean_bibtex() strips anything before the first '@', so pull it out
-        # first and re-attach it once cleaning is done (outermost marker -
-        # see the prepend order in extract_bibtex).
-        #
-        # Until fixed here, this pattern's \b sat right after the literal
-        # ':' (`Source:\b`) - impossible, since neither side of that
-        # position is a word character - so it never matched anything.
-        # Because % Source: is always the outermost/first line and re.match
-        # anchors at position 0, that didn't just drop this comment: with
-        # bibtex_entry left unstripped, EVERY marker regex below it also
-        # failed to match against the unrelated text still sitting at
-        # position 0, for every entry this method ever saved - PDF or
-        # .webloc alike. needs_color could never become True by this path
-        # before this fix, so BibDesk's amber coloring (UNVERIFIED_COLOR)
-        # was inert from the day it was introduced, not merely blind to
-        # .webloc sources as the comments below (written after this fix)
-        # describe for the design going forward.
-        source_comment = ''
-        marker_match = re.match(r'(%\s*Source\b:[^\n]*\n)', bibtex_entry)
-        if marker_match:
-            source_comment = marker_match.group(1)
-            bibtex_entry = bibtex_entry[marker_match.end():]
+        needs_color = result.needs_color
+        # Outermost first: Source, then AMBER, then Sources. clean_bibtex()
+        # discards everything before the first '@', so these are attached
+        # after cleaning, not before.
+        comment_block = ''.join(line + "\n" for line in result.comment_lines())
 
-        # verify_and_flag_recollection() prepends a bare "% NEEDS_COLOR_FLAG"
-        # marker when a recollection-based field couldn't be confirmed or
-        # refuted via CrossRef/Scholar. Unlike the Sources comment below, this
-        # one is discarded (not re-attached) - it only decides whether to
-        # color the BibDesk publication, so it shouldn't persist in the .bib text.
-        needs_color = False
-        marker_match = re.match(r'(%\s*NEEDS_COLOR_FLAG\s*\n)', bibtex_entry)
-        if marker_match:
-            needs_color = True
-            bibtex_entry = bibtex_entry[marker_match.end():]
-
-        # extract_bibtex() prepends a "% AMBER: ..." comment when
-        # content.amber is set (web_source.py's plausibility check: a
-        # genuine but thin/sparse source). Unlike NEEDS_COLOR_FLAG, this one
-        # IS re-attached below: a .webloc source is never fileable (see the
-        # is_fileable_source check further down), so it never reaches
-        # BibDesk's own color, and this comment is the only place the flag
-        # survives into the saved .bib text.
-        amber_comment = ''
-        marker_match = re.match(r'(%\s*AMBER\b:[^\n]*\n)', bibtex_entry)
-        if marker_match:
-            amber_comment = marker_match.group(1)
-            bibtex_entry = bibtex_entry[marker_match.end():]
-
-        # enrich_entry() prepends a "% Sources -- ..." comment recording field
-        # provenance; clean_bibtex() strips anything before the first '@', so
-        # pull the comment out first and re-attach it once cleaning is done.
-        sources_comment = ''
-        marker_match = re.match(r'(%\s*Sources\b[^\n]*\n)', bibtex_entry)
-        if marker_match:
-            sources_comment = marker_match.group(1)
-            bibtex_entry = bibtex_entry[marker_match.end():]
-
-        entry = self.clean_bibtex(bibtex_entry)
+        entry = self.clean_bibtex(result.entry)
 
         # Reject responses that are not BibTeX entries
         if not entry.lstrip().startswith('@'):
@@ -1301,12 +1275,7 @@ end tell'''
             self.notify_failure(pdf_path.name, error_msg)
             return False
 
-        if sources_comment:
-            entry = sources_comment + entry
-        if amber_comment:
-            entry = amber_comment + entry
-        if source_comment:
-            entry = source_comment + entry
+        entry = comment_block + entry
 
         # Flag entries still missing critical fields after enrichment (does not block saving)
         entry_type = enrich.get_entry_type(entry)
@@ -1355,7 +1324,7 @@ end tell'''
         if needs_color:
             self._log("   ⚠️  Unverified field(s) or a thin source - color flag needs "
                       "autofile_bibdesk to apply"
-                      + (" (see the % AMBER comment in the saved entry)" if amber_comment else ""),
+                      + (" (see the % AMBER comment in the saved entry)" if result.amber_reason else ""),
                       'warning')
 
         output_path = Path(self.config['main_bib_file']).expanduser()
@@ -1471,15 +1440,15 @@ end tell'''
             self.notify_progress(f"[{i}/{total}] {pdf_path.name}", subtitle="Extracting bibliography")
 
             # Extract bibliography
-            bibtex_entry = self.extract_bibtex(pdf_path, batch_info=(i, total), model_override=model_for_file)
+            result = self.extract_bibtex(pdf_path, batch_info=(i, total), model_override=model_for_file)
 
-            if bibtex_entry.startswith("Error:"):
-                self._log(f"   ✗ {bibtex_entry}", 'error')
-                results['failed'].append((pdf_path.name, bibtex_entry))
+            if result.failed:
+                self._log(f"   ✗ {result.error}", 'error')
+                results['failed'].append((pdf_path.name, result.error))
                 continue
 
             # Save entry
-            saved = self.save_entry(bibtex_entry, pdf_path)
+            saved = self.save_entry(result, pdf_path)
             if not saved:
                 results['failed'].append((pdf_path.name, "save failed"))
                 continue
@@ -1669,15 +1638,15 @@ def main():
         for pdf_path in pdf_files:
             agent._log(f"\n📄 Processing: {pdf_path.name}", 'info')
 
-            bibtex_entry = agent.extract_bibtex(pdf_path)
+            result = agent.extract_bibtex(pdf_path)
 
-            if bibtex_entry.startswith("Error:"):
-                print(bibtex_entry, file=sys.stderr)
+            if result.failed:
+                print(result.error, file=sys.stderr)
                 continue
 
-            clean_entry = agent.clean_bibtex(bibtex_entry)
+            clean_entry = agent.clean_bibtex(result.entry)
             if not args.no_save:
-                saved = agent.save_entry(bibtex_entry, pdf_path)
+                saved = agent.save_entry(result, pdf_path)
                 if not saved:
                     print(f"Error: failed to save entry for {pdf_path.name}", file=sys.stderr)
                     sys.exit(1)

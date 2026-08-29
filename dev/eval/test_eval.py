@@ -28,6 +28,7 @@ import bib_audit  # noqa: E402
 import run as eval_run  # noqa: E402
 from scorer import score_entry, aggregate, format_report  # noqa: E402
 import populate_sample  # noqa: E402
+from extraction_result import ExtractionResult  # noqa: E402
 
 
 def _entry(text: str) -> bib_audit.Entry:
@@ -268,13 +269,23 @@ def test_evaluate_end_to_end():
 
 class _FakeAgent:
     """Stands in for biblio_agent.BiblioAgent's two methods run_pipeline()
-    calls - enough to test the save/reload round trip without the API."""
+    calls - enough to test the save/reload round trip without the API.
+
+    extract_bibtex() returns a real ExtractionResult, not a look-alike. A stub
+    encodes the format the author expected rather than the one the system
+    emits, which is how a live fault survived a round of testing here before;
+    importing the actual class removes the gap. extraction_result.py depends on
+    nothing outside the standard library, so this costs the file none of its
+    "no anthropic, no config.yaml" independence."""
 
     def __init__(self, bibtex_by_source):
         self._bibtex_by_source = bibtex_by_source
 
     def extract_bibtex(self, source_path):
-        return self._bibtex_by_source[source_path.name]
+        text = self._bibtex_by_source[source_path.name]
+        if text.startswith("Error:"):
+            return ExtractionResult(error=text)
+        return ExtractionResult(entry=text, source_label=f"PDF ({source_path.name})")
 
     def clean_bibtex(self, bibtex_entry):
         return bibtex_entry
