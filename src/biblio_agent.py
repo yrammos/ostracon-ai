@@ -304,7 +304,7 @@ class BiblioAgent:
                 "fields to omit, when Url/Urldate may appear, title case, name format, "
                 "Title/Subtitle splitting. On a style question the guidelines win; on a "
                 "what-does-the-package-support question the corpora win.\n\n"
-                "<reference_template> covers only 20 of the ~40 entry types and is NOT an "
+                "<reference_template> covers 12 of the ~40 entry types and is NOT an "
                 "allowlist: choose whichever type genuinely fits, including ones it omits "
                 "(@Letter, @CustomC, @Audio, @Artwork, @Manual, @Booklet, @Bookinbook, "
                 "@Dataset, @Standard, @Performance, @Patent, @Image, the @Mv* types, and "
@@ -432,10 +432,10 @@ excerpt's text won't (e.g. an embedded Author field):
    @Inproceedings vs @Incollection above - a named conference/proceedings
    title, not just an edited-volume structure).
    For unpublished academic work, distinguish @Thesis (a dissertation
-   submitted to a degree-granting institution - Type = {\bibstring{phdthesis}}
-   or {\bibstring{mastersthesis}}, Institution = the institution), @Report (an
+   submitted to a degree-granting institution - Type = {\\bibstring{phdthesis}}
+   or {\\bibstring{mastersthesis}}, Institution = the institution), @Report (an
    institutional/technical/research report NOT submitted for a degree - Type
-   = {\bibstring{techreport}} or a similarly descriptive bibstring), and
+   = {\\bibstring{techreport}} or a similarly descriptive bibstring), and
    @Unpublished (anything else unpublished, including a conference paper with
    no proceedings volume - see the guidelines for the required Note field).
    For a review of another work (rather than a standalone article), use
