@@ -17,6 +17,7 @@ automator/script.sh
 
 # LaTeX build artifacts from template test compiles
 prompt-context/out/
+dev/eval/out/
 
 # Real (often copyrighted) sources for the evaluation harness - the manifest
 # describing them is tracked; the files themselves are not. See

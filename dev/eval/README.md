@@ -24,7 +24,10 @@ repeating just to see a value that scrolled past.
 
 Every live run also saves each produced entry to `last-run/<citekey>.bib` as
 it's produced, whether or not it scored well - a failed extraction is saved
-too, as a `% extraction failed: ...` comment. `--rescore` reads that
+too, as a `% extraction failed: ...` comment, and its cause is printed to
+stderr rather than left sitting unseen in the return value (run 1 reported
+three blank `(no entry produced)` failures with the actual cause - a missing
+tesseract language pack - never surfaced anywhere). `--rescore` reads that
 directory back and scores against it instead of running the pipeline again:
 re-scoring and re-extracting are different operations, and only the second
 costs money or needs `biblio_agent`/`config.yaml`/`anthropic` at all. Useful
@@ -92,6 +95,23 @@ that entry is downstream of a wrong assumption about what kind of source it
 is. Field counts run across every scored entry regardless of its type
 verdict - "ninety per cent correct" hides whether the tenth is a page range
 or an author, which is exactly what this table is for.
+
+## Corrections
+
+`expected.bib` entries are copied verbatim from `biblio.bib` by
+`select_sample.py` - they're ground truth by provenance (written before the
+pipeline existed), not by construction, so a hand error in the source
+library still reaches `expected.bib` unchanged. Found and fixed by hand,
+checked against the physical source, never automatically:
+
+| Date | Citekey | Field | Change | Reason |
+|---|---|---|---|---|
+| 2026-08-29 | Drabkin1983 | Title | `Riemman`→`Riemann`, `Kunth`→`Kurth` | Misspelled names; both spelled correctly elsewhere in this same sample and in the pipeline's own output for this entry. |
+| 2026-08-29 | Dunsby2020 | Title | `piano`→`Piano`, `Op. 27`→`Op.~27` | Chicago title case (`Piano` is a noun, not a function word) and the house `~` non-breaking space before an opus number - CLAUDE.md rules `expected.bib` itself hadn't been swept for. |
+
+Jeong2017's `Score-Informed`/`score-informed` disagreement is deliberately
+*not* here: that one is the pipeline's error (a hyphenated-compound
+title-case slip CLAUDE.md names explicitly), not a ground-truth defect.
 
 ## Model note
 

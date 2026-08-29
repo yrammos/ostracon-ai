@@ -89,17 +89,26 @@ def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.
     """Run one source through the real pipeline and parse its single output
     entry. None if extraction failed or produced nothing that parses.
 
-    Saves the raw output to save_dir/<citekey>.bib unconditionally, success
-    or failure, when both are given - see load_last_run()/--rescore.
+    Either failure prints the pipeline's own message to stderr - run 1
+    reported three blank '(no entry produced)' failures with the cause
+    (a missing tesseract language pack) sitting unseen in the return value,
+    because nothing printed it. Saves the raw output to
+    save_dir/<citekey>.bib unconditionally, success or failure, when both
+    are given - see load_last_run()/--rescore.
     """
+    label = f"{citekey}: " if citekey else ""
     bibtex_entry = agent.extract_bibtex(source_path)
     if bibtex_entry.startswith("Error:"):
+        print(f"   ⚠️  {label}{bibtex_entry}", file=sys.stderr)
         clean = f"% extraction failed: {bibtex_entry}\n"
         entry = None
     else:
         clean = agent.clean_bibtex(bibtex_entry)
         entries, _ = bib_audit.scan(clean)
         entry = entries[0] if entries else None
+        if entry is None:
+            print(f"   ⚠️  {label}pipeline returned no parseable entry:\n{clean}",
+                  file=sys.stderr)
 
     if save_dir is not None and citekey is not None:
         save_dir = Path(save_dir)

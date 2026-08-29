@@ -18,7 +18,7 @@ import io
 import json
 import sys
 import tempfile
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -308,6 +308,33 @@ def test_run_pipeline_persists_and_reloads():
     return True
 
 
+def test_run_pipeline_prints_failure_cause():
+    # Run 1 reported three blank '(no entry produced)' failures with the
+    # actual cause (a missing tesseract language pack) sitting unseen in
+    # extract_bibtex()'s return value - nothing printed it. Both failure
+    # shapes (an "Error: ..." string, and output that parses to nothing)
+    # must now surface on stderr.
+    agent = _FakeAgent({
+        "errors.pdf": "Error: OCR Error: missing language data for deu",
+        "unparseable.pdf": "% not a bibtex entry at all",
+    })
+    with tempfile.TemporaryDirectory() as td:
+        err = io.StringIO()
+        with redirect_stderr(err):
+            entry = eval_run.run_pipeline(agent, Path("errors.pdf"), citekey="Bad",
+                                           save_dir=Path(td))
+        assert entry is None
+        assert "Bad" in err.getvalue() and "missing language data for deu" in err.getvalue()
+
+        err2 = io.StringIO()
+        with redirect_stderr(err2):
+            entry2 = eval_run.run_pipeline(agent, Path("unparseable.pdf"), citekey="Empty",
+                                            save_dir=Path(td))
+        assert entry2 is None
+        assert "Empty" in err2.getvalue() and "no parseable entry" in err2.getvalue()
+    return True
+
+
 def test_ocr_language_hint_prefers_langid_over_fallback():
     entry = _entry("@Book{X, Author = {Doe, Jane}, Langid = {ngerman},}")
     assert eval_run.ocr_language_hint(entry, fallback="eng") == "deu"
@@ -388,6 +415,7 @@ TESTS = [
     test_resolve_attachment_reconstructs_wrapped_local_url,
     test_evaluate_end_to_end,
     test_run_pipeline_persists_and_reloads,
+    test_run_pipeline_prints_failure_cause,
     test_ocr_language_hint_prefers_langid_over_fallback,
     test_main_rescore_only_restricts_to_named_citekeys,
     test_load_manifest_missing_is_empty_not_error,
