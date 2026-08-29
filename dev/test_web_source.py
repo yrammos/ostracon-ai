@@ -413,6 +413,87 @@ def test_duplicate_windows_do_not_confuse_the_index():
     return True
 
 
+def _listing(*rows):
+    """A tab listing in Safari's real format from (window, tab, url) rows."""
+    return "".join(f"{w}\t{t}\t{u}\n" for w, t, u in rows)
+
+
+def test_tab_selection_falls_back_to_identity_when_no_tab_matches_exactly():
+    # The path-form mismatch that no query-parameter rule reaches: the
+    # bookmark holds /article-abstract/, the open tab holds /article/.
+    listing = _listing(
+        (1, 1, "https://example1.invalid/page1"),
+        (1, 2, UCPRESS_CANONICAL),
+    )
+    with _osa(listing=listing, capture="<html>ok</html>"):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert html == "<html>ok</html>", html
+    assert "identity" in summary, summary
+    assert "matched window 1 tab 2 (identity match:" in log, log
+    # The tab's own URL is named, since it is not the address asked for.
+    assert UCPRESS_CANONICAL in log, log
+    return True
+
+
+def test_tab_selection_prefers_an_exact_match_over_an_identity_match():
+    # Same article open in two forms. The one actually asked for wins, even
+    # though the identity match comes first in enumeration order.
+    listing = _listing(
+        (1, 1, UCPRESS_CANONICAL),   # identity match, earlier
+        (1, 2, UCPRESS_URL),         # exact match, later
+    )
+    with _osa(listing=listing, capture="<html>ok</html>"):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert html == "<html>ok</html>"
+    assert "exact" in summary, summary
+    assert "matched window 1 tab 2 (exact match)" in log, log
+    return True
+
+
+def test_exact_match_wins_across_windows_not_just_within_one():
+    # The exact match sits in the SECOND window, behind an identity match in
+    # the first - preference must not degrade into "earliest tab wins".
+    listing = _listing(
+        (1, 1, UCPRESS_CANONICAL),
+        (2, 1, UCPRESS_URL),
+    )
+    with _osa(listing=listing, capture="<html>ok</html>"):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert "matched window 2 tab 1 (exact match)" in log, log
+    return True
+
+
+def test_identity_fallback_takes_the_earliest_window_and_tab():
+    # Three identity matches, none exact. Selection must be deterministic and
+    # take the first in window-then-tab order.
+    listing = _listing(
+        (1, 1, "https://example1.invalid/page1"),
+        (1, 3, "https://online.ucpress.edu/ncm/article-pdf/50/1/54/218886/"
+               "Fatigued-Voices-and-Vocal-Health-in-fine-secolo.pdf"),
+        (2, 1, UCPRESS_CANONICAL),
+        (2, 2, "https://online.ucpress.edu/ncm/advance-article-abstract/50/1/54/"
+               "218886/Fatigued-Voices-and-Vocal-Health-in-fine-secolo"),
+    )
+    with _osa(listing=listing, capture="<html>ok</html>"):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert "matched window 1 tab 3 (identity match:" in log, log
+    return True
+
+
+def test_tab_selection_refuses_a_different_article_on_the_same_host():
+    # Tab selection has no backstop - a wrong tab means the wrong document is
+    # captured outright - so the negative matters more here than anywhere.
+    listing = _listing(
+        (1, 1, UCPRESS_OTHER_ARTICLE),
+        (1, 2, "https://online.ucpress.edu/ncm/issue/50/1"),
+    )
+    with _osa(listing=listing, capture="<html>should never be captured</html>"):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert html is None, html
+    assert "no matching tab" in summary, summary
+    return True
+
+
 def test_browser_probe_reports_apple_events_refusal():
     # State 1. Previously indistinguishable from "no tab" - the conflation
     # that made a single failure take three rounds to diagnose.
@@ -797,6 +878,11 @@ TESTS = [
     test_broken_listing_is_reported_as_a_parse_error_not_as_no_tabs,
     test_non_http_scheme_does_not_break_the_listing,
     test_duplicate_windows_do_not_confuse_the_index,
+    test_tab_selection_falls_back_to_identity_when_no_tab_matches_exactly,
+    test_tab_selection_prefers_an_exact_match_over_an_identity_match,
+    test_exact_match_wins_across_windows_not_just_within_one,
+    test_identity_fallback_takes_the_earliest_window_and_tab,
+    test_tab_selection_refuses_a_different_article_on_the_same_host,
     test_browser_probe_reports_apple_events_refusal,
     test_browser_probe_reports_not_running,
     test_browser_probe_names_the_tabs_it_saw_on_no_match,

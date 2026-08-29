@@ -492,13 +492,33 @@ def browser_tab_dom(url, log=None):
             log(f"  {app_name}: {status}")
             continue
 
-        match = None
+        # Exact first, identity only as a fallback. A publisher serves one
+        # work at several addresses (/article/ vs /article-abstract/), and
+        # clean_url() already absorbs the query-parameter half of that, which
+        # is why a ?redirectedFrom bookmark matches its tab; the path half it
+        # cannot reach, so _url_matches - the same rule the correspondence
+        # check uses - decides that. One rule over both steps, rather than
+        # two that nearly agree.
+        #
+        # Preference order matters and is not merely tidiness: with the same
+        # article open in two forms, the tab actually asked for is the one to
+        # capture. `tabs` is already in window-then-tab order, so taking the
+        # first identity match makes the fallback deterministic too.
+        #
+        # Unlike the correspondence check, this has no backstop: capture the
+        # wrong tab and the wrong document is what gets read. Should the two
+        # sites ever need to diverge, this is the one that stays stricter.
+        exact = identity = None
         for win_idx, tab_idx, tab_url in tabs:
             if clean_url(tab_url).rstrip('/') == target:
-                match = (win_idx, tab_idx)
+                exact = (win_idx, tab_idx, tab_url)
                 break
+            if identity is None and _url_matches(url, tab_url):
+                identity = (win_idx, tab_idx, tab_url)
 
-        if not match:
+        chosen, kind = (exact, 'exact') if exact else (identity, 'identity')
+
+        if not chosen:
             outcomes.append(f"{app_name}: {BROWSER_NO_MATCH} ({len(tabs)} tab(s) examined)")
             described = _describe_tabs(tabs, url)
             log(f"  {app_name}: {described[0]}")
@@ -506,13 +526,19 @@ def browser_tab_dom(url, log=None):
                 log(f"    {line}")
             continue
 
-        html, cap_status, cap_detail = _capture_tab_dom(app_name, *match)
+        win_idx, tab_idx, tab_url = chosen
+        # An identity match names the tab's own URL: it is not the address
+        # that was asked for, so the log has to show which page was taken.
+        where = (f"window {win_idx} tab {tab_idx} ({kind} match)" if kind == 'exact'
+                 else f"window {win_idx} tab {tab_idx} ({kind} match: "
+                      f"{clean_url(tab_url).rstrip('/')})")
+
+        html, cap_status, cap_detail = _capture_tab_dom(app_name, win_idx, tab_idx)
         if html:
-            log(f"  {app_name}: matched window {match[0]} tab {match[1]}; "
-                f"captured {len(html)} characters")
-            return html, app_name, f"{app_name}: {BROWSER_MATCH}"
+            log(f"  {app_name}: matched {where}; captured {len(html)} characters")
+            return html, app_name, f"{app_name}: {BROWSER_MATCH} ({kind})"
         outcomes.append(f"{app_name}: {cap_status}" + (f" ({cap_detail})" if cap_detail else ""))
-        log(f"  {app_name}: matched window {match[0]} tab {match[1]}, but {cap_status}"
+        log(f"  {app_name}: matched {where}, but {cap_status}"
             + (f" - {cap_detail}" if cap_detail else ""))
 
     return None, None, '; '.join(outcomes)
