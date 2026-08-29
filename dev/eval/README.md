@@ -96,6 +96,52 @@ is. Field counts run across every scored entry regardless of its type
 verdict - "ninety per cent correct" hides whether the tenth is a page range
 or an author, which is exactly what this table is for.
 
+## What this harness cannot measure
+
+It scores fields against ground truth. **Confidence is not a field.** An entry
+can score fully correct while carrying a review flag it should not, or missing
+one it should, and nothing here will notice either way.
+
+That is not hypothetical: BibDesk's amber colouring was inert for every entry
+and every source type from 2026-07-30 until 2026-08-29, and no run of this
+harness was capable of reporting it (Issue
+[#17](https://github.com/yrammos/biblatex-chicago-claude/issues/17)). A change
+to the flagging mechanism therefore needs its own tests -
+`dev/test_biblio_agent_markers.py` and `dev/test_extract_pages.py` - and, where
+BibDesk itself is involved, an import done by hand. A green report here is
+silent on all of it.
+
+Two manifest keys mark sample entries no extraction can score at all, for two
+different reasons - `container_source` (the file is the whole volume, the entry
+is one chapter of it) and `insufficient_source` (the right file, yielding almost
+no text). Neither is consumed by the scorer yet: they are read by whoever reads
+a report. See [`sample/README.md`](sample/README.md).
+
+**Nor can it tell a field read from the source apart from one the model
+recalled.** Both score `exact`. The harness compares strings; it has no view of
+where a value came from, so a correct guess and a correct reading are worth the
+same to it.
+
+Gollin2011a is the worked example. Its source is three pages of glossary text,
+and of the six values in the ground-truth entry, **five appear nowhere in the
+PDF** - not `Oxford Handbook`, not `Neo-Riemannian`, not `Oxford University
+Press`, not `Oxford`, not `2011`, not `579`. Only the page-3 running header
+(`GLOSSARY 581`) is actually in the file. The 2026-08-29 baseline scored this
+entry as correct; it was correct by recollection.
+
+So **a fall in `exact` is not necessarily a regression.** A change that stops
+the model supplying values the source does not contain will score as a loss on
+every entry whose ground truth was only ever reachable by supplying them. This
+bears directly on how the `exact 249 -> 240` in
+[`baselines/2026-08-29-integration.md`](baselines/2026-08-29-integration.md) is
+read: part of that -9 is the pipeline declining to guess, and the table cannot
+say which part. Read `spurious` and `missing` alongside it, and read the entries
+themselves before calling any of it a regression.
+
+The grounding audit (`verify_and_flag_recollection()`) is the mechanism that
+does know the difference, and its verdict reaches BibDesk as a colour rather
+than the report - which is the previous point again, from the other side.
+
 ## Corrections
 
 `expected.bib` is edited by the maintainer only. It is the one file here
@@ -113,6 +159,8 @@ checked against the physical source, never automatically:
 | 2026-08-29 | Drabkin1983 | Title | `Riemman`→`Riemann`, `Kunth`→`Kurth` | Misspelled names; both spelled correctly elsewhere in this same sample and in the pipeline's own output for this entry. |
 | 2026-08-29 | Dunsby2020 | Title | `piano`→`Piano`, `Op. 27`→`Op.~27` | Chicago title case (`Piano` is a noun, not a function word) and the house `~` non-breaking space before an opus number - CLAUDE.md rules `expected.bib` itself hadn't been swept for. |
 | 2026-08-29 | Menke2004 | Author | `Johaness`→`Johannes` | Misspelled given name, found via the `author` field's run-1/run-2 comparison in `dev/eval/baselines/2026-08-29.md`; correctly spelled in the pipeline's own output for this entry. |
+| 2026-08-29 | Cavell1969a | Pages | `180-2012`→`180-201` | Typo: the source runs to 197 pages, so the range was impossible on its face. Reported as #20. |
+| 2026-08-29 | McCreless1991b | Title | `Robert P. Morgan`→`Robert~P. Morgan` | Internal inconsistency: the same file wrote `Lee~A. Rothfarb`, so no output could score exact on both. Settled on the unspaced-tie form throughout. Reported as #24. |
 
 Jeong2017's `Score-Informed`/`score-informed` disagreement is deliberately
 *not* here: that one is the pipeline's error (a hyphenated-compound
