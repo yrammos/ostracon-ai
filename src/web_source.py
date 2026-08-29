@@ -529,7 +529,14 @@ def _url_correspondence(candidate_urls, soup, metadata):
         if content and content.startswith('http'):
             signals.append(('og:url', content))
     doi = metadata.get('Doi')
-    if doi:
+    # A contradiction only if some candidate URL actually advertises a DOI in
+    # its own path - most publisher URLs don't (an Oxford Academic
+    # /article/80/1/1/1234567 carries none), so the page's own citation_doi
+    # meta tag would otherwise be the only signal available and reject a
+    # perfectly ordinary article on every such URL. Absent that, the DOI is
+    # unverifiable rather than contradicted, which is the same reasoning as
+    # "no signal present" below.
+    if doi and any(doi_candidates(c) for c in candidate_urls):
         signals.append(('embedded Doi', doi))
 
     if not signals:
