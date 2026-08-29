@@ -176,3 +176,74 @@ Upstream (consult when the local files are insufficient):
 Reference works — Grove Music Online, the Stanford Encyclopedia, Wikipedia and the like — are the hardest sources here, because a correct entry has to put the *work* in `Title` and the *article* in `Lista`, add `Entrysubtype = {online}` where there is no print counterpart, and prefer a stated revision date in `Urldate` qualified by `Userd` over a bare access date. Comparison runs on `plato.stanford.edu` and Grove showed `claude-sonnet-4-6` getting parts of this wrong (article name in `Title`) and `claude-sonnet-5` fabricating a publisher and a date, while `claude-opus-5` produced the full correct form including the `Urldate`/`Userd` revision-date pairing.
 
 For a batch of reference works, run with `--model claude-opus-5`; the flag overrides `config.yaml` for that invocation only. It roughly doubles the cost — Opus prices at $5/$25 per 1M tokens against Sonnet's $3/$15, and its tokenizer makes the cached prefix about 27% larger — so it is worth reaching for on awkward sources rather than by default. `dev/estimate_cost.py --model claude-opus-5` prices it before you commit.
+
+## Autonomous sessions
+
+These rules govern any session where the maintainer is not watching. They exist
+because this project has produced, in a single week, four separate faults of one
+shape: a failure that reported success. An empty tab list read as an empty
+browser; a refused permission read as no matching tab; an unparsable line skipped
+by a bare `continue`; a marker regex that never matched and silently disabled
+every regex behind it. In each case the tests passed and the run said Complete.
+
+Treat a confident completion report as the thing most likely to be wrong.
+
+### Never, without asking
+
+- **Merge anything.** Open PRs; the maintainer merges.
+- **Edit `dev/eval/expected.bib`.** It is ground truth. Everything else in the
+  repository is measured against it, which makes a plausible-looking error here
+  both the most costly and the least visible kind. If an entry appears wrong,
+  report it with the citekey and the evidence, and stop.
+- **Edit `CLAUDE.md` or anything under `prompt-context/`.** These form the cached
+  prefix; a change silently alters extraction behaviour for every subsequent run
+  and invalidates comparison against the current baseline. Propose the wording
+  and wait.
+- **Spend more than 10 live API calls in one session.** Prefer `--rescore`
+  against `dev/eval/last-run/`, which is free. A full 61-entry run costs real
+  money and needs asking for.
+- **Claim a GUI-dependent thing works.** BibDesk colouring, Safari and Chrome tab
+  capture, the Quick Action, Apple Events permissions: none is visible from a
+  terminal. Say what you changed, name the check the maintainer should run, and
+  stop there.
+
+### Always
+
+- **Branch per issue**, named `issue-N-slug`, off `main`. Small commits.
+  `Closes #N` in the PR body, not in a commit message on a branch that may be
+  rebased.
+- **Run `python3 dev/eval/test_eval.py` and `python dev/test_setup.py` before
+  every commit.** Plus the web-source suite when `src/web_source.py` is touched.
+- **`--rescore` after any change to extraction, and put the result in the PR
+  body**, against the most recent file in `dev/eval/baselines/`. A change that
+  moves fewer than about two entries in 61 is within noise: report it as
+  unchanged rather than as an improvement. One entry flipped between the first
+  two baseline runs with no attributable cause.
+- **Distinguish what was tested from what was assumed.** A stub encodes the
+  format you expected, not the format the system emits — which is exactly how
+  the AppleScript terminology collision survived a round of testing. When a test
+  passes against the broken code too, say so.
+- **State provenance for fixtures.** Recorded from the maintainer's real data, or
+  constructed from documented grammar? Both are legitimate; conflating them is
+  not.
+- **Correct your own earlier claims when they turn out to be wrong**, in a commit
+  and in the issue or PR that carries them. Two commit messages this week
+  overstated a fix's scope and would have sent the maintainer re-checking a
+  library that was never affected.
+
+### When something fails
+
+Trace before proposing. Report where control actually goes, then stop. Do not
+change a mechanism on the assumption that it ran: three of this week's faults
+looked like the wrong logic and were in fact code that never executed.
+
+If a diagnosis rests on something unobservable from here — a permission, a window,
+a process start time — say so and name what would settle it.
+
+### On the queue
+
+Implementing what is in front of you is the easy part. If the issue seems wrong —
+badly scoped, already obsolete, or resting on a premise the baseline contradicts
+— say so instead of building it. #7 was correctly closed unbuilt, on the grounds
+that the measurement it proposed was below the noise floor of the instrument.
+That judgement was worth more than the implementation would have been.
