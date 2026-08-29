@@ -602,11 +602,29 @@ excerpt's text won't (e.g. an embedded Author field):
             if stripped:
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
+            needs_color = False
             if self.config.get('enrich_missing_fields', True):
                 bibtex_entry = self.enrich_entry(bibtex_entry, content)
                 bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
-                if needs_color:
-                    bibtex_entry = "% NEEDS_COLOR_FLAG\n" + bibtex_entry
+
+            # content.amber is web_source.py's plausibility check flagging a
+            # source that's genuine but thin or sparse (no Author/Doi/
+            # PublicationDate beyond Urldate, or a short body) - not wrong,
+            # just worth a glance. Folded into the same needs_color signal
+            # a recollection-audit failure uses, but with its own persistent
+            # "% AMBER: ..." comment (see save_entry): needs_color alone
+            # only ever reaches BibDesk's own color for a PDF with
+            # autofile_bibdesk on, and a .webloc source - the only kind
+            # web_source.py produces - is never fileable (see save_entry),
+            # so without a comment the flag would otherwise vanish into a
+            # stderr warning nobody reads after the fact.
+            if content.amber:
+                needs_color = True
+                self._log(f"   ⚠️  Thin/sparse source ({content.amber_reason}) - flagging for review", 'warning')
+                bibtex_entry = f"% AMBER: {content.amber_reason}\n" + bibtex_entry
+
+            if needs_color:
+                bibtex_entry = "% NEEDS_COLOR_FLAG\n" + bibtex_entry
 
             bibtex_entry = f"% Source: {content.label} ({content.url or path.name})\n" + bibtex_entry
 
@@ -1030,10 +1048,16 @@ BibLaTeX entry, with no additional commentary."""
             self._log("   ⚠️  pyobjc not available, skipping bdsk-file-1", 'warning')
             return entry
 
-    # Amber/orange - flags a publication whose entry contains at least one
-    # field Claude filled in from its own background knowledge of the work
-    # rather than the given source text/metadata, and that CrossRef/Scholar
-    # could neither confirm nor refute (the work wasn't found in either).
+    # Amber/orange - flags a publication for two distinct reasons, both
+    # "produced, but worth a human glance": (1) the entry contains at least
+    # one field Claude filled in from its own background knowledge of the
+    # work rather than the given source text/metadata, and that CrossRef/
+    # Scholar could neither confirm nor refute (see verify_and_flag_
+    # recollection); (2) the source itself is genuine but thin or sparse -
+    # web_source.py's content-plausibility check (see extract_bibtex's use
+    # of content.amber). Only ever reaches this BibDesk color for a PDF with
+    # autofile_bibdesk on; see save_entry's "% AMBER: ..." comment for the
+    # case that doesn't (every .webloc source, among others).
     UNVERIFIED_COLOR = "{65535, 40000, 0, 65535}"
 
     def _save_via_bibdesk(self, entry, bib_path, needs_color=False):
@@ -1191,7 +1215,7 @@ end tell'''
         # first and re-attach it once cleaning is done (outermost marker -
         # see the prepend order in extract_bibtex).
         source_comment = ''
-        marker_match = re.match(r'(%\s*Source:\b[^\n]*\n)', bibtex_entry)
+        marker_match = re.match(r'(%\s*Source\b:[^\n]*\n)', bibtex_entry)
         if marker_match:
             source_comment = marker_match.group(1)
             bibtex_entry = bibtex_entry[marker_match.end():]
@@ -1205,6 +1229,19 @@ end tell'''
         marker_match = re.match(r'(%\s*NEEDS_COLOR_FLAG\s*\n)', bibtex_entry)
         if marker_match:
             needs_color = True
+            bibtex_entry = bibtex_entry[marker_match.end():]
+
+        # extract_bibtex() prepends a "% AMBER: ..." comment when
+        # content.amber is set (web_source.py's plausibility check: a
+        # genuine but thin/sparse source). Unlike NEEDS_COLOR_FLAG, this one
+        # IS re-attached below: a .webloc source is never fileable (see the
+        # is_fileable_source check further down), so it never reaches
+        # BibDesk's own color, and this comment is the only place the flag
+        # survives into the saved .bib text.
+        amber_comment = ''
+        marker_match = re.match(r'(%\s*AMBER\b:[^\n]*\n)', bibtex_entry)
+        if marker_match:
+            amber_comment = marker_match.group(1)
             bibtex_entry = bibtex_entry[marker_match.end():]
 
         # enrich_entry() prepends a "% Sources -- ..." comment recording field
@@ -1234,6 +1271,8 @@ end tell'''
 
         if sources_comment:
             entry = sources_comment + entry
+        if amber_comment:
+            entry = amber_comment + entry
         if source_comment:
             entry = source_comment + entry
 
@@ -1269,7 +1308,9 @@ end tell'''
 
         if needs_color:
             reason = "not a PDF source" if not is_fileable_source else "autofile_bibdesk to apply"
-            self._log(f"   ⚠️  Unverified recollection-based field(s) - color flag needs {reason}", 'warning')
+            self._log(f"   ⚠️  Unverified field(s) or a thin source - color flag needs {reason}"
+                      + (" (see the % AMBER comment in the saved entry)" if amber_comment else ""),
+                      'warning')
 
         output_path = Path(self.config['main_bib_file']).expanduser()
         if not output_path.exists():
