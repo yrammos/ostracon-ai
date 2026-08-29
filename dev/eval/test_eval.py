@@ -28,6 +28,7 @@ import bib_audit  # noqa: E402
 import run as eval_run  # noqa: E402
 from scorer import score_entry, aggregate, format_report  # noqa: E402
 import populate_sample  # noqa: E402
+import select_sample  # noqa: E402
 from extraction_result import ExtractionResult  # noqa: E402
 
 
@@ -415,6 +416,40 @@ def test_load_manifest_reads_json():
     return True
 
 
+def test_manifest_extras_keeps_only_hand_added_keys():
+    """A rerun of select_sample.py recomputes citekey/source/sha256/note and
+    must carry everything else across untouched - `container_source` is a
+    judgement about the source that re-selection cannot rederive, so losing it
+    would be silent and permanent."""
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / 'manifest.json'
+        path.write_text(json.dumps([
+            {"citekey": "A", "source": "A.pdf", "sha256": "deadbeef",
+             "note": "@book — plain (control)", "container_source": "whole volume"},
+            {"citekey": "B", "source": "B.pdf", "note": "@article — plain (control)"},
+        ]), encoding='utf-8')
+        extras = select_sample.manifest_extras(path)
+        # Only the hand-added key survives, and only for the item that had one.
+        assert extras == {"A": {"container_source": "whole volume"}}, extras
+    return True
+
+
+def test_manifest_extras_survives_a_manifest_it_cannot_read():
+    """Preserving annotations must never be the reason a fresh selection
+    cannot be written: absent, malformed and wrong-shaped all yield {}."""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        assert select_sample.manifest_extras(td / 'nope.json') == {}
+        (td / 'bad.json').write_text('{not json', encoding='utf-8')
+        assert select_sample.manifest_extras(td / 'bad.json') == {}
+        (td / 'object.json').write_text('{"citekey": "A"}', encoding='utf-8')
+        assert select_sample.manifest_extras(td / 'object.json') == {}
+        (td / 'ragged.json').write_text(
+            json.dumps(["a string", {"no": "citekey", "x": 1}]), encoding='utf-8')
+        assert select_sample.manifest_extras(td / 'ragged.json') == {}
+    return True
+
+
 TESTS = [
     test_score_entry_all_verdicts,
     test_score_entry_normalizes_whitespace,
@@ -431,6 +466,8 @@ TESTS = [
     test_main_rescore_only_restricts_to_named_citekeys,
     test_load_manifest_missing_is_empty_not_error,
     test_load_manifest_reads_json,
+    test_manifest_extras_keeps_only_hand_added_keys,
+    test_manifest_extras_survives_a_manifest_it_cannot_read,
 ]
 
 

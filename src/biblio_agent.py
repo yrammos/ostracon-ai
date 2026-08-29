@@ -400,6 +400,15 @@ excerpt's text won't (e.g. an embedded Author field):
    - Use @Incollection if it's one chapter of an edited volume where
      different chapters have different authors (an Editor field for the
      volume, distinct from this chapter's Author).
+     An editor's name on the title page is NOT what decides this. Plenty of
+     single-author volumes are edited by someone else - a selection from one
+     writer's work, a collected-essays volume, a critical edition - and those
+     are @Inbook WITH an Editor field, not @Incollection. The question is
+     always who wrote the OTHER contributions: several hands means
+     @Incollection, one hand throughout means @Inbook however prominent the
+     editor is. A title page reading "<Author>, <Title>, edited by <Editor>",
+     or a series list on the endpapers naming only that one author's books,
+     both point to @Inbook.
    - Use @Inproceedings if it's one paper within a conference proceedings
      volume (Booktitle = the proceedings volume, Booktitleaddon = the
      conference name/location if given). The discriminator against
@@ -422,6 +431,19 @@ excerpt's text won't (e.g. an embedded Author field):
      Bookauthor (or Editor/Editora) distinguishing the book's real author
      from the supplement's Author. Only use @Inbook/@Incollection when the
      piece has its own distinct title.
+   - Booktitle, Booktitleaddon, Eventtitle, Series and the volume's Editor
+     must come from the CONTAINER presenting itself as such: a title page, a
+     running header or footer, a half-title, a copyright page, a "Proceedings
+     of ..." or series statement. A book, journal or conference NAMED IN THE
+     BODY TEXT - discussed, quoted, cited, or sitting in a reference list -
+     is a work this piece talks about, not the volume it appears in, and must
+     never be used for these fields. The two are easy to confuse precisely
+     because a chapter's opening pages tend to cite the literature heavily.
+     If nothing in the given text presents itself as the container, OMIT
+     Booktitle rather than supplying a plausible one, exactly as instructed
+     for Location at step 5. A field left empty is a gap someone can see and
+     fill; a field filled with the wrong work reads as evidence and will not
+     be questioned.
    If instead the whole source IS the complete work (not one part of a
    larger container) and it has editor(s) but no single author of its own -
    e.g. an edited volume's own landing page, credited "Edited by X and Y"
