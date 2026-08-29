@@ -351,6 +351,7 @@ ostracon-ai/
 │       ├── select_sample.py      # Builds sample/ and expected.bib from biblio.bib
 │       ├── populate_sample.py    # BibDesk attachment resolver select_sample.py imports
 │       ├── expected.bib          # Ground-truth entries; empty until populated
+│       ├── baselines/            # One dated report per full run; the comparison point
 │       └── sample/
 │           ├── manifest.json     # citekey/source/hash list; empty until populated
 │           └── selection.json    # Provenance of the last select_sample.py run
