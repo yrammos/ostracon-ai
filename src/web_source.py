@@ -700,6 +700,15 @@ _STRUCTURAL_PATH_WORDS = {
 # articles from the same year look like the same work.
 _ARTICLE_ID_RE = re.compile(r'^\d{5,}$')
 
+# An opaque record token: Cambridge Core's 32-character hex, arXiv's
+# 2401.01234, a handle's mdp.39015012345678, a DOI suffix. Letters and digits
+# and dots only - no hyphens, which is what keeps title slugs out of this
+# class - and at least one digit, so an ordinary word never qualifies.
+_OPAQUE_ID_RE = re.compile(r'^(?=[^\d]*\d)[A-Za-z0-9.]{8,}$')
+
+# A file extension naming how a work is served, not which work it is.
+_SERVING_EXTENSION_RE = re.compile(r'\.(pdf|html?|xml|epub|txt|full)$', re.I)
+
 
 def _is_structural_segment(segment):
     parts = [p for p in segment.lower().split('-') if p]
@@ -707,25 +716,37 @@ def _is_structural_segment(segment):
 
 
 def _identifying_segments(path):
-    """The path segments that identify *which work* a URL names.
+    """(ids, slugs) - the path segments that identify *which work* a URL names.
 
-    Two kinds qualify: a long numeric article id, and a title slug. A slug
-    must carry at least two hyphens and sixteen characters and must not be
-    built purely of structural words - `music-theory` or `article-abstract`
-    would otherwise match two entirely different articles on the same host,
-    which is the one error this check exists to prevent.
+    Kept apart because they carry different authority. An id names one
+    record; a slug is usually a title, but on some platforms it is the
+    *container*: Cambridge Core writes
+    /core/journals/twentieth-century-music/article/abs/<title>/<hex id>,
+    where the journal name is a long hyphenated segment shared by every
+    article in the journal. Treating that as identifying matched two
+    unrelated articles - the exact publisher-shaped assumption this
+    separation exists to remove. See _url_matches for how a conflicting id
+    now overrules a shared slug.
+
+    A slug must carry at least two hyphens and sixteen characters and must
+    not be built purely of structural words, so `music-theory` or
+    `article-abstract` cannot stand in for a title.
     """
-    found = set()
+    ids, slugs = set(), set()
     for segment in path.split('/'):
         segment = segment.strip()
         if not segment:
             continue
-        if _ARTICLE_ID_RE.match(segment):
-            found.add(segment)
-        elif (len(segment) >= 16 and segment.count('-') >= 2
-                and not _is_structural_segment(segment)):
-            found.add(segment.lower())
-    return found
+        if _ARTICLE_ID_RE.match(segment) or _OPAQUE_ID_RE.match(segment):
+            ids.add(segment.lower())
+            continue
+        # A serving extension is a form, not an identity: the same work is
+        # <slug> as a landing page and <slug>.pdf as a download.
+        bare = _SERVING_EXTENSION_RE.sub('', segment)
+        if (len(bare) >= 16 and bare.count('-') >= 2
+                and not _is_structural_segment(bare)):
+            slugs.add(bare.lower())
+    return ids, slugs
 
 
 def _url_matches(a, b):
@@ -753,14 +774,45 @@ def _url_matches(a, b):
     if parts_a.netloc.lower() != parts_b.netloc.lower():
         return False
 
-    # A DOI on both sides settles it outright, either way.
-    dois_a = {d.lower() for d in doi_candidates(clean_a)}
-    dois_b = {d.lower() for d in doi_candidates(clean_b)}
-    if dois_a and dois_b:
-        return bool(dois_a & dois_b)
+    # A DOI on both sides settles it outright, either way - but only the
+    # LONGEST candidate may be compared, never the truncation ladder
+    # doi_candidates() offers for CrossRef lookups. Intersecting the ladders
+    # matched two different Grove Music entries, whose paths share the
+    # dictionary's own DOI stem (10.1093/gmo) and differ only past it.
+    #
+    # One DOI extending the other by a further path segment is still the
+    # same work: Silverchair appends its article id, so
+    # 10.1093/jaac/kpag034/8725072 and 10.1093/jaac/kpag034 are one record.
+    doi_a = (doi_candidates(clean_a) or [''])[0].lower().rstrip('/')
+    doi_b = (doi_candidates(clean_b) or [''])[0].lower().rstrip('/')
+    if doi_a and doi_b:
+        return (doi_a == doi_b
+                or doi_a.startswith(doi_b + '/')
+                or doi_b.startswith(doi_a + '/'))
 
-    ids_a, ids_b = _identifying_segments(parts_a.path), _identifying_segments(parts_b.path)
-    return bool(ids_a and ids_b and (ids_a & ids_b))
+    ids_a, slugs_a = _identifying_segments(parts_a.path)
+    ids_b, slugs_b = _identifying_segments(parts_b.path)
+
+    # Disagreement within a class that BOTH sides populate settles it: these
+    # are different records, however much of the rest of the path agrees.
+    # The veto has to run over both classes, because which class carries the
+    # discriminating token is a per-publisher accident:
+    #
+    #   Cambridge Core  /journals/<journal-slug>/article/abs/<title>/<hex id>
+    #     - the journal slug is shared by every article, so the ID vetoes;
+    #   Grove Music     /view/10.1093/gmo/<dictionary id>/<entry slug>
+    #     - the dictionary id is shared by every entry, so the SLUG vetoes.
+    #
+    # Checking only ids matched two unrelated Grove entries; checking only
+    # slugs matched two unrelated Cambridge articles. Both were real.
+    if ids_a and ids_b and not (ids_a & ids_b):
+        return False
+    if slugs_a and slugs_b and not (slugs_a & slugs_b):
+        return False
+
+    # A class only one side populates is not a conflict: /article/<id>/<slug>
+    # and a bare /<slug> form can be the same work.
+    return bool((ids_a & ids_b) or (slugs_a & slugs_b))
 
 
 def _url_correspondence(candidate_urls, soup, metadata):

@@ -23,6 +23,7 @@ import io
 import sys
 from contextlib import contextmanager, redirect_stderr
 from pathlib import Path
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -795,6 +796,109 @@ def test_tab_selection_picks_the_wanted_article_from_among_its_siblings():
     return True
 
 
+# Platform shapes beyond Silverchair. PROVENANCE, because it differs from
+# SAME_ISSUE_ARTICLES above and the difference matters: those three are
+# recorded verbatim from the publisher. THESE ARE NOT RECORDINGS. They are
+# each platform's documented path grammar with the opaque identifiers filled
+# in by hand - no URL here was fetched, and no live request was made anywhere
+# in building this file. The grammar is what is under test (which segment
+# carries the work's identity, and which is a container shared by every work
+# on the platform), and that is stable; the digits are not evidence of
+# anything. Replace any of these with a real URL when one is to hand.
+#
+# Two of these caught real false matches that Silverchair-only fixtures could
+# never have surfaced:
+#
+#   Cambridge Core  /journals/<journal-slug>/article/abs/<title>/<hex id>
+#     the journal slug is shared by every article in the journal;
+#   Grove Music     /view/10.1093/gmo/<dictionary id>/<entry slug>
+#     the dictionary id is shared by every entry, AND the truncated DOI
+#     ladder shares the 10.1093/gmo stem.
+#
+# The rule assumed the long hyphenated segment was always a title. On
+# Silverchair it is (the journal is a short code, `ncm`); on Cambridge and
+# Grove it is the container. That is precisely the accent a single-publisher
+# fixture set builds in.
+
+_CAMBRIDGE = ("https://www.cambridge.org/core/journals/twentieth-century-music"
+              "/article/abs/sounding-the-archive/3C8B1F2A9D4E5061728394A5B6C7D8E9")
+_GROVE = ("https://www.oxfordmusiconline.com/grovemusic/view/10.1093/gmo/"
+          "9781561592630.001.0001/omo-9781561592630-e-0000040055")
+_TANDF = "https://www.tandfonline.com/doi/full/10.1080/07494467.2020.1717875"
+
+# (label, one, other) - different works that must never match.
+DIFFERENT_WORKS = (
+    ("Cambridge: two articles in one journal", _CAMBRIDGE,
+     _CAMBRIDGE.replace("sounding-the-archive/3C8B1F2A9D4E5061728394A5B6C7D8E9",
+                        "listening-otherwise/9F8E7D6C5B4A3021FEDCBA0987654321")),
+    ("Grove: two entries in one dictionary", _GROVE, _GROVE.replace("40055", "40056")),
+    ("SEP: two entries", "https://plato.stanford.edu/entries/qualia/",
+     "https://plato.stanford.edu/entries/emotion/"),
+    ("SEP: entry vs a dated archive of it", "https://plato.stanford.edu/entries/qualia/",
+     "https://plato.stanford.edu/archives/spr2021/entries/qualia/"),
+    ("Wikipedia: two articles", "https://en.wikipedia.org/wiki/Sonata_form",
+     "https://en.wikipedia.org/wiki/Rondo"),
+    ("manufacturer: two products",
+     "https://www.neumann.com/en-en/products/microphones/u-87-ai",
+     "https://www.neumann.com/en-en/products/microphones/tlm-103"),
+    ("JSTOR: two stable ids", "https://www.jstor.org/stable/40285017",
+     "https://www.jstor.org/stable/40285018"),
+    ("Project MUSE: two articles", "https://muse.jhu.edu/article/745211",
+     "https://muse.jhu.edu/article/745212"),
+    ("arXiv: two preprints", "https://arxiv.org/abs/2401.01234",
+     "https://arxiv.org/abs/2401.01235"),
+    ("repository handle: two items", "https://dspace.mit.edu/handle/1721.1/12345",
+     "https://dspace.mit.edu/handle/1721.1/12346"),
+    ("ScienceDirect: two PIIs",
+     "https://www.sciencedirect.com/science/article/pii/S0304422X20300310",
+     "https://www.sciencedirect.com/science/article/pii/S0304422X20300311"),
+    ("Taylor & Francis: two DOIs", _TANDF, _TANDF.replace("1717875", "1717876")),
+    ("Silverchair: two DOIs",
+     "https://academic.oup.com/jaac/doi/10.1093/jaac/kpag034/8725072",
+     "https://academic.oup.com/jaac/doi/10.1093/jaac/kpag099/8725099"),
+)
+
+# (label, one, other) - one work, served two ways; these must match.
+SAME_WORK_DIFFERENT_FORM = (
+    ("Cambridge: /article/abs/ vs /article/", _CAMBRIDGE,
+     _CAMBRIDGE.replace("/article/abs/", "/article/")),
+    ("Grove: /view/ vs /abstract/", _GROVE, _GROVE.replace("/view/", "/abstract/")),
+    ("Taylor & Francis: /full/ vs /abs/", _TANDF, _TANDF.replace("/full/", "/abs/")),
+    ("Silverchair: DOI with and without the trailing article id",
+     "https://academic.oup.com/jaac/doi/10.1093/jaac/kpag034/8725072",
+     "https://academic.oup.com/jaac/doi/10.1093/jaac/kpag034"),
+)
+
+
+def test_different_works_never_match_across_platforms():
+    for label, one, other in DIFFERENT_WORKS:
+        assert not web_source._url_matches(one, other), label
+        assert not web_source._url_matches(other, one), label + " (reversed)"
+    return True
+
+
+def test_one_work_served_two_ways_matches_across_platforms():
+    for label, one, other in SAME_WORK_DIFFERENT_FORM:
+        assert web_source._url_matches(one, other), label
+        assert web_source._url_matches(other, one), label + " (reversed)"
+    return True
+
+
+def test_shapes_without_an_identifier_fall_back_to_exact_matching():
+    # An acceptable outcome, and worth pinning: where a URL carries no
+    # identifying segment at all, only an exact match can succeed. Silently
+    # matching the wrong thing is the unacceptable outcome; declining to
+    # match a legitimate variant is not.
+    for url in ("https://plato.stanford.edu/entries/qualia/",
+                "https://en.wikipedia.org/wiki/Sonata_form",
+                "https://example.ac.uk/~smith/papers.html"):
+        ids, slugs = web_source._identifying_segments(urlsplit(url).path)
+        assert not ids and not slugs, (url, ids, slugs)
+        assert web_source._url_matches(url, url), url
+        assert web_source._url_matches(url, url.rstrip('/') + '/'), url
+    return True
+
+
 def test_browser_wrong_canonical_falls_through():
     # #11 item 4, case 5. Still a hard failure under the amber split: this
     # is the one condition that stays a failure regardless.
@@ -989,6 +1093,9 @@ TESTS = [
     test_each_same_issue_article_still_matches_its_own_canonical,
     test_tab_selection_ignores_sibling_articles_from_the_same_issue,
     test_tab_selection_picks_the_wanted_article_from_among_its_siblings,
+    test_different_works_never_match_across_platforms,
+    test_one_work_served_two_ways_matches_across_platforms,
+    test_shapes_without_an_identifier_fall_back_to_exact_matching,
     test_browser_wrong_canonical_falls_through,
     test_correspondence_mismatch_hard_fails_regardless_of_metadata_completeness,
     test_browser_wrong_doi_falls_through,
