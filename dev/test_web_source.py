@@ -133,6 +133,39 @@ UCPRESS_OTHER_ARTICLE = ("https://online.ucpress.edu/ncm/article/50/1/70/218999/
                          "A-Completely-Different-Article-Title")
 
 
+# Three real articles from ONE issue of ONE journal - 19th-Century Music
+# 50/1 - recorded verbatim from the publisher. The adversarial set: nothing
+# discriminates them except the article id and the title slug.
+#
+#   - the ids are CONSECUTIVE and six digits (218886/218887/218888), so they
+#     differ by a single character - the sharpest available test of the id
+#     rule, and the case a substring or prefix comparison would fail;
+#   - volume, issue and page (/50/1/54/, /50/1/4/, /50/1/24/) are shared or
+#     near-shared and all fall below the five-digit floor, which is exactly
+#     what stops them counting as identifiers;
+#   - two of the three slugs both contain `Chopin-s`, so a matcher comparing
+#     substrings rather than whole segments would marry them.
+#
+# All three carry the same ?redirectedFrom=fulltext and the same
+# /article-abstract/ path form, so the query string and the path form are
+# constant across the set and cannot be doing any of the discriminating.
+SAME_ISSUE_ARTICLES = (
+    "https://online.ucpress.edu/ncm/article-abstract/50/1/54/218886/"
+    "Fatigued-Voices-and-Vocal-Health-in-fine-secolo?redirectedFrom=fulltext",
+    "https://online.ucpress.edu/ncm/article-abstract/50/1/4/218887/"
+    "Rehearing-Recursive-Cycles-in-Chopin-s-Preludes?redirectedFrom=fulltext",
+    "https://online.ucpress.edu/ncm/article-abstract/50/1/24/218888/"
+    "Object-Lesson-The-Personified-Voice-of-Chopin-s?redirectedFrom=fulltext",
+)
+
+
+def _canonical_form(url):
+    """The /article/ address the publisher declares canonical for a
+    /article-abstract/ one - the transformation this whole loosening exists
+    to tolerate."""
+    return url.replace("/article-abstract/", "/article/").split("?")[0]
+
+
 def _ucpress_html(canonical):
     """A real-shaped Silverchair article page, parameterised by the canonical
     link so the same fixture serves the positive and negative cases."""
@@ -705,6 +738,63 @@ def test_url_identity_accepts_path_forms_and_refuses_other_works():
     return True
 
 
+def test_same_issue_articles_never_match_one_another():
+    # Every ordered pair, both directions, at the correspondence site.
+    # Consecutive six-digit ids and two slugs sharing `Chopin-s` - if the id
+    # rule ever softens to a prefix, or slug comparison to a substring, this
+    # is what catches it.
+    for i, one in enumerate(SAME_ISSUE_ARTICLES):
+        for j, other in enumerate(SAME_ISSUE_ARTICLES):
+            if i == j:
+                continue
+            assert not web_source._url_matches(one, other), (one, other)
+            # Nor against a sibling's canonical form: the path-form
+            # loosening must not become a way in.
+            assert not web_source._url_matches(one, _canonical_form(other)), (one, other)
+    return True
+
+
+def test_each_same_issue_article_still_matches_its_own_canonical():
+    # The positive half, so the test above cannot pass by a matcher that
+    # simply refuses everything.
+    for url in SAME_ISSUE_ARTICLES:
+        assert web_source._url_matches(url, _canonical_form(url)), url
+    return True
+
+
+def test_tab_selection_ignores_sibling_articles_from_the_same_issue():
+    # The stricter site, with the same adversarial set. Two siblings open,
+    # the wanted article not open at all: nothing may be captured, because
+    # here a wrong tab means the wrong document is read outright.
+    wanted, sibling_a, sibling_b = SAME_ISSUE_ARTICLES
+    listing = _listing(
+        (1, 1, _canonical_form(sibling_a)),
+        (1, 2, _canonical_form(sibling_b)),
+    )
+    with _osa(listing=listing, capture="<html>should never be captured</html>"):
+        html, app, summary, log = _probe(wanted)
+    assert html is None, html
+    assert "no matching tab" in summary, summary
+    return True
+
+
+def test_tab_selection_picks_the_wanted_article_from_among_its_siblings():
+    # Same three tabs, the wanted article now open in its canonical form.
+    # It must be the one taken - not the first sibling encountered.
+    wanted, sibling_a, sibling_b = SAME_ISSUE_ARTICLES
+    listing = _listing(
+        (1, 1, _canonical_form(sibling_a)),
+        (1, 2, _canonical_form(sibling_b)),
+        (1, 3, _canonical_form(wanted)),
+    )
+    with _osa(listing=listing, capture="<html>ok</html>"):
+        html, app, summary, log = _probe(wanted)
+    assert html == "<html>ok</html>", html
+    assert "matched window 1 tab 3 (identity match:" in log, log
+    assert "218886" in log, log
+    return True
+
+
 def test_browser_wrong_canonical_falls_through():
     # #11 item 4, case 5. Still a hard failure under the amber split: this
     # is the one condition that stays a failure regardless.
@@ -895,6 +985,10 @@ TESTS = [
     test_canonical_differing_only_in_path_form_is_accepted,
     test_same_host_different_article_id_is_still_rejected,
     test_url_identity_accepts_path_forms_and_refuses_other_works,
+    test_same_issue_articles_never_match_one_another,
+    test_each_same_issue_article_still_matches_its_own_canonical,
+    test_tab_selection_ignores_sibling_articles_from_the_same_issue,
+    test_tab_selection_picks_the_wanted_article_from_among_its_siblings,
     test_browser_wrong_canonical_falls_through,
     test_correspondence_mismatch_hard_fails_regardless_of_metadata_completeness,
     test_browser_wrong_doi_falls_through,
