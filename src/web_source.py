@@ -12,6 +12,7 @@ import json
 import plistlib
 import re
 import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
@@ -454,12 +455,149 @@ def _page_text(soup):
     return snap_to_sentence_end(text, TEXT_WORD_BUDGET, from_end=False)
 
 
+def _content_from_html(html, source_url, label):
+    """Parse raw page HTML into a SourceContent - the same construction
+    whether the HTML came from a live HTTP fetch or a captured browser tab,
+    so the plausibility check below runs identically over both. Returns the
+    soup alongside the content, since the caller needs it again to check the
+    page's own canonical link / og:url."""
+    soup = BeautifulSoup(html, 'html.parser')
+    # Metadata before text: _page_text() decomposes every <script> tag
+    # (deliberately, to keep chrome out of the body text), which destroys
+    # the JSON-LD block _page_metadata() reads from.
+    metadata = _page_metadata(soup)
+    text = _page_text(soup)
+    return SourceContent(text=text, metadata=metadata, label=label,
+                          url=clean_url(source_url)), soup
+
+
+# ── Content plausibility ─────────────────────────────────────────────────
+#
+# Classifying the *failure* (is_bot_challenge, above) only ever catches a
+# gatekeeper that answers with an error status. DataDome, Kasada, consent
+# gates and login walls commonly answer 200 with an interstitial instead -
+# there is no error to classify, so the only thing that tells it apart from
+# the article is what actually came back. Applied identically to every path
+# that can produce a SourceContent (fetch, browser tab, CrossRef), so none
+# of the three can hand the model a confident wrong entry.
+
+_IDENTIFYING_FIELDS = ('Author', 'Doi', 'PublicationDate')
+
+# Provisional floor pending #16's own thin-yield threshold; borrowed from
+# extract_pages.py's OCR-retry threshold (also 100 words), the closest
+# existing precedent in this codebase for "too little text to trust." HTML-
+# derived content only (fetch, browser tab) - a CrossRef record isn't a DOM
+# that can still be loading, so it has no length to check; its guard is the
+# identifying-metadata check below instead (see _content_plausible).
+MIN_BODY_WORDS = 100
+
+
+def _url_matches(a, b):
+    return clean_url(a).rstrip('/') == clean_url(b).rstrip('/')
+
+
+def _url_correspondence(candidate_urls, soup, metadata):
+    """(ok, reason) - whether at least one of the page's own self-identifying
+    signals (canonical link, og:url, embedded Doi) points back at one of the
+    URLs this content might legitimately be found at.
+
+    Every present signal is checked against every candidate URL, rather than
+    stopping at the first signal found or requiring all of them to agree:
+    `candidate_urls` normally holds both the bookmarked .webloc URL and, for
+    a live fetch, the URL requests.get() actually landed on after following
+    redirects - a doi.org bookmark resolves to the publisher's own URL, whose
+    canonical link then names the publisher URL rather than the redirector,
+    while its embedded DOI still matches the original bookmark. Requiring
+    the first signal present to match would reject that page over a mismatch
+    that was never a contradiction.
+
+    No signal present at all is neither confirmed nor contradicted, so it
+    passes: plenty of legitimate pages carry none of the three, and this
+    check exists to catch a genuine *contradiction* (a login wall's
+    canonical link pointing at the login page, a captured tab that has
+    navigated elsewhere) - a page too thin to carry any of these tags is
+    already caught by the identifying-metadata and length checks.
+    """
+    signals = []
+    if soup is not None:
+        canonical = soup.find('link', rel='canonical')
+        href = canonical.get('href') if canonical else None
+        if href and href.startswith('http'):
+            signals.append(('canonical link', href))
+        og_url = soup.find('meta', attrs={'property': 'og:url'})
+        content = og_url.get('content') if og_url else None
+        if content and content.startswith('http'):
+            signals.append(('og:url', content))
+    doi = metadata.get('Doi')
+    if doi:
+        signals.append(('embedded Doi', doi))
+
+    if not signals:
+        return True, None
+
+    for label, value in signals:
+        for candidate in candidate_urls:
+            if label == 'embedded Doi':
+                if value.lower() in candidate.lower():
+                    return True, None
+            elif _url_matches(candidate, value):
+                return True, None
+    described = '; '.join(f"{label} = {value}" for label, value in signals)
+    return False, f"none of its self-identifying signals match the requested URL ({described})"
+
+
+def _content_plausible(content, candidate_urls, soup=None):
+    """(is_plausible, reason) - whether `content` genuinely describes the
+    bookmarked work, applied the same way regardless of which path produced
+    it. `candidate_urls` is every URL the content may legitimately declare
+    itself as (see _url_correspondence); `soup` is the parsed page for the
+    fetch/browser-tab paths, or None for CrossRef, which has no page to read
+    a canonical link or og:url from.
+    """
+    metadata = content.metadata
+    if not metadata.get('Title'):
+        return False, "no Title in the extracted metadata"
+    if not any(metadata.get(f) for f in _IDENTIFYING_FIELDS):
+        return False, "Title but no Author/Doi/PublicationDate - looks like an interstitial"
+    ok, reason = _url_correspondence(candidate_urls, soup, metadata)
+    if not ok:
+        return False, reason
+    if soup is not None and len(split_into_words(content.text)) < MIN_BODY_WORDS:
+        return False, f"body text under {MIN_BODY_WORDS} words - looks like a page still loading"
+    return True, None
+
+
+def _log_source(chosen, url):
+    """State which path produced the text for `url` - printed unconditionally
+    (matching extract_pages.py's OCR-retry warnings) so this is visible in
+    normal output with nothing to instrument."""
+    print(f"   Source: {chosen} for {url}", file=sys.stderr)
+
+
+def _log_rejected(path_label, reason, next_step):
+    print(f"   ⚠️  {path_label} rejected ({reason}); trying {next_step}", file=sys.stderr)
+
+
 def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     """
     Extract a .webloc bookmark's target page as a SourceContent.
 
-    Where the publisher answers a bot challenge rather than the page, falls
-    back to the CrossRef record for the DOI in the URL's own path.
+    Three paths are tried in order - an ordinary fetch, a browser tab already
+    open on the bookmarked URL, and the CrossRef record for a DOI in the
+    URL's own path - and every one of them is checked for plausibility
+    before being trusted (see _content_plausible): the metadata must
+    identify a work, and the content must correspond to the requested URL.
+    A path that fails the check is treated exactly like a path that produced
+    nothing at all, and the next one is tried.
+
+    The browser tab is tried on any failure of the fetch (a non-2xx status,
+    or a 200 that failed the plausibility check) - a tab rendering the page
+    is proof of life no HTTP response can provide, whatever its status code.
+    CrossRef stays gated on a classified bot challenge (is_bot_challenge):
+    unlike the browser path it has no page to check against, only a DOI
+    mined from the URL, so trying it on every failure would risk filing a
+    record for a URL that's simply dead (a plain 404) - the original
+    rationale for that gate, unchanged here.
 
     Returns:
         SourceContent on success, or a string starting with "Error:" on failure.
@@ -482,50 +620,49 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None):
     except requests.RequestException as e:
         return f"Error: Could not fetch {url}: {e}"
 
-    # A challenge is the one failure worth routing around: the work exists and
-    # is citable, only this client is unwelcome. Every other non-2xx is left to
-    # fail loudly - a 404 masked by a CrossRef hit would file an entry whose
-    # Url points at a dead page, which is worse than a reported failure.
-    if not response.ok:
-        if not is_bot_challenge(response):
-            return f"Error: Could not fetch {url}: HTTP {response.status_code}"
+    challenge = is_bot_challenge(response)
+    rejected = []  # (path label, reason), in the order tried
 
-        # A browser already holding the session and a genuine fingerprint
-        # beats a DOI-only CrossRef record when the page is still open in a
-        # tab; falls through untouched below when it isn't.
-        html, browser_app = browser_tab_dom(url)
-        if html:
-            soup = BeautifulSoup(html, 'html.parser')
-            # Metadata before text: _page_text() decomposes <script> tags,
-            # which destroys the JSON-LD block _page_metadata() reads from -
-            # keyword arguments evaluate left to right regardless of the
-            # order they're written in, so text=/metadata=/... below would
-            # silently lose Author/PublicationDate from JSON-LD-only pages.
-            metadata = _page_metadata(soup)
-            text = _page_text(soup)
-            return SourceContent(
-                text=text,
-                metadata=metadata,
-                label=f"webpage (via {browser_app} tab)",
-                url=clean_url(url),
-            )
+    if response.ok:
+        content, soup = _content_from_html(response.text, response.url, "webpage")
+        ok, reason = _content_plausible(content, {url, response.url}, soup)
+        if ok:
+            _log_source("fetch", url)
+            return content
+        rejected.append(("fetch", reason))
+        _log_rejected("fetch", reason, "a browser tab")
 
+    # Tried on ANY failure - non-2xx status or a 200 that didn't pass the
+    # plausibility check - not only a classified bot challenge: a browser
+    # already holding the session and a genuine TLS fingerprint beats
+    # whatever the plain HTTP client got back, and DataDome/Kasada/consent-
+    # wall interstitials never trip is_bot_challenge at all.
+    html, browser_app = browser_tab_dom(url)
+    if html:
+        label = f"browser tab ({browser_app})"
+        content, soup = _content_from_html(html, url, f"webpage (via {browser_app} tab)")
+        ok, reason = _content_plausible(content, {url}, soup)
+        if ok:
+            _log_source(label, url)
+            return content
+        rejected.append((label, reason))
+        _log_rejected(label, reason, "CrossRef" if challenge else "reporting failure")
+
+    if challenge:
         fallback = crossref_fallback(url, crossref_email)
         if fallback:
-            return fallback
+            ok, reason = _content_plausible(fallback, {url}, soup=None)
+            if ok:
+                _log_source("CrossRef", url)
+                return fallback
+            rejected.append(("CrossRef", reason))
+            _log_rejected("CrossRef", reason, "reporting failure")
+
+    _log_source("failure", url)
+    if rejected:
+        detail = '; '.join(f"{path}: {reason}" for path, reason in rejected)
+        return f"Error: {url} yielded no plausible source ({detail})"
+    if challenge:
         return (f"Error: {url} is behind a bot challenge (HTTP "
                 f"{response.status_code}) and its URL carries no DOI to fall back on")
-
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    # Metadata before text - see the identical comment in the browser-DOM
-    # branch above.
-    metadata = _page_metadata(soup)
-    text = _page_text(soup)
-    return SourceContent(
-        text=text,
-        metadata=metadata,
-        label="webpage",
-        # Final URL after any redirects (e.g. DOI resolvers), minus tracking.
-        url=clean_url(response.url),
-    )
+    return f"Error: Could not fetch {url}: HTTP {response.status_code}"
