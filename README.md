@@ -100,9 +100,15 @@ flag a PDF gets when extraction finishes having produced almost nothing. It runs
 against canned page text rather than a fixture PDF, so the word counts are exact
 and no OCR is invoked.
 
-`python3 dev/test_biblio_agent_markers.py` self-tests `save_entry()`'s marker
-extraction/reattachment - in particular that the `% AMBER: ...` comment a thin/sparse
-`.webloc` source needs (see above) actually survives into the saved `.bib` text.
+`python3 dev/test_biblio_agent_markers.py` self-tests what `save_entry()` writes -
+in particular that the `% AMBER: ...` comment a thin/sparse `.webloc` source needs
+(see above) actually survives into the saved `.bib` text, and that the review colour
+reaches BibDesk on the other branch. It also runs `extract_bibtex()` end to end, with
+only the API call stubbed, so a state the extractor stops populating fails a test
+rather than passing quietly: the review state travels from one to the other as an
+`ExtractionResult` (`src/extraction_result.py`), and the `%` comments are rendered at
+the point of writing. They were formerly prepended to the entry text and parsed back
+out positionally, which is how the amber colouring failed silently for a month.
 
 ## Configuration
 
@@ -339,6 +345,7 @@ ostracon-ai/
 ├── requirements.txt
 ├── src/
 │   ├── biblio_agent.py     # Orchestrator; run this
+│   ├── extraction_result.py # What extract_bibtex() hands save_entry()
 │   ├── extract_pages.py    # PDF text, OCR, and the thin-yield check
 │   ├── web_source.py       # .webloc page fetching
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
@@ -357,6 +364,7 @@ ostracon-ai/
 │       ├── select_sample.py      # Builds sample/ and expected.bib from biblio.bib
 │       ├── populate_sample.py    # BibDesk attachment resolver select_sample.py imports
 │       ├── expected.bib          # Ground-truth entries; empty until populated
+│       ├── baselines/            # One dated report per full run; the comparison point
 │       └── sample/
 │           ├── manifest.json     # citekey/source/hash list; empty until populated
 │           └── selection.json    # Provenance of the last select_sample.py run

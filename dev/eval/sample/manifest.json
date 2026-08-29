@@ -9,7 +9,8 @@
   "citekey": "Adorno2011",
   "source": "Adorno2011.pdf",
   "sha256": "2acda2afa7000d78b9f9c7ed77e5eef89ad3456dc96ee8e6f0822faf938ab285",
-  "note": "@incollection — series, translated"
+  "note": "@incollection — series, translated",
+  "container_source": "588-page scan of the whole of Baroque Music; the entry is its chapter 28, and nothing in the file says which chapter is meant."
  },
  {
   "citekey": "Albright2021",
@@ -69,7 +70,8 @@
   "citekey": "Cavell1969a",
   "source": "Cavell1969a.pdf",
   "sha256": "f411abde3cdf16e47096a5a96e0c09a1cbd78d2788362d5d6764c3ea1a80153f",
-  "note": "@inbook — plain (control)"
+  "note": "@inbook — plain (control)",
+  "container_source": "197-page scan of the whole of Must We Mean What We Say?; the entry is one essay from it."
  },
  {
   "citekey": "Dhomont1996",
@@ -286,7 +288,8 @@
   "citekey": "Roudiez1984",
   "source": "Roudiez1984.pdf",
   "sha256": "74ebe3fc3b4ab1ff84266d662fbdc40989ebe59e679d8adfede8d6f644df53ff",
-  "note": "@suppbook — bookauthor, translated"
+  "note": "@suppbook — bookauthor, translated",
+  "container_source": "310-page scan of the whole of Revolution in Poetic Language; the entry is the translator's 10-page introduction."
  },
  {
   "citekey": "Schachter2000",
@@ -304,7 +307,8 @@
   "citekey": "Schenker1994a",
   "source": "Schenker1994a.pdf",
   "sha256": "3f57e3b25e57677a8699085d103805a3313de8ecaf066efaebcccb67eeaa6ca3",
-  "note": "@inbook — series"
+  "note": "@inbook — series",
+  "container_source": "146-page scan of the whole of Das Meisterwerk in der Musik I; the entry is one 8-page essay from it."
  },
  {
   "citekey": "ScienceDirect0",

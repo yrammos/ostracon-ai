@@ -97,13 +97,13 @@ def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.
     are given - see load_last_run()/--rescore.
     """
     label = f"{citekey}: " if citekey else ""
-    bibtex_entry = agent.extract_bibtex(source_path)
-    if bibtex_entry.startswith("Error:"):
-        print(f"   ⚠️  {label}{bibtex_entry}", file=sys.stderr)
-        clean = f"% extraction failed: {bibtex_entry}\n"
+    result = agent.extract_bibtex(source_path)
+    if result.failed:
+        print(f"   ⚠️  {label}{result.error}", file=sys.stderr)
+        clean = f"% extraction failed: {result.error}\n"
         entry = None
     else:
-        clean = agent.clean_bibtex(bibtex_entry)
+        clean = agent.clean_bibtex(result.entry)
         entries, _ = bib_audit.scan(clean)
         entry = entries[0] if entries else None
         if entry is None:
