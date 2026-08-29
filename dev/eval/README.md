@@ -96,6 +96,27 @@ is. Field counts run across every scored entry regardless of its type
 verdict - "ninety per cent correct" hides whether the tenth is a page range
 or an author, which is exactly what this table is for.
 
+## What this harness cannot measure
+
+It scores fields against ground truth. **Confidence is not a field.** An entry
+can score fully correct while carrying a review flag it should not, or missing
+one it should, and nothing here will notice either way.
+
+That is not hypothetical: BibDesk's amber colouring was inert for every entry
+and every source type from 2026-07-30 until 2026-08-29, and no run of this
+harness was capable of reporting it (Issue
+[#17](https://github.com/yrammos/biblatex-chicago-claude/issues/17)). A change
+to the flagging mechanism therefore needs its own tests -
+`dev/test_biblio_agent_markers.py` and `dev/test_extract_pages.py` - and, where
+BibDesk itself is involved, an import done by hand. A green report here is
+silent on all of it.
+
+Two manifest keys mark sample entries no extraction can score at all, for two
+different reasons - `container_source` (the file is the whole volume, the entry
+is one chapter of it) and `insufficient_source` (the right file, yielding almost
+no text). Neither is consumed by the scorer yet: they are read by whoever reads
+a report. See [`sample/README.md`](sample/README.md).
+
 ## Corrections
 
 `expected.bib` is edited by the maintainer only. It is the one file here

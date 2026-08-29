@@ -95,6 +95,11 @@ fallback and plausibility check (including the amber-vs-fail split) against cann
 fixtures - the live failures it guards against (an actual bot challenge, a half-loaded
 tab) can't be staged by hand.
 
+`python3 dev/test_extract_pages.py` self-tests the thin-yield check - the amber
+flag a PDF gets when extraction finishes having produced almost nothing. It runs
+against canned page text rather than a fixture PDF, so the word counts are exact
+and no OCR is invoked.
+
 `python3 dev/test_biblio_agent_markers.py` self-tests `save_entry()`'s marker
 extraction/reattachment - in particular that the `% AMBER: ...` comment a thin/sparse
 `.webloc` source needs (see above) actually survives into the saved `.bib` text.
@@ -122,6 +127,7 @@ absent from disk is an error at startup, not a warning.
 | `enrich_missing_fields` | `true`              | The CrossRef/Scholar lookups, the grounding audit and reconciliation. `false` leaves only the initial extraction. |
 | `verbose`               | `true`              | Progress on stderr.                                                                                               |
 | `ocr_threshold`         | `100`               | Words below which a PDF is treated as scanned.                                                                    |
+| `thin_yield_threshold`  | `400`               | Words a PDF must yield in total, after OCR, before its extraction is trusted. Below it the entry is marked amber. `0` disables. |
 | `ocr_timeout`           | `180`               | Seconds allowed to `ocrmypdf`.                                                                                    |
 | `default_ocr_language`  | `eng`               | Tesseract language used when `interactive_ocr` is `false`.                                                        |
 | `interactive_ocr`       | `true`              | `false`: never show the OCR-language dropdown, always use `default_ocr_language`. Independent of `verbose`.       |
@@ -333,7 +339,7 @@ ostracon-ai/
 ├── requirements.txt
 ├── src/
 │   ├── biblio_agent.py     # Orchestrator; run this
-│   ├── extract_pages.py    # PDF text and OCR
+│   ├── extract_pages.py    # PDF text, OCR, and the thin-yield check
 │   ├── web_source.py       # .webloc page fetching
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
 │   └── progress_window.py  # The floating window

@@ -16,6 +16,15 @@ from typing import Optional
 from pypdf import PdfReader, PdfWriter
 
 
+# Words a whole PDF has to yield before its extraction is taken at face
+# value. Motte2004, the source that prompted this, gave 232 across all its
+# pages where comparable sources in the evaluation sample gave 1,000-3,100.
+# Deliberately well above ocr_threshold (100), which decides whether OCR is
+# attempted at all: a floor set at or below that could never fire, since
+# anything under it has already been through OCR by the time this is checked.
+DEFAULT_THIN_YIELD_WORDS = 400
+
+
 @dataclass
 class SourceContent:
     """Normalized shape produced by every source extractor (PDF, webloc, ...).
@@ -28,10 +37,13 @@ class SourceContent:
     metadata: dict = field(default_factory=dict)
     label: str = "PDF"          # human-readable source kind, used once in build_prompt
     url: Optional[str] = None   # set only when the source has a canonical access URL
-    # Set by web_source.py's plausibility check: the content genuinely came
-    # from the requested URL but is thin or sparse (missing metadata, short
-    # body) - not wrong, just worth a human glance. biblio_agent.py folds
-    # this into the existing "needs_color" (BibDesk amber) mechanism.
+    # The content is genuine but thin - not wrong, just worth a human glance.
+    # Set by web_source.py's plausibility check (a page that came from the
+    # requested URL but carries little metadata or a short body) and by
+    # extract_pdf() (a PDF that yielded very few words across all its pages,
+    # whether or not OCR ran). biblio_agent.py folds either into the existing
+    # "needs_color" (BibDesk amber) mechanism, so the two are indistinguishable
+    # downstream - which is the point: the reader's question is the same one.
     amber: bool = False
     amber_reason: Optional[str] = None
 
@@ -276,7 +288,12 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         ocr_timeout: Seconds to allow ocrmypdf before giving up
 
     Returns:
-        str: Extracted text with section markers
+        (str, int): the extracted text with section markers, and the total
+        word count the PDF yielded across all its pages - after OCR, where OCR
+        ran. The count is returned rather than left to be re-derived from the
+        text, which is only an excerpt of it, and rather than parsed back out
+        of the "--- BEGINNING (n words) ---" headers, which would make a
+        display string load-bearing. On an error the pair is (error, 0).
     """
     pdf_path = Path(pdf_path)
 
@@ -284,7 +301,7 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
     result, num_pages = extract_all_text(pdf_path)
 
     if isinstance(result, str) and result.startswith("Error:"):
-        return result
+        return result, 0
 
     page_texts = result
     full_text = "\n\n".join(page_texts)
@@ -342,7 +359,7 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
             if not quiet:
                 print(f"✓ OCR successful ({total_words} words)", file=sys.stderr)
         else:
-            return f"Error: {ocr_result}"
+            return f"Error: {ocr_result}", 0
 
     # Determine beginning section: max(first page, min_first_words)
     first_page_text = page_texts[0] if page_texts else ""
@@ -359,7 +376,7 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
 
     # Short documents: return everything
     if total_words <= first_count + last_words:
-        return f"--- FULL TEXT ({total_words} words) ---\n{full_text.strip()}"
+        return f"--- FULL TEXT ({total_words} words) ---\n{full_text.strip()}", total_words
 
     # Extract last M words (snap to sentence)
     last_section = snap_to_sentence_end(full_text, last_words, from_end=True)
@@ -380,10 +397,10 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         )
         output.append(headers_footers)
 
-    return "\n".join(output)
+    return "\n".join(output), total_words
 
 
-def extract_pdf(pdf_path, **opts):
+def extract_pdf(pdf_path, thin_yield_words=DEFAULT_THIN_YIELD_WORDS, **opts):
     """
     Extract a PDF's bibliographic content as a SourceContent.
 
@@ -393,13 +410,40 @@ def extract_pdf(pdf_path, **opts):
     extract_content() (min_first_words, last_words, min_words_threshold,
     quiet, language_prompt_fn, ocr_timeout).
 
+    Args:
+        thin_yield_words: Below this many words for the whole PDF, the result
+            is marked amber. 0 disables the check.
+
     Returns:
         SourceContent on success, or a string starting with "Error:" on failure.
     """
-    text = extract_content(pdf_path, **opts)
+    text, total_words = extract_content(pdf_path, **opts)
     if isinstance(text, str) and text.startswith("Error:"):
         return text
-    return SourceContent(text=text, metadata=extract_pdf_metadata(pdf_path), label="PDF")
+
+    # A PDF that completes extraction having yielded almost nothing is the
+    # same failure shape as a bot-challenge page that answers HTTP 200: the
+    # process succeeded and the content did not. OCR finishing is not OCR
+    # working - a scan whose text layer holds only whitespace comes back
+    # exit 0 with a handful of words, and the entry built from it looks
+    # exactly as confident as one built from three thousand.
+    #
+    # It rides the amber carrier a thin webpage already uses rather than
+    # introducing a signal of its own: identical treatment (BibDesk's review
+    # colour, and a "% AMBER: ..." comment where colour is impossible) for
+    # what is identically a source worth a human glance rather than a
+    # failure. Some sources genuinely carry no bibliographic text - a
+    # photocopied chapter with no title page - and those must still produce
+    # an entry.
+    amber = amber_reason = None
+    if thin_yield_words and total_words < thin_yield_words:
+        amber = True
+        amber_reason = (f"thin extraction: {total_words} words from the whole PDF "
+                        f"(under {thin_yield_words}) - the text may not carry the "
+                        f"work's bibliographic data at all")
+
+    return SourceContent(text=text, metadata=extract_pdf_metadata(pdf_path), label="PDF",
+                         amber=bool(amber), amber_reason=amber_reason)
 
 
 if __name__ == "__main__":
@@ -407,5 +451,6 @@ if __name__ == "__main__":
         print("Usage: python extract_pages.py <pdf_file>", file=sys.stderr)
         sys.exit(1)
 
-    result = extract_content(sys.argv[1])
-    print(result)
+    text, total_words = extract_content(sys.argv[1])
+    print(text)
+    print(f"\n--- TOTAL YIELD: {total_words} words ---", file=sys.stderr)

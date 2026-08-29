@@ -14,6 +14,7 @@ from datetime import datetime
 import yaml
 from anthropic import Anthropic
 
+import extract_pages
 from extract_pages import extract_pdf
 import web_source
 import enrich
@@ -522,6 +523,8 @@ excerpt's text won't (e.g. an embedded Author field):
             language_prompt_fn=language_prompt_fn,
             min_words_threshold=self.config.get('ocr_threshold', 100),
             ocr_timeout=self.config.get('ocr_timeout', 180),
+            thin_yield_words=self.config.get(
+                'thin_yield_threshold', extract_pages.DEFAULT_THIN_YIELD_WORDS),
         )
 
     def extract_bibtex(self, path, batch_info=None, model_override=None):

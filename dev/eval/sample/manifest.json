@@ -249,7 +249,8 @@
   "citekey": "Motte2004",
   "source": "Motte2004.pdf",
   "sha256": "d83ac430e4ae241011fe32e538b216362146ec00da2ab1014c3345611ba5986b",
-  "note": "@collection — non-Latin/foreign title, series"
+  "note": "@collection — non-Latin/foreign title, series",
+  "insufficient_source": "232 words across every page after OCR, against 1,000-3,100 for comparable sources; the pages carry no bibliographic data. The expected entry was written from the physical volume, so no extraction can score it."
  },
  {
   "citekey": "Neumeyer2009a",
