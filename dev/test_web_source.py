@@ -190,6 +190,7 @@ def test_browser_thin_dom_falls_through():
          _browser_returns(_thin_html()), _no_crossref():
         result, log = _run()
     assert isinstance(result, str) and result.startswith("Error:"), result
+    assert "browser tab" in log and "rejected" in log, log
     assert "words" in log, log
     return True
 
@@ -248,6 +249,7 @@ def test_no_tab_no_doi_clean_failure_unchanged_text():
         result, log = _run()
     assert result == (f"Error: {BOOKMARK_URL} is behind a bot challenge (HTTP 403) "
                        f"and its URL carries no DOI to fall back on")
+    assert "Source: failure for" in log, log
     return True
 
 
@@ -258,6 +260,7 @@ def test_non_challenge_failure_skips_crossref_unchanged_text():
          _no_browser_tab(), _crossref_raises():
         result, log = _run()
     assert result == f"Error: Could not fetch {BOOKMARK_URL}: HTTP 404"
+    assert "Source: failure for" in log, log
     return True
 
 
@@ -270,6 +273,7 @@ def test_browser_tried_on_non_challenge_status():
         result, log = _run()
     assert not isinstance(result, str), result
     assert "Chrome" in result.label
+    assert "Source: browser tab (Chrome) for" in log, log
     return True
 
 
@@ -284,6 +288,31 @@ def test_fetch_canonical_matches_redirected_url_not_bookmark():
         result, log = _run(url=doi_url)
     assert not isinstance(result, str), result
     assert "Source: fetch" in log, log
+    return True
+
+
+def test_doi_meta_ignored_when_url_has_no_doi():
+    # Most publisher URLs (Oxford Academic's own /article/80/1/1/1234567
+    # among them) carry no DOI in the path at all, even though the page's
+    # own citation_doi meta tag almost always exists. If that URL is the
+    # only candidate and the page has no canonical/og:url, the embedded DOI
+    # must not become the sole signal and reject an ordinary article for a
+    # "mismatch" that was never checkable in the first place.
+    url = "https://academic.oup.com/jaac/article/80/1/1/1234567"
+    html = (
+        "<title>A Study of Musical Form</title>"
+        '<meta name="citation_author" content="Doe, Jane">'
+        '<meta name="citation_doi" content="10.1093/jaac/kpag034">'
+    )
+    html = f"<html><head>{html}</head><body><p>{_words(150)}</p></body></html>"
+    response = FakeResponse(text=html, url=url)
+    with _fake_webloc(url), _fetch_returns(response), _crossref_raises():
+        with _patched(web_source, "browser_tab_dom",
+                      lambda u: (_ for _ in ()).throw(
+                          AssertionError("browser_tab_dom() should not have been called"))):
+            result, log = _run(url=url)
+    assert not isinstance(result, str), result
+    assert "Source: fetch for" in log, log
     return True
 
 
@@ -313,6 +342,7 @@ TESTS = [
     test_non_challenge_failure_skips_crossref_unchanged_text,
     test_browser_tried_on_non_challenge_status,
     test_fetch_canonical_matches_redirected_url_not_bookmark,
+    test_doi_meta_ignored_when_url_has_no_doi,
     test_ordinary_fetch_success_does_not_touch_fallbacks,
 ]
 
