@@ -47,15 +47,19 @@ with a Cloudflare bot challenge that no HTTP client can pass, so a `.webloc` poi
 cannot be fetched at all; others (login walls, consent gates, DataDome/Kasada) answer a plain
 HTTP 200 with an interstitial instead, which arrives looking exactly like a real page. Every
 page - fetched, read from a browser tab, or built from CrossRef - is checked for plausibility
-before it's trusted: the metadata has to identify a work, and the content has to correspond to
-the URL requested, or it's discarded and the next source is tried rather than handed to Claude
-as if it were the article. If the bookmarked URL happens to still be open in a Safari or Chrome
-tab, the page's DOM is read from there instead of fetched again - a browser already holds the
-session cookie and a genuine TLS fingerprint, which is what a Cloudflare challenge actually
-checks (see Troubleshooting) - tried on any fetch failure, not only a Cloudflare one. Failing
-that, if the fetch hit a classified bot challenge and the URL carries a DOI in its path, the
-entry is built from the CrossRef record instead. Any other fetch failure is still reported
-rather than papered over, so a dead bookmark stays visible as one.
+before it's trusted. Only one thing there is treated as a failure: the content doesn't
+correspond to the URL requested (a login wall, a captured tab that's navigated elsewhere) -
+that's the wrong document, and the next source is tried rather than handing Claude a confident
+wrong entry. A source that's merely thin - no Author, Doi or PublicationDate beyond an
+access-date `Urldate`, or a short body - still produces an entry, marked amber for a glance
+rather than discarded: this project's library carries plenty of real `@Online` sources (a
+personal page, a manufacturer's spec sheet) with a title and nothing else, for which `Urldate`
+is the ordinary dating evidence, not a defect. If the bookmarked URL happens to still be open
+in a Safari or Chrome tab, the page's DOM is read from there instead of fetched again - a
+browser already holds the session cookie and a genuine TLS fingerprint, which is what a
+Cloudflare challenge actually checks (see Troubleshooting) - tried on any fetch failure, not
+only a Cloudflare one. Failing that, if the fetch hit a classified bot challenge and the URL
+carries a DOI in its path, the entry is built from the CrossRef record instead.
 
 ![Progress window](screenshot.png)
 
@@ -87,8 +91,13 @@ every command-line flag and every tracked file. The quick action runs
 abandoning the run with a message when it is not.
 
 `python3 dev/test_web_source.py` self-tests `web_source.py`'s fetch/browser-tab/CrossRef
-fallback and plausibility check against canned fixtures - the live failures it guards
-against (an actual bot challenge, a half-loaded tab) can't be staged by hand.
+fallback and plausibility check (including the amber-vs-fail split) against canned
+fixtures - the live failures it guards against (an actual bot challenge, a half-loaded
+tab) can't be staged by hand.
+
+`python3 dev/test_biblio_agent_markers.py` self-tests `save_entry()`'s marker
+extraction/reattachment - in particular that the `% AMBER: ...` comment a thin/sparse
+`.webloc` source needs (see above) actually survives into the saved `.bib` text.
 
 ## Configuration
 
