@@ -212,6 +212,16 @@ def test_documentation():
     paths = [Path(f) for f in tracked
              if Path(f).name not in boilerplate and Path(f).suffix != ".png"]
 
+    # Directories whose contents are dated run artifacts rather than code:
+    # every full evaluation run adds a `<date>.md` here, and naming each one
+    # in the tree would mean a README edit per run and a failing check for
+    # whoever forgets. Documenting the directory documents its contents - but
+    # the directory itself must still be named, so the tree cannot stay silent
+    # about it either.
+    dated_dirs = {"dev/eval/baselines"}
+    paths = [p for p in paths
+             if str(p.parent) not in dated_dirs or not _names(readme, f"{p.parent.name}/")]
+
     # The tree names files by basename under a directory node, so match on the
     # basename and check the directory separately.
     missing = sorted({p.name for p in paths if not _names(readme, p.name)})
