@@ -14,14 +14,12 @@ already produced. A low-confidence match is discarded rather than merged.
 """
 import re
 import difflib
-try:
-    import requests
-except ImportError:
-    # Only the lookups need it, and without it they fail loudly on first use.
-    # dev/eval/select_sample.py imports this module for missing_fields(), and
-    # dev/eval/test_eval.py runs with none of the pipeline's dependencies
-    # installed. dev/test_setup.py checks requests is present for extraction.
-    requests = None
+
+# `requests` is imported inside the four lookup functions, not here: only they
+# need it, and dev/eval/select_sample.py imports this module for
+# missing_fields() under an interpreter that may not have it (test_eval.py
+# runs without the pipeline's dependencies). A missing install still fails
+# with ImportError, at the first lookup; dev/test_setup.py checks for it.
 
 DOI_RE = re.compile(r'10\.\d{4,9}/[^\s"<>{}]+')
 
@@ -72,6 +70,9 @@ DESIRED_FIELDS = {
 
 _FIELD_RE = re.compile(r'(?m)^\s*([A-Za-z]+)\s*=\s*')
 
+# Contributions whose container is a book: its title belongs in Booktitle.
+_CHAPTER_TYPES = ('incollection', 'inbook', 'inproceedings')
+
 # The same pattern as dev/bib_audit.py's ENTRY_RE, deliberately: dev/eval/run.py
 # scores the pipeline's output with bib_audit.scan(), so an opener accepted here
 # and rejected there would surface as "no parseable entry". Line-initial because
@@ -92,9 +93,7 @@ def isolate_entry(text):
     response carried commentary or a second entry.
     """
     m = ENTRY_OPENER.search(text)
-    if m is None:
-        return None, text.strip()
-    close = _matching_brace(text, m.end() - 1)
+    close = _matching_brace(text, m.end() - 1) if m else None
     if close is None:
         return None, text.strip()
     outside = text[:m.start()] + '\n' + text[close + 1:]
@@ -128,13 +127,14 @@ def parse_bibtex_fields(entry_text):
 def missing_fields(entry_type, fields):
     """Returns (missing_required, missing_desired) field-name lists."""
     entry_type = (entry_type or '').lower()
-
-    def present(name):
-        return any(fields.get(f) for f in _SATISFIED_BY.get(name, (name,)))
-
-    required = [f for f in REQUIRED_FIELDS.get(entry_type, []) if not present(f)]
-    desired = [f for f in DESIRED_FIELDS.get(entry_type, []) if not present(f)]
+    required = [f for f in REQUIRED_FIELDS.get(entry_type, []) if not _present(fields, f)]
+    desired = [f for f in DESIRED_FIELDS.get(entry_type, []) if not _present(fields, f)]
     return required, desired
+
+
+def _present(fields, name):
+    """Whether `name` is filled, directly or by a field in _SATISFIED_BY."""
+    return any(fields.get(f) for f in _SATISFIED_BY.get(name, (name,)))
 
 
 def fields_to_look_up(entry_type, fields):
@@ -182,7 +182,7 @@ def work_level_title(entry_type, fields):
     part of the title.
     """
     entry_type = (entry_type or '').lower()
-    if entry_type in ('incollection', 'inbook', 'inproceedings'):
+    if entry_type in _CHAPTER_TYPES:
         booktitle = join_subtitle(fields.get('booktitle'), fields.get('booksubtitle'))
         if booktitle:
             return strip_latex(booktitle)
@@ -361,10 +361,29 @@ def _matching_brace(text, start):
 
 
 def _close_or_end(text, start):
-    """_matching_brace(), or the end of the text when the group never closes -
-    what the field helpers did before they shared one matcher."""
+    """_matching_brace(), or the end of the text when the group never closes."""
     close = _matching_brace(text, start)
     return close if close is not None else len(text)
+
+
+def brace_problem(text):
+    r"""Why the braces in `text` do not balance, or '' if they do. Same escape
+    rule as _matching_brace(): `\{` and `\}` are literal."""
+    depth = 0
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth < 0:
+                return "unmatched closing brace"
+        i += 1
+    return f"unclosed braces (depth={depth})" if depth else ""
 
 
 def _drop_first_arg(text, macro):
@@ -480,6 +499,7 @@ def _exact_match(a, b):
 def crossref_by_doi(doi, mailto=None, timeout=15):
     if not doi:
         return None
+    import requests
     try:
         params = {'mailto': mailto} if mailto else {}
         resp = requests.get(f"https://api.crossref.org/works/{doi}", params=params, timeout=timeout)
@@ -527,6 +547,7 @@ def crossref_by_biblio(title, author_surname=None, year=None, mailto=None, timeo
     if not title:
         return None
     title = strip_latex(title)
+    import requests
     try:
         params = {'query.bibliographic': title, 'rows': 5}
         if mailto:
@@ -551,9 +572,6 @@ def crossref_by_biblio(title, author_surname=None, year=None, mailto=None, timeo
     return best if best_score >= min_similarity else None
 
 
-_CHAPTER_TYPES = ('incollection', 'inbook', 'inproceedings')
-
-
 def _place_container(found, entry_type, fields, identified):
     """Put a looked-up container title in the field it is for this entry type.
 
@@ -573,7 +591,7 @@ def _place_container(found, entry_type, fields, identified):
     if (entry_type or '').lower() not in _CHAPTER_TYPES:
         out['journaltitle'] = container
         return out
-    if not identified or any(fields.get(f) for f in _SATISFIED_BY['booktitle']):
+    if not identified or _present(fields, 'booktitle'):
         return out
     main, sep, sub = container.partition(': ')
     if sep and ': ' not in sub:
@@ -604,6 +622,7 @@ def crossref_fields(message):
 def scrapingdog_search(query, api_key, timeout=20):
     # Stripped defensively for the same reason as crossref_by_biblio().
     query = strip_latex(query)
+    import requests
     try:
         resp = requests.get(
             "https://api.scrapingdog.com/google_scholar",
@@ -692,6 +711,7 @@ def scrapingdog_cite_fields(result_id, api_key, timeout=20):
     `citations` array the Cite endpoint itself returns, which IS reliably
     served through ScrapingDog's proxy.
     """
+    import requests
     try:
         resp = requests.get(
             "https://api.scrapingdog.com/google_scholar/cite",

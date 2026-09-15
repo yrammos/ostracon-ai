@@ -671,16 +671,12 @@ excerpt's text won't (e.g. an embedded Author field):
 
             raw = response_text(message)
 
-            # The prompt ends "Output ONLY the BibLaTeX entry", and compliance
-            # is not guaranteed: a model explaining itself quotes `@Type` in
-            # prose ahead of the entry (#32; seen in both full runs of
-            # 2026-08-29, Gollin2011a and Rimsky1952). Isolated
-            # here, once, so the forbidden-field strip, both merge prompts and
-            # save_entry() all see the entry and never the commentary. The
-            # commentary is discarded, but not silently. A response with no
-            # entry at all goes through unchanged for save_entry() to route to
-            # failed_bib_file, and skips enrichment, which would spend CrossRef
-            # and API calls on prose.
+            # "Output ONLY the BibLaTeX entry" is not always obeyed: a model
+            # explaining itself quotes `@Type` in prose ahead of the entry
+            # (#32). Isolated once, here, so everything downstream sees only
+            # the entry; commentary is discarded with a warning. A reply with
+            # no entry passes through for save_entry() to reject, and skips
+            # enrichment, which would spend lookups on prose.
             entry, extra = enrich.isolate_entry(raw)
             if entry is None:
                 bibtex_entry = raw
@@ -813,9 +809,8 @@ commentary."""
                 max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
-            # Not clean_bibtex(): its fallback is the response itself, which
-            # for a commentary-only reply is prose - brace-balanced, so
-            # validate_braces() would have passed it as the merged entry.
+            # isolate_entry(), not clean_bibtex(): a reply with no entry must
+            # fail here, not come back as prose.
             merged, _ = enrich.isolate_entry(response_text(message))
             if merged is None:
                 return entry_text, None
@@ -1083,27 +1078,6 @@ BibLaTeX entry, with no additional commentary."""
         entry, _ = enrich.isolate_entry(bibtex_entry)
         return entry if entry is not None else bibtex_entry.strip()
 
-    def validate_braces(self, entry):
-        """Check that all braces in the entry are balanced. `\\{` and `\\}` are
-        literal and not counted - see enrich._matching_brace() (#43)."""
-        depth = 0
-        escaped = False
-        for char in entry:
-            if escaped:
-                escaped = False
-                continue
-            if char == '\\':
-                escaped = True
-            elif char == '{':
-                depth += 1
-            elif char == '}':
-                depth -= 1
-                if depth < 0:
-                    return False, "unmatched closing brace"
-        if depth != 0:
-            return False, f"unclosed braces (depth={depth})"
-        return True, ""
-
     def add_bdsk_bookmark(self, entry, pdf_path):
         """Inject a bdsk-file-1 field with a macOS file bookmark into the entry."""
         try:
@@ -1336,17 +1310,11 @@ end tell'''
         comment_block = ''.join(line + "\n" for line in result.comment_lines())
 
         # Reject anything that is not one complete entry, before touching the
-        # main file. "Starts with '@'" was not that test: after the old
-        # first-'@' cleaning, prose quoting `@Suppbook` passed it, and
-        # validate_braces() passed it too, since prose has no braces (#32).
-        # isolate_entry() only returns an entry whose braces balance, so the
-        # brace check now serves to say WHY a response was rejected.
+        # main file (#32). The brace check only names the reason.
         entry, _ = enrich.isolate_entry(result.entry)
         if entry is None:
             rejected = result.entry.strip()
-            valid, error_msg = self.validate_braces(rejected)
-            if valid:
-                error_msg = "response is not a BibTeX entry"
+            error_msg = enrich.brace_problem(rejected) or "response is not a BibTeX entry"
             self.save_failure(rejected, pdf_path.name, error_msg)
             self.notify_failure(pdf_path.name, error_msg)
             return False
