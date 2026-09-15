@@ -46,19 +46,11 @@ _SATISFIED_BY = {
     'booktitle': ('booktitle', 'maintitle'),
 }
 
-# Reported as missing, but not a reason to look anything up. A lookup fills
-# booktitle only from a DOI-matched CrossRef record (_place_container), and
-# never from Scholar, so as a trigger it would mostly start CrossRef lookups
-# and the paid Scholar fallback that cannot fill it. In practice it rarely
-# needs to trigger: a chapter entry is almost always missing chapter, pages or
-# number, which start the lookup anyway (11 of the 12 chapter-type outputs in
-# the 2026-08-29 baseline, including both that lacked booktitle).
-_NOT_LOOKED_UP = frozenset({'booktitle'})
-
 # Fields worth attempting to fill, but whose absence doesn't block completeness -
 # not every article/review has an issue number, not every proceedings paper has
 # a session/track number, and not every book chapter is numbered or paginated
-# in a way CrossRef/Scholar can reliably look up.
+# in a way CrossRef/Scholar can reliably look up. Whether a lookup is actually
+# made for one is _fillable()'s question: no source supplies `chapter` today.
 DESIRED_FIELDS = {
     'article': ['number'],
     'review': ['number'],
@@ -137,14 +129,62 @@ def _present(fields, name):
     return any(fields.get(f) for f in _SATISFIED_BY.get(name, (name,)))
 
 
-def fields_to_look_up(entry_type, fields):
-    """missing_fields(), less what no CrossRef/Scholar lookup can supply.
+# The three lookups gather_enrichment() can make.
+CROSSREF_DOI, CROSSREF_SEARCH, SCHOLAR = 'crossref-doi', 'crossref-search', 'scholar'
 
-    What decides whether enrichment runs. missing_fields() alone decides what
-    the saved entry's `% INCOMPLETE` comment names.
+
+def _fillable(source, entry_type):
+    """The fields `source` may supply to an entry of this type (#52).
+
+    One table for what a lookup is started for and what it is allowed to
+    contribute, so the two cannot disagree:
+    - publisher only on book-like types: CrossRef reports one for journal
+      articles too, and Chicago articles carry none (a spurious `Publisher =
+      {Public Library of Science (PLoS)}` reached an @article that way);
+    - the container title as Journaltitle except on the chapter types, where
+      it is the book, as Booktitle - and that only from a DOI match, since a
+      title search or Scholar can land on the wrong work, and a wrong
+      container reads as evidence (#42).
+    No source supplies `chapter`, so a missing one starts nothing.
+    """
+    entry_type = (entry_type or '').lower()
+    out = {'volume', 'number', 'pages'}
+    if entry_type in _BOOKLIKE:
+        out.add('publisher')
+    if entry_type not in _CHAPTER_TYPES:
+        out.add('journaltitle')
+    elif source == CROSSREF_DOI:
+        out |= {'booktitle', 'booksubtitle'}
+    return out
+
+
+def _admit(found, source, entry_type, fields, already):
+    """What `source` found, less what it may not supply (_fillable), what the
+    entry already has, and what an earlier source already supplied.
+    Booksubtitle comes only with the Booktitle it belongs to."""
+    allowed = _fillable(source, entry_type)
+    out = {}
+    for k, v in found.items():
+        if k in allowed and k != 'booksubtitle' and k not in already and not _present(fields, k):
+            out[k] = v
+    if 'booktitle' in out and found.get('booksubtitle') and not fields.get('booksubtitle'):
+        out['booksubtitle'] = found['booksubtitle']
+    return out
+
+
+def fillable_gaps(entry_type, fields, pdf_text=''):
+    """The missing fields some lookup could fill, in missing_fields() order.
+
+    What decides whether enrichment runs at all. missing_fields() alone
+    decides what the saved entry's `% INCOMPLETE` comment names. CrossRef is
+    asked about every gap, by DOI when one is at hand and otherwise by title;
+    Scholar, the paid fallback, only about required ones.
     """
     required, desired = missing_fields(entry_type, fields)
-    return [f for f in required if f not in _NOT_LOOKED_UP], desired
+    crossref = CROSSREF_DOI if (fields.get('doi') or extract_doi(pdf_text)) else CROSSREF_SEARCH
+    can = _fillable(crossref, entry_type)
+    scholar = _fillable(SCHOLAR, entry_type)
+    return [f for f in required if f in can or f in scholar] + [f for f in desired if f in can]
 
 
 def join_subtitle(main, sub):
@@ -572,27 +612,18 @@ def crossref_by_biblio(title, author_surname=None, year=None, mailto=None, timeo
     return best if best_score >= min_similarity else None
 
 
-def _place_container(found, entry_type, fields, identified):
-    """Put a looked-up container title in the field it is for this entry type.
+def _place_container(found, entry_type):
+    """Rename a looked-up container title to the field it is for this type.
 
     Both lookups report the container as `journaltitle`, which is right for an
-    article and wrong for a chapter, whose container is a book (#42). For the
+    article and wrong for a chapter, whose container is a book (#42): for the
     chapter types it becomes Booktitle, split into Booksubtitle at a single
-    ': ', and only when `identified` - the record came from a DOI match. A
-    title search can land on the wrong work, and a wrong container reads as
-    evidence (see the omit-rather-than-invent rule in the prompt). Nothing is
-    filled when the entry already names its container in either field
-    missing_fields() accepts.
+    ': '. Whether it may then be used is _admit()'s question, not this one.
     """
     out = dict(found)
-    container = out.pop('journaltitle', None)
-    if container is None:
+    if (entry_type or '').lower() not in _CHAPTER_TYPES or 'journaltitle' not in out:
         return out
-    if (entry_type or '').lower() not in _CHAPTER_TYPES:
-        out['journaltitle'] = container
-        return out
-    if not identified or _present(fields, 'booktitle'):
-        return out
+    container = out.pop('journaltitle')
     main, sep, sub = container.partition(': ')
     if sep and ': ' not in sub:
         out['booktitle'], out['booksubtitle'] = main.strip(), sub.strip()
@@ -785,9 +816,10 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
       it ('CrossRef' or 'Google Scholar'), so callers can report provenance
       per field rather than just an aggregate list of services used.
     """
-    required, desired = fields_to_look_up(entry_type, fields)
-    if not required and not desired:
+    if not fillable_gaps(entry_type, fields, pdf_text):
         return {}, {}
+    required, desired = missing_fields(entry_type, fields)
+    gaps = set(required) | set(desired)
 
     found = {}
     field_sources = {}
@@ -798,31 +830,25 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
         author_surname = raw_author.split(',')[0].strip()
     year = fields.get('date') or fields.get('year')
 
+    # Each lookup is made only when it could fill a gap - so a gap only a DOI
+    # can fill (a chapter's booktitle) never starts a title search.
     doi = fields.get('doi') or extract_doi(pdf_text)
-    message = crossref_by_doi(doi, mailto=crossref_email) if doi else None
-    identified = message is not None
-    if not message and title:
-        message = crossref_by_biblio(title, author_surname=author_surname, year=year, mailto=crossref_email)
+    message, source = None, None
+    if doi and gaps & _fillable(CROSSREF_DOI, entry_type):
+        message, source = crossref_by_doi(doi, mailto=crossref_email), CROSSREF_DOI
+    if not message and title and gaps & _fillable(CROSSREF_SEARCH, entry_type):
+        message, source = (crossref_by_biblio(title, author_surname=author_surname, year=year,
+                                              mailto=crossref_email), CROSSREF_SEARCH)
     if message:
-        crossref_found = _place_container(crossref_fields(message), entry_type, fields, identified)
-        for k, v in crossref_found.items():
-            # CrossRef reports a publisher for journal articles too, but Chicago
-            # doesn't carry one outside book-like types - merging it produced a
-            # spurious `Publisher = {Public Library of Science (PLoS)}` on an
-            # @article. Same rule as container_fields_missing().
-            if k == 'publisher' and (entry_type or '').lower() not in _BOOKLIKE:
-                continue
-            if not fields.get(k) and k not in found:
-                found[k] = v
-                field_sources[k] = 'CrossRef'
+        admitted = _admit(_place_container(crossref_fields(message), entry_type),
+                          source, entry_type, fields, found)
+        for k, v in admitted.items():
+            found[k] = v
+            field_sources[k] = 'CrossRef'
 
-    # Only these - matching what crossref_fields() also supplies above - are
-    # in scope here; scrapingdog_cite_fields() returns author/title/date too,
-    # but this function was never responsible for those and shouldn't start
-    # touching them just because the parser now happens to return them.
-    _SCHOLAR_ENRICHMENT_FIELDS = {'volume', 'number', 'pages', 'publisher', 'journaltitle'}
-
-    still_required = [f for f in required if f not in found]
+    # Scholar's Cite fields include author/title/date too; _fillable() keeps
+    # this step to the fields it was always for.
+    still_required = [f for f in required if f not in found and f in _fillable(SCHOLAR, entry_type)]
     if still_required and scrapingdog_api_key and title:
         # Combine title+author (when known) into one query and trust
         # Scholar's own top result, rather than re-ranking candidates by
@@ -834,13 +860,12 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
         results = scrapingdog_search(scholar_query, scrapingdog_api_key)
         top = results[0] if results else None
         if top and top.get('id'):
-            scholar_found = _place_container(
-                scrapingdog_cite_fields(top['id'], scrapingdog_api_key), entry_type, fields,
-                identified=False)
-            for k, v in scholar_found.items():
-                if k in _SCHOLAR_ENRICHMENT_FIELDS and not fields.get(k) and k not in found:
-                    found[k] = v
-                    field_sources[k] = 'Google Scholar'
+            admitted = _admit(
+                _place_container(scrapingdog_cite_fields(top['id'], scrapingdog_api_key), entry_type),
+                SCHOLAR, entry_type, fields, found)
+            for k, v in admitted.items():
+                found[k] = v
+                field_sources[k] = 'Google Scholar'
 
     return found, field_sources
 
