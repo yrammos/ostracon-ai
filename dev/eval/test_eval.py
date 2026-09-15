@@ -450,7 +450,27 @@ def test_manifest_extras_survives_a_manifest_it_cannot_read():
     return True
 
 
+def test_consistency_flags_agree_with_the_pipeline_on_booktitle():
+    # #30: select_sample.py and enrich.missing_fields() gave two answers to
+    # "does this entry lack its container?", and select_sample's included
+    # @SuppBook, which takes no Booktitle in this style (notes-test.bib's
+    # polakow:afterw, prose:intro). It now asks enrich directly.
+    text = """
+@incollection{A, title = {Chapter}, editor = {Doe, Jane}}
+@inproceedings{B, title = {Paper}, pages = {1-2}}
+@suppbook{C, title = {The Book}, afterword = {yes}}
+@inbook{D, title = {Negation}, maintitle = {Standard Edition}, volume = {19}}
+@incollection{E, title = {Chapter}, booktitle = {The Book}, editor = {Doe, Jane}}
+"""
+    entries, _ = bib_audit.scan(text)
+    flagged = {e.citekey for e in entries
+               if "chapter-type entry with no booktitle" in select_sample.consistency_flags(e)}
+    assert flagged == {"A", "B"}, flagged
+    return True
+
+
 TESTS = [
+    test_consistency_flags_agree_with_the_pipeline_on_booktitle,
     test_score_entry_all_verdicts,
     test_score_entry_normalizes_whitespace,
     test_score_entry_wrong_type,

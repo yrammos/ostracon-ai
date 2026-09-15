@@ -45,8 +45,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
 sys.path.insert(0, str(ROOT / "dev" / "eval"))
+sys.path.insert(0, str(ROOT / "src"))
 
 import bib_audit  # noqa: E402
+import enrich  # noqa: E402
 
 # The attachment resolver already exists in populate_sample.py (bdsk-file-N
 # bookmark decoding, local-url preference, extension filtering). Import it
@@ -184,7 +186,10 @@ def consistency_flags(entry):
     t = entry.etype.lower()
     has = lambda k: bool(entry.get(k))  # noqa: E731
 
-    if t in ("incollection", "inbook", "suppbook") and not has("booktitle"):
+    # Asked of the pipeline's own rule, so the two cannot disagree again (#30):
+    # this list once included suppbook, which takes no booktitle in this style.
+    fields = {f.name.lower(): f.value for f in entry.fields}
+    if "booktitle" in enrich.missing_fields(t, fields)[0]:
         out.append("chapter-type entry with no booktitle")
     if t == "incollection" and not has("editor") and not has("bookauthor"):
         out.append("chapter with neither editor nor bookauthor")

@@ -14,17 +14,46 @@ already produced. A low-confidence match is discarded rather than merged.
 """
 import re
 import difflib
-import requests
+try:
+    import requests
+except ImportError:
+    # Only the lookups need it, and without it they fail loudly on first use.
+    # dev/eval/select_sample.py imports this module for missing_fields(), and
+    # dev/eval/test_eval.py runs with none of the pipeline's dependencies
+    # installed. dev/test_setup.py checks requests is present for extraction.
+    requests = None
 
 DOI_RE = re.compile(r'10\.\d{4,9}/[^\s"<>{}]+')
 
 # Fields whose absence marks an entry incomplete.
+#
+# `booktitle` on the chapter types: without its container a chapter reads as a
+# standalone work. Not on @SuppBook/@SuppCollection, whose Title already names
+# the book - the package's own examples (polakow:afterw, prose:intro in
+# notes-test.bib) carry no Booktitle, and neither does any of the library's six.
 REQUIRED_FIELDS = {
     'article': ['volume', 'pages'],
     'review': ['volume', 'pages'],
-    'inproceedings': ['pages'],
+    'inproceedings': ['pages', 'booktitle'],
     'periodical': ['volume'],
+    'incollection': ['booktitle'],
+    'inbook': ['booktitle'],
 }
+
+# A requirement any one of these fields satisfies. A chapter in an untitled
+# volume of a multi-volume work names its container in Maintitle, with Volume
+# beside it and no Booktitle (the library's three booktitle-less @Inbook
+# entries are all this shape).
+_SATISFIED_BY = {
+    'booktitle': ('booktitle', 'maintitle'),
+}
+
+# Reported as missing, never looked up. crossref_fields() maps container-title
+# to journaltitle and Scholar's Cite fields carry no booktitle, so a lookup
+# could never fill it - the same reason _CONTAINER_FIELDS leaves out series and
+# location. Counting it would only start CrossRef lookups, and the paid Scholar
+# fallback, for entries that previously needed none.
+_NOT_LOOKED_UP = frozenset({'booktitle'})
 
 # Fields worth attempting to fill, but whose absence doesn't block completeness -
 # not every article/review has an issue number, not every proceedings paper has
@@ -78,9 +107,23 @@ def parse_bibtex_fields(entry_text):
 def missing_fields(entry_type, fields):
     """Returns (missing_required, missing_desired) field-name lists."""
     entry_type = (entry_type or '').lower()
-    required = [f for f in REQUIRED_FIELDS.get(entry_type, []) if not fields.get(f)]
-    desired = [f for f in DESIRED_FIELDS.get(entry_type, []) if not fields.get(f)]
+
+    def present(name):
+        return any(fields.get(f) for f in _SATISFIED_BY.get(name, (name,)))
+
+    required = [f for f in REQUIRED_FIELDS.get(entry_type, []) if not present(f)]
+    desired = [f for f in DESIRED_FIELDS.get(entry_type, []) if not present(f)]
     return required, desired
+
+
+def fields_to_look_up(entry_type, fields):
+    """missing_fields(), less what no CrossRef/Scholar lookup can supply.
+
+    What decides whether enrichment runs. missing_fields() alone decides what
+    the saved entry's `% INCOMPLETE` comment names.
+    """
+    required, desired = missing_fields(entry_type, fields)
+    return [f for f in required if f not in _NOT_LOOKED_UP], desired
 
 
 def join_subtitle(main, sub):
@@ -669,7 +712,7 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
       it ('CrossRef' or 'Google Scholar'), so callers can report provenance
       per field rather than just an aggregate list of services used.
     """
-    required, desired = missing_fields(entry_type, fields)
+    required, desired = fields_to_look_up(entry_type, fields)
     if not required and not desired:
         return {}, {}
 
