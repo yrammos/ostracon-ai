@@ -20,6 +20,8 @@ it's actually checked.
 from __future__ import annotations
 
 import io
+import json
+import re
 import sys
 from contextlib import contextmanager, redirect_stderr
 from pathlib import Path
@@ -334,12 +336,16 @@ class _Osa:
     """Canned osascript results, keyed by what the script is asking."""
 
     def __init__(self, running=True, listing=SAFARI_TAB_LISTING,
-                 refuse_events=False, refuse_js=False, capture=""):
+                 refuse_events=False, refuse_js=False, capture="", declarations=None):
         self.running = running
         self.listing = listing
         self.refuse_events = refuse_events
         self.refuse_js = refuse_js
         self.capture = capture
+        # {(window, tab): (canonical, doi)} - what each page declares about
+        # itself (#38). A tab absent from it answers with nothing parseable,
+        # which is how a page that cannot be asked behaves.
+        self.declarations = declarations or {}
         self.scripts = []
 
     class _R:
@@ -364,6 +370,10 @@ class _Osa:
             return self._R(0, self.listing)
         if self.refuse_js:
             return self._R(1, "", self._REFUSAL)
+        if "citation_doi" in script:
+            m = re.search(r"in tab (\d+) of window (\d+)", script)
+            declared = self.declarations.get((int(m.group(2)), int(m.group(1)))) if m else None
+            return self._R(0, json.dumps(list(declared)) if declared else "")
         return self._R(0, self.capture)
 
 
@@ -525,6 +535,78 @@ def test_tab_selection_refuses_a_different_article_on_the_same_host():
         html, app, summary, log = _probe(UCPRESS_URL)
     assert html is None, html
     assert "no matching tab" in summary, summary
+    return True
+
+
+UCPRESS_READER = "https://online.ucpress.edu/ncm/reader/current"   # a tab URL naming nothing
+DOI_URL = "https://academic.oup.com/jaac/article/doi/10.1093/jaac/kpag034"
+
+
+def test_a_tab_that_declares_the_work_is_taken_where_its_url_names_nothing():
+    # #38. Constructed fixture: the tab shows a reader URL with no id or
+    # slug, which the grammar cannot match, but its canonical link is the
+    # requested article's.
+    listing = _listing((1, 1, UCPRESS_READER))
+    with _osa(listing=listing, capture="<html>ok</html>",
+              declarations={(1, 1): (UCPRESS_CANONICAL, "")}):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert html == "<html>ok</html>", log
+    assert "declared" in summary, summary
+    assert "matched window 1 tab 1 (declared match:" in log, log
+    return True
+
+
+def test_a_tab_that_declares_another_work_is_refused_despite_its_url():
+    # The grammar matches tab 1 (same article id and slug), but the page says
+    # it is a different article: refused outright, and the next tab, which
+    # declares the requested one, is taken instead.
+    listing = _listing((1, 1, UCPRESS_CANONICAL), (1, 2, UCPRESS_READER))
+    with _osa(listing=listing, capture="<html>ok</html>",
+              declarations={(1, 1): (UCPRESS_OTHER_ARTICLE, ""),
+                            (1, 2): (UCPRESS_CANONICAL, "")}):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert "window 1 tab 1 declares another work" in log, log
+    assert "matched window 1 tab 2 (declared match:" in log, log
+
+    # With no other candidate, nothing is captured.
+    with _osa(listing=_listing((1, 1, UCPRESS_CANONICAL)), capture="<html>no</html>",
+              declarations={(1, 1): (UCPRESS_OTHER_ARTICLE, "")}):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert html is None and "no matching tab" in summary, (summary, log)
+    return True
+
+
+def test_a_declared_doi_settles_it_before_the_canonical_link():
+    # A DOI on both sides decides, either way: one extended by a further
+    # segment (Silverchair's article id) is the same record.
+    tab = "https://academic.oup.com/jaac/advance-article/8725072"
+    for page_doi, expected in (("10.1093/jaac/kpag034/8725072", True),
+                               ("10.1093/jaac/kpag999", False)):
+        with _osa(listing=_listing((1, 1, tab)), capture="<html>ok</html>",
+                  declarations={(1, 1): (DOI_URL, page_doi)}):
+            html, app, summary, log = _probe(DOI_URL)
+        assert (html is not None) is expected, (page_doi, log)
+    return True
+
+
+def test_a_tab_that_cannot_be_asked_falls_back_to_the_url():
+    # No declaration (unparseable reply) and no canonical/doi at all both
+    # leave the old URL-grammar identity match in charge.
+    for declared in ({}, {(1, 1): ("", "")}):
+        with _osa(listing=_listing((1, 1, UCPRESS_CANONICAL)), capture="<html>ok</html>",
+                  declarations=declared):
+            html, app, summary, log = _probe(UCPRESS_URL)
+        assert "identity" in summary, (declared, summary)
+    return True
+
+
+def test_an_exact_match_asks_no_tab_what_it_is():
+    stub = _Osa(listing=_listing((1, 1, UCPRESS_CANONICAL), (1, 2, UCPRESS_URL)),
+                capture="<html>ok</html>")
+    with _patched(web_source.subprocess, "run", stub):
+        html, app, summary, log = _probe(UCPRESS_URL)
+    assert "exact" in summary, summary
+    assert not any("citation_doi" in s for s in stub.scripts), "declarations read needlessly"
     return True
 
 
@@ -1077,6 +1159,11 @@ TESTS = [
     test_exact_match_wins_across_windows_not_just_within_one,
     test_identity_fallback_takes_the_earliest_window_and_tab,
     test_tab_selection_refuses_a_different_article_on_the_same_host,
+    test_a_tab_that_declares_the_work_is_taken_where_its_url_names_nothing,
+    test_a_tab_that_declares_another_work_is_refused_despite_its_url,
+    test_a_declared_doi_settles_it_before_the_canonical_link,
+    test_a_tab_that_cannot_be_asked_falls_back_to_the_url,
+    test_an_exact_match_asks_no_tab_what_it_is,
     test_browser_probe_reports_apple_events_refusal,
     test_browser_probe_reports_not_running,
     test_browser_probe_names_the_tabs_it_saw_on_no_match,

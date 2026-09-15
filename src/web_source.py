@@ -464,6 +464,60 @@ def _capture_tab_dom(app_name, window_index, tab_index, timeout=20):
     return text, BROWSER_MATCH, ''
 
 
+# What the page says it is: its canonical link (resolved to an absolute URL by
+# the DOM) and its citation_doi. Single quotes only, so it can sit inside the
+# AppleScript string literal unescaped.
+_JS_DECLARATIONS = (
+    "JSON.stringify(["
+    "(document.querySelector('link[rel=canonical]')||{}).href||'',"
+    "(document.querySelector('meta[name=citation_doi]')||{}).content||''])"
+)
+
+
+def _tab_declarations(app_name, window_index, tab_index, timeout=10):
+    """(canonical, doi) as the page in this tab declares them, either possibly
+    '' - or None when they could not be read (JavaScript from Apple Events
+    refused, an error, a reply that is not the expected JSON). None is not a
+    verdict; the caller falls back to comparing URLs."""
+    if app_name == "Safari":
+        script = (f'tell application "Safari" to do JavaScript "{_JS_DECLARATIONS}" '
+                  f'in tab {tab_index} of window {window_index}')
+    else:  # Google Chrome
+        script = (f'tell application "Google Chrome" to execute tab {tab_index} '
+                  f'of window {window_index} javascript "{_JS_DECLARATIONS}"')
+    status, text = _osascript(script, timeout=timeout)
+    if status != OSA_OK:
+        return None
+    try:
+        canonical, doi = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(canonical, str) or not isinstance(doi, str):
+        return None
+    return canonical.strip(), doi.strip()
+
+
+def _declared_verdict(url, canonical, doi):
+    """True if what a page declares about itself names the requested work,
+    False if it names another, None if it declares nothing usable.
+
+    A DOI on both sides settles it, with _url_matches' rule that one DOI
+    extending the other by a path segment is the same record. Otherwise the
+    canonical link is compared with the request by _url_matches - the same
+    identity rule as before, but applied to the address the publisher states
+    rather than whichever form the tab happens to show (#38).
+    """
+    requested_doi = (doi_candidates(clean_url(url)) or [''])[0].lower().rstrip('/')
+    page_doi = doi.lower().rstrip('/')
+    if page_doi and requested_doi:
+        return (page_doi == requested_doi
+                or page_doi.startswith(requested_doi + '/')
+                or requested_doi.startswith(page_doi + '/'))
+    if canonical.startswith('http'):
+        return _url_matches(url, canonical)
+    return None
+
+
 def browser_tab_dom(url, log=None):
     """(html, app_name, summary) - the rendered DOM of `url` and the browser
     it came from, if the page happens to be open in a Safari or Chrome tab
@@ -508,15 +562,33 @@ def browser_tab_dom(url, log=None):
         # Unlike the correspondence check, this has no backstop: capture the
         # wrong tab and the wrong document is what gets read. Should the two
         # sites ever need to diverge, this is the one that stays stricter.
-        exact = identity = None
-        for win_idx, tab_idx, tab_url in tabs:
-            if clean_url(tab_url).rstrip('/') == target:
-                exact = (win_idx, tab_idx, tab_url)
-                break
-            if identity is None and _url_matches(url, tab_url):
-                identity = (win_idx, tab_idx, tab_url)
-
-        chosen, kind = (exact, 'exact') if exact else (identity, 'identity')
+        #
+        # Before the URL grammar, each same-host tab is asked what it is (#38):
+        # its canonical link and citation_doi are the publisher's own statement,
+        # and the grammar is only a guess at each publisher's conventions - one
+        # that has married unrelated works twice. A declaration that names
+        # another work rejects the tab outright, even where the grammar would
+        # match it. A tab that declares nothing, or cannot be asked, falls back
+        # to the grammar exactly as before.
+        exact = next(((w, t, u) for w, t, u in tabs if clean_url(u).rstrip('/') == target), None)
+        chosen, kind = (exact, 'exact') if exact else (None, None)
+        if not chosen:
+            host = urlsplit(target).netloc.lower()
+            for win_idx, tab_idx, tab_url in tabs:
+                if urlsplit(clean_url(tab_url)).netloc.lower() != host:
+                    continue
+                declared = _tab_declarations(app_name, win_idx, tab_idx)
+                verdict = _declared_verdict(url, *declared) if declared else None
+                if verdict is True:
+                    chosen, kind = (win_idx, tab_idx, tab_url), 'declared'
+                    break
+                if verdict is False:
+                    log(f"  {app_name}: window {win_idx} tab {tab_idx} declares another work "
+                        f"(canonical {declared[0] or '-'}, doi {declared[1] or '-'}) - skipped")
+                    continue
+                if _url_matches(url, tab_url):
+                    chosen, kind = (win_idx, tab_idx, tab_url), 'identity'
+                    break
 
         if not chosen:
             outcomes.append(f"{app_name}: {BROWSER_NO_MATCH} ({len(tabs)} tab(s) examined)")
