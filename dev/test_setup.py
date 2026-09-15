@@ -97,6 +97,64 @@ def test_project_files():
 
     return all_present
 
+_CITEKEY_DEF = re.compile(r"(?m)^@\w+\s*\{\s*([^,\s]+)\s*,")
+_BACKTICKED = re.compile(r"`([^`\s]+)`")
+# The shape of this library's own keys (Dunsby1997, Gollin2011a) and of the
+# package test suite's (polakow:afterw, boxer:china).
+_LIBRARY_KEY = re.compile(r"[A-Z][A-Za-z\\\"{}]*\d{4}[a-z]?")
+_NOTES_TEST_KEY = re.compile(r"[a-z]+:[a-z]+")
+
+
+def test_citekeys_named_in_guidelines():
+    """Check that every example CLAUDE.md sends the model to actually exists.
+
+    The template is generated (dev/build_template.py), so a citekey CLAUDE.md
+    cites is present only if the generator happens to pick it. A missing one
+    raises nothing: the model just doesn't find it, which is how #15/#19 went
+    unseen for weeks (#35). Two rules, one per corpus:
+
+    - a library-style key on a line that names the template must be in
+      prompt-context/biblio-template.bib. Library keys on other lines are
+      histories of past fixes (Rayna2014, Kretschmer2008), not claims about
+      the template, and are left alone.
+    - a `name:name` key must be in prompt-context/notes-test.bib.
+
+    Not covered: a notes-test key without a colon (`batson`), which cannot be
+    told from any other code span. Stating a convention inline rather than
+    by citekey avoids the problem altogether.
+    """
+    print("\nTesting citekeys named in CLAUDE.md...")
+    guidelines = ROOT / "CLAUDE.md"
+    template = ROOT / "prompt-context" / "biblio-template.bib"
+    notes_test = ROOT / "prompt-context" / "notes-test.bib"
+    if not all(p.exists() for p in (guidelines, template, notes_test)):
+        print("  ⚠  CLAUDE.md or a prompt-context file is missing; see above")
+        return False
+    in_template = set(_CITEKEY_DEF.findall(template.read_text(encoding="utf-8")))
+    in_notes_test = set(_CITEKEY_DEF.findall(notes_test.read_text(encoding="utf-8")))
+
+    dangling = []
+    checked = set()
+    for n, line in enumerate(guidelines.read_text(encoding="utf-8").splitlines(), 1):
+        names_template = "template" in line.lower()
+        for tok in _BACKTICKED.findall(line):
+            if names_template and _LIBRARY_KEY.fullmatch(tok):
+                checked.add(tok)
+                if tok not in in_template:
+                    dangling.append(f"CLAUDE.md:{n} `{tok}` is not in biblio-template.bib")
+            elif _NOTES_TEST_KEY.fullmatch(tok):
+                checked.add(tok)
+                if tok not in in_notes_test:
+                    dangling.append(f"CLAUDE.md:{n} `{tok}` is not in notes-test.bib")
+
+    if dangling:
+        for d in dangling:
+            print(f"  ✗ {d}")
+        return False
+    print(f"  ✓ all {len(checked)} cited example keys exist")
+    return True
+
+
 def test_ocr():
     """Test if OCR is available."""
     print("\nTesting OCR capability...")
@@ -285,6 +343,7 @@ def main():
         'ocr': test_ocr(),
         'pdf_folder': test_pdf_folder(),
         'documentation': test_documentation(),
+        'citekeys': test_citekeys_named_in_guidelines(),
     }
     
     print("\n" + "=" * 60)
@@ -301,7 +360,7 @@ def main():
         print("✗ Some critical requirements missing")
         print("\nPlease fix the errors above before running the agent.")
     
-    optional = ['project_files', 'ocr', 'pdf_folder', 'documentation']
+    optional = ['project_files', 'ocr', 'pdf_folder', 'documentation', 'citekeys']
     if not all(results[k] for k in optional):
         print("\n⚠  Optional components missing:")
         if not results['project_files']:
@@ -312,6 +371,8 @@ def main():
             print("   - Create pdf-in/ and drop sources there for --all")
         if not results['documentation']:
             print("   - README.md has drifted from the code (see above)")
+        if not results['citekeys']:
+            print("   - CLAUDE.md cites an example that no longer exists (see above)")
     
     print()
 
