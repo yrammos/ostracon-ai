@@ -25,6 +25,10 @@ failed too - so needs_color was False for every entry and every source type,
 and BibDesk's amber coloring was inert from 2026-07-30 until it was found. See
 issue #17 for the affected window.
 
+The later tests cover a second path into the saved file: a model response that
+is not one bare entry (#32). Commentary quoting `@Suppbook` used to be taken as
+the start of the entry and saved, past both of save_entry()'s guards.
+
 No API call, no network: uses config.yaml as-is (BiblioAgent's __init__
 constructs an Anthropic client but never calls it here), redirected to a
 temp main_bib_file with autofile_bibdesk off, so nothing touches BibDesk.
@@ -319,6 +323,219 @@ def test_extract_bibtex_to_save_entry_round_trip():
     return True
 
 
+# ── Responses that are not one bare entry (#32) ─────────────────────────────
+#
+# Two fixtures, and their provenance differs:
+#
+# GOLLIN_RESPONSE - the prose is quoted in issue #32 from Gollin2011a's output in
+# the 2026-08-29 integration run. The issue elides the entry's fields; they are
+# filled in here from the values the run record gives for that output (Title
+# "Glossary", Date 2017, Pages 581). Reconstructed, not recorded.
+#
+# RIMSKY_SAVED - recorded: dev/eval/last-run/Rimsky1952.bib from the 2026-08-29
+# baseline run, verbatim. It is what the OLD clean_bibtex() saved, so it has
+# already lost the prose before "@Book" and the closing fence after the entry;
+# what remains is the same fault a second time, independently of #32 - a
+# line-initial "@Book (standalone monograph)" the first-'@' anchor took as the
+# start of the entry.
+
+GOLLIN_RESPONSE = """Looking at this source, the text is a glossary from a larger volume - this is a `@Suppbook` entry. The only fields I can populate are the generic section type and the page number (581 is visible, but the full page range of the glossary is unknown).
+
+Given the constraints - glossary with no title of its own, no author, no parent book information visible - the most honest entry I can produce is a minimal `@Suppbook` with the fields that are actually available:
+
+```bibtex
+@suppbook{Glossary2017,
+\tDate = {2017},
+\tPages = {581},
+\tTitle = {Glossary},
+}
+```"""
+
+RIMSKY_SAVED = """@Book (standalone monograph), in Russian, but I cannot reliably extract Author, Title, Publisher, Location, or Date from the degraded OCR of what appears to be a table of contents page.
+
+```bibtex
+@book{Unknown,
+\tLangid = {russian},
+\tNote = {\\foreignlanguage{russian}{Книга по акустике и физике музыкальных инструментов; библиографические данные не установлены по имеющемуся тексту}},
+\tdate-added = {2026-08-29 10:58:13 +0200},
+\tdate-modified = {2026-08-29 10:58:13 +0200},
+}"""
+
+# No entry at all, but everything the old guards looked for: a line-initial
+# '@', a backtick-quoted '@Type', and (having no braces) perfect brace balance.
+PROSE_ONLY = """@Suppbook would be the right type here, but the source gives nothing to put in it.
+No parent volume, author or date is visible, so I have not produced a `@Suppbook` entry."""
+
+
+def _quiet_agent(tmp_dir, **config):
+    """An agent writing both bib files into tmp_dir, with notifications off
+    and verbose on, so _log warnings reach the captured stderr."""
+    agent = _agent(Path(tmp_dir) / "staging.bib")
+    agent.config["failed_bib_file"] = str(Path(tmp_dir) / "failed.bib")
+    agent.config["interface"] = dict(agent.config.get("interface") or {}, notifications=False)
+    agent.config["verbose"] = True
+    agent.config.update(config)
+    return agent
+
+
+def _stub_client(agent, text):
+    """Every messages.create() call returns `text`; the calls are recorded."""
+    calls = []
+
+    class _Msg:
+        content = [type("B", (), {"type": "text", "text": text})()]
+
+    class _Messages:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return _Msg()
+
+    agent.client = type("C", (), {"messages": _Messages()})()
+    return calls
+
+
+def test_isolate_entry_bare_and_fenced_leave_nothing_over():
+    # The common case must not trip the commentary warning: fences are
+    # packaging, not commentary.
+    import enrich
+    bare = "@Article{X,\n  Title = {A {Nested} Title},\n}"
+    for text in (bare, f"```bibtex\n{bare}\n```", f"```\n{bare}\n```\n", f"\n\n{bare}\n"):
+        entry, extra = enrich.isolate_entry(text)
+        assert entry == bare, (text, entry)
+        assert extra == "", (text, extra)
+    return True
+
+
+def test_isolate_entry_skips_prose_that_quotes_an_entry_type():
+    import enrich
+    entry, extra = enrich.isolate_entry(GOLLIN_RESPONSE)
+    assert entry.startswith("@suppbook{Glossary2017,"), entry
+    assert entry.endswith("}") and "`" not in entry, entry
+    assert "most honest entry" in extra, extra
+
+    entry, extra = enrich.isolate_entry(RIMSKY_SAVED)
+    assert entry.startswith("@book{Unknown,"), entry
+    assert "standalone monograph" not in entry, entry
+    assert "standalone monograph" in extra, extra
+    return True
+
+
+def test_isolate_entry_finds_nothing_in_prose_or_an_unclosed_entry():
+    # And no fallback to the first '@' - that fallback IS the bug.
+    import enrich
+    assert enrich.isolate_entry(PROSE_ONLY)[0] is None
+    assert enrich.isolate_entry("@Article{X,\n  Title = {Unclosed},\n")[0] is None
+    return True
+
+
+def test_save_entry_saves_only_the_entry_from_a_commented_response():
+    # Against the old code this saved the prose too: the text began with '@'
+    # and the prose contributed no braces, so both guards passed.
+    for response, opener, prose in (
+        (GOLLIN_RESPONSE, "@suppbook{Glossary2017,", "most honest entry"),
+        (RIMSKY_SAVED, "@book{Unknown,", "standalone monograph"),
+    ):
+        with tempfile.TemporaryDirectory() as td:
+            agent = _quiet_agent(td)
+            with redirect_stderr(io.StringIO()):
+                ok = agent.save_entry(biblio_agent.ExtractionResult(entry=response), "x.webloc")
+            saved = (Path(td) / "staging.bib").read_text(encoding="utf-8")
+        assert ok is True
+        assert opener in saved, saved
+        assert prose not in saved, saved
+        assert "```" not in saved, saved
+    return True
+
+
+def test_save_entry_rejects_a_response_with_no_entry():
+    cases = (
+        (PROSE_ONLY, "response is not a BibTeX entry"),
+        ("@Article{X,\n  Title = {Unclosed},\n", "unclosed braces (depth=1)"),
+    )
+    for response, reason in cases:
+        with tempfile.TemporaryDirectory() as td:
+            agent = _quiet_agent(td)
+            with redirect_stderr(io.StringIO()):
+                ok = agent.save_entry(biblio_agent.ExtractionResult(entry=response), "x.webloc")
+            staging = Path(td) / "staging.bib"
+            failed = (Path(td) / "failed.bib").read_text(encoding="utf-8")
+            assert ok is False
+            assert not staging.exists() or staging.read_text(encoding="utf-8") == "", staging.read_text()
+            assert f"% Error: {reason}" in failed, failed
+            # The failed file keeps the whole response, so it can be read.
+            assert response.strip() in failed, failed
+    return True
+
+
+def _extract_with(agent, td, response):
+    """Run the real extract_bibtex() on a `.fake` source, the API stubbed."""
+    import extract_pages
+    source = Path(td) / "src.fake"
+    source.write_text("placeholder", encoding="utf-8")
+    calls = _stub_client(agent, response)
+    biblio_agent.EXTRACTORS[".fake"] = lambda path, **kw: extract_pages.SourceContent(
+        text="some body text", label="PDF", url=None)
+    try:
+        err = io.StringIO()
+        with redirect_stderr(err):
+            result = agent.extract_bibtex(source)
+    finally:
+        del biblio_agent.EXTRACTORS[".fake"]
+    return result, err.getvalue(), calls
+
+
+def test_extract_bibtex_isolates_the_entry_and_says_so():
+    # Salvaged, but not silently - the issue's own terms.
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        result, err, _ = _extract_with(agent, td, GOLLIN_RESPONSE)
+    assert result.failed is False, result
+    assert result.entry.startswith("@suppbook{Glossary2017,"), result.entry
+    assert "most honest entry" not in result.entry, result.entry
+    assert "characters outside the entry" in err, err
+
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        _, err, _ = _extract_with(agent, td, "```bibtex\n@Book{Y,\n  Title = {Z},\n}\n```")
+    assert "outside the entry" not in err, err
+    return True
+
+
+def test_extract_bibtex_does_not_enrich_prose():
+    # Enrichment on a response with no entry would spend CrossRef and API
+    # calls merging into prose. It must be skipped, and the prose left for
+    # save_entry() to reject.
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=True)
+
+        def _must_not_run(*a, **kw):
+            raise AssertionError("enrichment ran on a response with no entry")
+        agent.enrich_entry = _must_not_run
+        agent.verify_and_flag_recollection = _must_not_run
+        result, err, _ = _extract_with(agent, td, PROSE_ONLY)
+    assert result.failed is False, result
+    assert result.entry == PROSE_ONLY, result.entry
+    assert "no complete BibLaTeX entry" in err, err
+    return True
+
+
+def test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose():
+    # The merge paths gated only on validate_braces(), which prose passes.
+    # Against the old code this returned the prose as the reconciled entry.
+    import extract_pages
+    entry = "@Article{R,\n  Author = {Doe, J.},\n  Title = {T},\n}"
+    candidates = [{"field": "author", "claimed": "Doe, J.",
+                   "verified": "Doe, Jane", "source": "CrossRef"}]
+    content = extract_pages.SourceContent(text="body", label="PDF", url=None)
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td)
+        _stub_client(agent, "I left the `@Article` entry as it was; nothing needed merging.")
+        with redirect_stderr(io.StringIO()):
+            out = agent.reconcile_fields(entry, content, candidates)
+    assert out == entry, out
+    return True
+
+
 TESTS = [
     test_source_and_amber_comments_survive_needs_color_flag_is_discarded,
     test_entry_without_amber_marker_is_unaffected,
@@ -328,6 +545,14 @@ TESTS = [
     test_field_sources_reaches_the_saved_text,
     test_comment_lines_order_and_omission,
     test_extract_bibtex_to_save_entry_round_trip,
+    test_isolate_entry_bare_and_fenced_leave_nothing_over,
+    test_isolate_entry_skips_prose_that_quotes_an_entry_type,
+    test_isolate_entry_finds_nothing_in_prose_or_an_unclosed_entry,
+    test_save_entry_saves_only_the_entry_from_a_commented_response,
+    test_save_entry_rejects_a_response_with_no_entry,
+    test_extract_bibtex_isolates_the_entry_and_says_so,
+    test_extract_bibtex_does_not_enrich_prose,
+    test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose,
 ]
 
 

@@ -116,6 +116,9 @@ rather than passing quietly: the review state travels from one to the other as a
 `ExtractionResult` (`src/extraction_result.py`), and the `%` comments are rendered at
 the point of writing. They were formerly prepended to the entry text and parsed back
 out positionally, which is how the amber colouring failed silently for a month.
+It also covers a model response that is not one bare entry: commentary around the
+entry is discarded with a warning, and a response with no complete entry goes to
+`failed_bib_file` rather than into the library (#32).
 
 ## Configuration
 
