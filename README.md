@@ -337,7 +337,10 @@ fallback needs a one-time permission: in Safari, Develop ▸ Allow JavaScript fr
 Events (enable the Develop menu first under Settings ▸ Advanced, if it isn't visible);
 in Chrome, View ▸ Developer ▸ Allow JavaScript from Apple Events. Without it, capture
 silently fails exactly as if no tab had matched, and the CrossRef fallback (or the
-plain error) takes over instead.
+plain error) takes over instead. The same permission lets the agent ask each tab on
+the bookmark's site what it is — its canonical link and `citation_doi` — so a tab
+whose page declares a different work is skipped even when its address looks right;
+without it, tabs are matched on their addresses alone.
 
 **OCR not running.** Install `ocrmypdf`. Without it the agent falls back to direct
 extraction.
