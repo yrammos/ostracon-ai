@@ -291,6 +291,31 @@ def test_booktitle_alone_starts_no_lookup():
     return True
 
 
+def test_escaped_braces_are_literal():
+    # #43: an escaped closing brace truncated the entry, and the truncated
+    # text still balanced. Constructed fixtures - the library holds none.
+    import enrich
+    entry = "@Article{X,\n  Title = {A \\} B},\n  Note = {C \\{ D},\n  Pages = {1-2},\n}"
+    isolated, extra = enrich.isolate_entry(entry)
+    assert isolated == entry and extra == "", isolated
+
+    fields = enrich.parse_bibtex_fields(entry)
+    assert fields["title"] == "A \\} B" and fields["note"] == "C \\{ D", fields
+    assert fields["pages"] == "1-2", fields
+
+    assert enrich.set_field(entry, "Title", "New").count("Title = {New},") == 1
+    removed = enrich.remove_field(entry, "Title")
+    assert "Title" not in removed and "Note = {C \\{ D}," in removed, removed
+
+    with tempfile.TemporaryDirectory() as td:
+        agent = _agent(Path(td) / "staging.bib")
+        assert agent.validate_braces(entry) == (True, "")
+        # A doubled backslash escapes itself, so the brace after it counts.
+        assert agent.validate_braces("{a\\\\}") == (True, "")
+        assert agent.validate_braces("{a\\}")[0] is False
+    return True
+
+
 def test_comment_lines_order_and_omission():
     # The rendering order is the contract the two assertions above depend on,
     # and it is worth asserting directly rather than only through the file.
@@ -605,6 +630,7 @@ TESTS = [
     test_chapter_without_its_container_is_reported_incomplete,
     test_container_named_otherwise_is_not_reported,
     test_booktitle_alone_starts_no_lookup,
+    test_escaped_braces_are_literal,
     test_comment_lines_order_and_omission,
     test_extract_bibtex_to_save_entry_round_trip,
     test_isolate_entry_bare_and_fenced_leave_nothing_over,

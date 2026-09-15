@@ -114,16 +114,7 @@ def parse_bibtex_fields(entry_text):
         if start >= len(entry_text):
             continue
         if entry_text[start] == '{':
-            depth = 0
-            i = start
-            while i < len(entry_text):
-                if entry_text[i] == '{':
-                    depth += 1
-                elif entry_text[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        break
-                i += 1
+            i = _close_or_end(entry_text, start)
             fields[name] = entry_text[start + 1:i]
         else:
             end = entry_text.find(',', start)
@@ -208,16 +199,7 @@ def set_field(entry_text, field_name, new_value):
     start = m.end()
     if start >= len(entry_text) or entry_text[start] != '{':
         return entry_text
-    depth = 0
-    i = start
-    while i < len(entry_text):
-        if entry_text[i] == '{':
-            depth += 1
-        elif entry_text[i] == '}':
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
+    i = _close_or_end(entry_text, start)
     return entry_text[:start] + '{' + new_value + '}' + entry_text[i + 1:]
 
 
@@ -267,17 +249,7 @@ def remove_field(entry_text, field_name):
     if value_start >= len(entry_text) or entry_text[value_start] != '{':
         return entry_text
 
-    depth = 0
-    i = value_start
-    while i < len(entry_text):
-        if entry_text[i] == '{':
-            depth += 1
-        elif entry_text[i] == '}':
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    end = i + 1
+    end = _close_or_end(entry_text, value_start) + 1
     if end < len(entry_text) and entry_text[end] == ',':
         end += 1
     newline_pos = entry_text.find('\n', end)
@@ -362,16 +334,35 @@ _DROP_MACROS = ('bibstring',)
 
 
 def _matching_brace(text, start):
-    """Index of the `}` closing the `{` at `start`, or None if unbalanced."""
+    r"""Index of the `}` closing the `{` at `start`, or None if unbalanced.
+
+    `\{` and `\}` are literal braces, not grouping: a backslash escapes the
+    character after it, as in dev/bib_audit.py's _matching_brace(), which
+    scores this pipeline's output. Counting them truncated an entry at an
+    escaped closing brace, and the truncated text still balanced (#43).
+    """
     depth = 0
-    for i in range(start, len(text)):
-        if text[i] == '{':
+    i = start
+    while i < len(text):
+        c = text[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '{':
             depth += 1
-        elif text[i] == '}':
+        elif c == '}':
             depth -= 1
             if depth == 0:
                 return i
+        i += 1
     return None
+
+
+def _close_or_end(text, start):
+    """_matching_brace(), or the end of the text when the group never closes -
+    what the field helpers did before they shared one matcher."""
+    close = _matching_brace(text, start)
+    return close if close is not None else len(text)
 
 
 def _drop_first_arg(text, macro):

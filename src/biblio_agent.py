@@ -1084,10 +1084,17 @@ BibLaTeX entry, with no additional commentary."""
         return entry if entry is not None else bibtex_entry.strip()
 
     def validate_braces(self, entry):
-        """Check that all braces in the entry are balanced."""
+        """Check that all braces in the entry are balanced. `\\{` and `\\}` are
+        literal and not counted - see enrich._matching_brace() (#43)."""
         depth = 0
+        escaped = False
         for char in entry:
-            if char == '{':
+            if escaped:
+                escaped = False
+                continue
+            if char == '\\':
+                escaped = True
+            elif char == '{':
                 depth += 1
             elif char == '}':
                 depth -= 1
