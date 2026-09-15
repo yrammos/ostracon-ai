@@ -51,6 +51,9 @@ _SATISFIED_BY = {
 # a session/track number, and not every book chapter is numbered or paginated
 # in a way CrossRef/Scholar can reliably look up. Whether a lookup is actually
 # made for one is _fillable()'s question: no source supplies `chapter` today.
+# missing_fields() adds `publisher` for every _BOOKLIKE type: CrossRef often has
+# it, and in the 2026-09-15 baseline the only enrichment that landed was a
+# chapter's publisher, from a lookup that `chapter` alone had started (#52).
 DESIRED_FIELDS = {
     'article': ['number'],
     'review': ['number'],
@@ -120,7 +123,8 @@ def missing_fields(entry_type, fields):
     """Returns (missing_required, missing_desired) field-name lists."""
     entry_type = (entry_type or '').lower()
     required = [f for f in REQUIRED_FIELDS.get(entry_type, []) if not _present(fields, f)]
-    desired = [f for f in DESIRED_FIELDS.get(entry_type, []) if not _present(fields, f)]
+    desired = DESIRED_FIELDS.get(entry_type, []) + (['publisher'] if entry_type in _BOOKLIKE else [])
+    desired = [f for f in desired if not _present(fields, f)]
     return required, desired
 
 

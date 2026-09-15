@@ -301,13 +301,13 @@ def test_lookups_start_only_for_what_they_can_fill():
     import enrich
     # No source supplies Chapter, so a chapter missing only that starts nothing,
     # though % INCOMPLETE's own list is unchanged.
-    fields = {"title": "A Chapter", "booktitle": "B", "pages": "1-20"}
+    fields = {"title": "A Chapter", "booktitle": "B", "pages": "1-20", "publisher": "P"}
     assert enrich.missing_fields("incollection", fields) == ([], ["chapter"])
     assert enrich.fillable_gaps("incollection", fields, "doi 10.1000/xyz") == []
     assert _lookups("incollection", fields, "doi 10.1000/xyz") == []
 
     # Booktitle comes only from a DOI match: without a DOI nothing can fill it...
-    fields = {"title": "A Chapter", "chapter": "3", "pages": "1-20"}
+    fields = {"title": "A Chapter", "chapter": "3", "pages": "1-20", "publisher": "P"}
     assert enrich.missing_fields("incollection", fields) == (["booktitle"], [])
     assert enrich.fillable_gaps("incollection", fields, "no identifier") == []
     assert _lookups("incollection", fields, "no identifier") == []
@@ -320,6 +320,12 @@ def test_lookups_start_only_for_what_they_can_fill():
     # title search when the DOI misses, then Scholar.
     fields = {"title": "An Article", "journaltitle": "J", "number": "2"}
     assert _lookups("article", fields, "doi 10.1000/xyz") == ["doi", "search", "scholar"]
+
+    # A book-like entry's missing Publisher starts a lookup of its own, and
+    # stays out of % INCOMPLETE.
+    fields = {"title": "A Chapter", "booktitle": "B", "chapter": "3", "pages": "1-20"}
+    assert enrich.missing_fields("inbook", fields) == ([], ["publisher"])
+    assert _lookups("inbook", fields, "no identifier") == ["search"]
     return True
 
 
