@@ -291,6 +291,64 @@ def test_booktitle_alone_starts_no_lookup():
     return True
 
 
+def _gather_with(entry_type, fields, *, doi_record=None, search_record=None, scholar=None):
+    """gather_enrichment() with every lookup stubbed. doi_record answers a DOI
+    lookup, search_record a title search, scholar the Cite fields."""
+    import enrich
+    names = ("crossref_by_doi", "crossref_by_biblio", "scrapingdog_search", "scrapingdog_cite_fields")
+    saved = {n: getattr(enrich, n) for n in names}
+    enrich.crossref_by_doi = lambda doi, mailto=None: doi_record
+    enrich.crossref_by_biblio = lambda *a, **kw: search_record
+    enrich.scrapingdog_search = lambda q, key: [{"id": "x"}] if scholar else []
+    enrich.scrapingdog_cite_fields = lambda rid, key: scholar or {}
+    try:
+        pdf_text = "doi 10.1000/xyz" if doi_record else "no identifier here"
+        return enrich.gather_enrichment(pdf_text, fields.get("title", ""), entry_type, fields,
+                                        scrapingdog_api_key="k")[0]
+    finally:
+        for n, f in saved.items():
+            setattr(enrich, n, f)
+
+
+CHAPTER_RECORD = {"container-title": ["The Oxford Handbook of Neo-Riemannian Music Theories"],
+                  "page": "579-581"}
+
+
+def test_crossref_container_is_a_booktitle_for_a_chapter():
+    # #42: container-title reached chapter entries as Journaltitle.
+    found = _gather_with("incollection", {"title": "Glossary"}, doi_record=CHAPTER_RECORD)
+    assert found.get("booktitle") == "The Oxford Handbook of Neo-Riemannian Music Theories", found
+    assert "journaltitle" not in found, found
+
+    split = dict(CHAPTER_RECORD, **{"container-title": ["Pianist, Scholar, Connoisseur: Essays"]})
+    found = _gather_with("inbook", {"title": "T"}, doi_record=split)
+    assert (found.get("booktitle"), found.get("booksubtitle")) == ("Pianist, Scholar, Connoisseur", "Essays"), found
+
+    # An article's container is still its journal.
+    found = _gather_with("article", {"title": "T"}, doi_record={"container-title": ["Music Analysis"]})
+    assert found.get("journaltitle") == "Music Analysis" and "booktitle" not in found, found
+    return True
+
+
+def test_container_not_filled_without_an_identifying_record():
+    # A title search can land on the wrong work, and Scholar has no DOI at
+    # all: neither may supply a chapter's container, under either name. The
+    # rest of what they found still comes through.
+    found = _gather_with("incollection", {"title": "Glossary"}, search_record=CHAPTER_RECORD)
+    assert "booktitle" not in found and "journaltitle" not in found, found
+    assert found.get("pages") == "579-581", found
+
+    found = _gather_with("inproceedings", {"title": "Paper"},
+                         scholar={"journaltitle": "Proceedings of X", "pages": "1-9"})
+    assert "journaltitle" not in found and "booktitle" not in found, found
+
+    # An entry that already names its container keeps it, Maintitle included.
+    for named in ({"booktitle": "Own Book"}, {"maintitle": "Standard Edition", "volume": "19"}):
+        found = _gather_with("inbook", dict(named, title="T"), doi_record=CHAPTER_RECORD)
+        assert "booktitle" not in found and "booksubtitle" not in found, (named, found)
+    return True
+
+
 def test_comment_lines_order_and_omission():
     # The rendering order is the contract the two assertions above depend on,
     # and it is worth asserting directly rather than only through the file.
@@ -605,6 +663,8 @@ TESTS = [
     test_chapter_without_its_container_is_reported_incomplete,
     test_container_named_otherwise_is_not_reported,
     test_booktitle_alone_starts_no_lookup,
+    test_crossref_container_is_a_booktitle_for_a_chapter,
+    test_container_not_filled_without_an_identifying_record,
     test_comment_lines_order_and_omission,
     test_extract_bibtex_to_save_entry_round_trip,
     test_isolate_entry_bare_and_fenced_leave_nothing_over,
