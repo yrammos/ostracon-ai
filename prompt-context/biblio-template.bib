@@ -118,15 +118,16 @@
 
 % --- Online-only source ---
 % A title whose colon is sealed inside \foreignlanguage: the splitter
-% declines it, so the split was made by hand and BOTH halves carry their own
-% wrapper. Shorttitle then falls away. Url and Urldate, which an Online
-% entry must carry.
+% declines it, so the split was made by hand. Title is left unwrapped,
+% because under autolang=other a \foreignlanguage in an Online Title halts
+% the build; Langid covers it, and Subtitle keeps its wrapper. Shorttitle
+% then falls away. Url and Urldate, which an Online entry must carry.
 @online{Deliege2009,
 	Author = {Deliège, Célestin},
 	Langid = {french},
 	Organization = {\foreignlanguage{french}{Université de Paris-Sorbonne}},
 	Subtitle = {\foreignlanguage{french}{La \mkbibemph{Rêverie} des \mkbibemph{Scènes d'enfant} de Schumann}},
-	Title = {\foreignlanguage{french}{Une illustration de la perspective analytique du modèle schenkérien}},
+	Title = {Une illustration de la perspective analytique du modèle schenkérien},
 	Url = {http://www.plm.paris-sorbonne.fr/SchenkerMaster/Deliege.pdf},
 	Urldate = {2009-11-20},
 }

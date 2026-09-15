@@ -56,9 +56,11 @@ PICKS = [
      "between the two come out right."),
     ("Deliege2009", "Online-only source",
      "A title whose colon is sealed inside \\foreignlanguage: the splitter "
-     "declines it, so the split was made by hand and BOTH halves carry their "
-     "own wrapper. Shorttitle then falls away. Url and Urldate, which an "
-     "Online entry must carry."),
+     "declines it, so the split was made by hand. Title is left unwrapped, "
+     "because under autolang=other a \\foreignlanguage in an Online Title "
+     "halts the build; Langid covers it, and Subtitle keeps its wrapper. "
+     "Shorttitle then falls away. Url and Urldate, which an Online entry "
+     "must carry."),
     ("Sofer2025", "Whole issue of a periodical",
      "Number as an en-dash range -- a literal field, so the separator typed "
      "is the one that reaches the page; Issuetitle."),
