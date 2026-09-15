@@ -41,7 +41,7 @@ from __future__ import annotations
 import io
 import sys
 import tempfile
-from contextlib import redirect_stderr
+from contextlib import contextmanager, redirect_stderr
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -68,6 +68,19 @@ def _capture_bibdesk(agent):
 
     agent._save_via_bibdesk = _fake
     return calls
+
+
+@contextmanager
+def _patched(module, **attrs):
+    """Set module attributes for the duration, restoring them afterwards."""
+    saved = {name: getattr(module, name) for name in attrs}
+    for name, value in attrs.items():
+        setattr(module, name, value)
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            setattr(module, name, value)
 
 
 def test_source_and_amber_comments_survive_needs_color_flag_is_discarded():
@@ -236,12 +249,10 @@ def _incomplete_line(entry_text):
     """The `% INCOMPLETE` line save_entry() writes for this entry, or None."""
     result = biblio_agent.ExtractionResult(entry=entry_text)
     with tempfile.TemporaryDirectory() as td:
-        bib_path = Path(td) / "staging.bib"
-        agent = _agent(bib_path)
-        agent.config["interface"] = dict(agent.config.get("interface") or {}, notifications=False)
+        agent = _quiet_agent(td)
         with redirect_stderr(io.StringIO()):
             assert agent.save_entry(result, "x.webloc") is True
-        saved = bib_path.read_text(encoding="utf-8")
+        saved = (Path(td) / "staging.bib").read_text(encoding="utf-8")
     lines = [ln for ln in saved.splitlines() if ln.startswith("% INCOMPLETE")]
     return lines[0] if lines else None
 
@@ -280,13 +291,10 @@ def test_booktitle_alone_starts_no_lookup():
 
     def _no_network(*a, **kw):
         raise AssertionError("a lookup ran for a field no lookup can fill")
-    saved = enrich.crossref_by_doi, enrich.crossref_by_biblio, enrich.scrapingdog_search
-    enrich.crossref_by_doi = enrich.crossref_by_biblio = enrich.scrapingdog_search = _no_network
-    try:
+    with _patched(enrich, crossref_by_doi=_no_network, crossref_by_biblio=_no_network,
+                  scrapingdog_search=_no_network):
         found = enrich.gather_enrichment("body 10.1000/xyz", "A Chapter", "incollection", fields,
                                          scrapingdog_api_key="k")
-    finally:
-        enrich.crossref_by_doi, enrich.crossref_by_biblio, enrich.scrapingdog_search = saved
     assert found == ({}, {}), found
     return True
 
@@ -295,19 +303,14 @@ def _gather_with(entry_type, fields, *, doi_record=None, search_record=None, sch
     """gather_enrichment() with every lookup stubbed. doi_record answers a DOI
     lookup, search_record a title search, scholar the Cite fields."""
     import enrich
-    names = ("crossref_by_doi", "crossref_by_biblio", "scrapingdog_search", "scrapingdog_cite_fields")
-    saved = {n: getattr(enrich, n) for n in names}
-    enrich.crossref_by_doi = lambda doi, mailto=None: doi_record
-    enrich.crossref_by_biblio = lambda *a, **kw: search_record
-    enrich.scrapingdog_search = lambda q, key: [{"id": "x"}] if scholar else []
-    enrich.scrapingdog_cite_fields = lambda rid, key: scholar or {}
-    try:
+    with _patched(enrich,
+                  crossref_by_doi=lambda doi, mailto=None: doi_record,
+                  crossref_by_biblio=lambda *a, **kw: search_record,
+                  scrapingdog_search=lambda q, key: [{"id": "x"}] if scholar else [],
+                  scrapingdog_cite_fields=lambda rid, key: scholar or {}):
         pdf_text = "doi 10.1000/xyz" if doi_record else "no identifier here"
         return enrich.gather_enrichment(pdf_text, fields.get("title", ""), entry_type, fields,
                                         scrapingdog_api_key="k")[0]
-    finally:
-        for n, f in saved.items():
-            setattr(enrich, n, f)
 
 
 CHAPTER_RECORD = {"container-title": ["The Oxford Handbook of Neo-Riemannian Music Theories"],
@@ -561,12 +564,10 @@ def test_escaped_braces_are_literal():
     removed = enrich.remove_field(entry, "Title")
     assert "Title" not in removed and "Note = {C \\{ D}," in removed, removed
 
-    with tempfile.TemporaryDirectory() as td:
-        agent = _agent(Path(td) / "staging.bib")
-        assert agent.validate_braces(entry) == (True, "")
-        # A doubled backslash escapes itself, so the brace after it counts.
-        assert agent.validate_braces("{a\\\\}") == (True, "")
-        assert agent.validate_braces("{a\\}")[0] is False
+    assert enrich.brace_problem(entry) == ""
+    # A doubled backslash escapes itself, so the brace after it counts.
+    assert enrich.brace_problem("{a\\\\}") == ""
+    assert enrich.brace_problem("{a\\}") == "unclosed braces (depth=1)"
     return True
 
 
@@ -662,7 +663,7 @@ def test_extract_bibtex_does_not_enrich_prose():
 
 
 def test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose():
-    # The merge paths gated only on validate_braces(), which prose passes.
+    # The merge paths gated only on a brace-balance check, which prose passes.
     # Against the old code this returned the prose as the reconciled entry.
     import extract_pages
     entry = "@Article{R,\n  Author = {Doe, J.},\n  Title = {T},\n}"

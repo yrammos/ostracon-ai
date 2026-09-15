@@ -188,7 +188,7 @@ def consistency_flags(entry):
 
     # Asked of the pipeline's own rule, so the two cannot disagree again (#30):
     # this list once included suppbook, which takes no booktitle in this style.
-    fields = {f.name.lower(): f.value for f in entry.fields}
+    fields = {f.key: f.value for f in entry.fields}
     if "booktitle" in enrich.missing_fields(t, fields)[0]:
         out.append("chapter-type entry with no booktitle")
     if t == "incollection" and not has("editor") and not has("bookauthor"):

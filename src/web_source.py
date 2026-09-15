@@ -444,22 +444,24 @@ def _describe_tabs(tabs, target_url):
     return lines
 
 
-def _capture_tab_dom(app_name, window_index, tab_index, timeout=20):
-    """(html, status, detail) for one already-identified open tab, via each
-    browser's own JS-execution verb (they differ). A refusal here is the
+def _run_js_in_tab(app_name, window_index, tab_index, js, timeout):
+    """_osascript()'s (status, text) for `js` evaluated in one tab, via each
+    browser's own JS-execution verb (they differ). `js` must hold no double
+    quote: it sits inside an AppleScript string literal. A refusal here is the
     browser's separate "Allow JavaScript from Apple Events" switch, distinct
     from the Apple Events grant that listing tabs already cleared."""
     if app_name == "Safari":
-        script = (
-            f'tell application "Safari" to do JavaScript "{_JS_OUTER_HTML}" '
-            f'in tab {tab_index} of window {window_index}'
-        )
+        script = (f'tell application "Safari" to do JavaScript "{js}" '
+                  f'in tab {tab_index} of window {window_index}')
     else:  # Google Chrome
-        script = (
-            f'tell application "Google Chrome" to execute tab {tab_index} '
-            f'of window {window_index} javascript "{_JS_OUTER_HTML}"'
-        )
-    status, text = _osascript(script, timeout=timeout)
+        script = (f'tell application "Google Chrome" to execute tab {tab_index} '
+                  f'of window {window_index} javascript "{js}"')
+    return _osascript(script, timeout=timeout)
+
+
+def _capture_tab_dom(app_name, window_index, tab_index, timeout=20):
+    """(html, status, detail) for one already-identified open tab."""
+    status, text = _run_js_in_tab(app_name, window_index, tab_index, _JS_OUTER_HTML, timeout)
     if status == OSA_REFUSED:
         return None, BROWSER_CAPTURE_REFUSED, text
     if status == OSA_ERROR:
@@ -480,44 +482,35 @@ _JS_DECLARATIONS = (
 
 
 def _tab_declarations(app_name, window_index, tab_index, timeout=10):
-    """(canonical, doi) as the page in this tab declares them, either possibly
-    '' - or None when they could not be read (JavaScript from Apple Events
-    refused, an error, a reply that is not the expected JSON). None is not a
-    verdict; the caller falls back to comparing URLs."""
-    if app_name == "Safari":
-        script = (f'tell application "Safari" to do JavaScript "{_JS_DECLARATIONS}" '
-                  f'in tab {tab_index} of window {window_index}')
-    else:  # Google Chrome
-        script = (f'tell application "Google Chrome" to execute tab {tab_index} '
-                  f'of window {window_index} javascript "{_JS_DECLARATIONS}"')
-    status, text = _osascript(script, timeout=timeout)
+    """(status, declared): the osascript status, and (canonical, doi) as the
+    page in this tab declares them, either possibly '' - or None when they
+    could not be read (refused, an error, a reply that is not the expected
+    JSON). None is not a verdict; the caller falls back to comparing URLs."""
+    status, text = _run_js_in_tab(app_name, window_index, tab_index, _JS_DECLARATIONS, timeout)
     if status != OSA_OK:
-        return None
+        return status, None
     try:
         canonical, doi = json.loads(text)
     except (ValueError, TypeError):
-        return None
+        return status, None
     if not isinstance(canonical, str) or not isinstance(doi, str):
-        return None
-    return canonical.strip(), doi.strip()
+        return status, None
+    return status, (canonical.strip(), doi.strip())
 
 
 def _declared_verdict(url, canonical, doi):
     """True if what a page declares about itself names the requested work,
     False if it names another, None if it declares nothing usable.
 
-    A DOI on both sides settles it, with _url_matches' rule that one DOI
-    extending the other by a path segment is the same record. Otherwise the
-    canonical link is compared with the request by _url_matches - the same
-    identity rule as before, but applied to the address the publisher states
-    rather than whichever form the tab happens to show (#38).
+    A DOI on both sides settles it (_same_doi). Otherwise the canonical link
+    is compared with the request by _url_matches - the same identity rule as
+    before, but applied to the address the publisher states rather than
+    whichever form the tab happens to show (#38).
     """
-    requested_doi = (doi_candidates(clean_url(url)) or [''])[0].lower().rstrip('/')
+    requested_doi = _longest_doi(clean_url(url))
     page_doi = doi.lower().rstrip('/')
     if page_doi and requested_doi:
-        return (page_doi == requested_doi
-                or page_doi.startswith(requested_doi + '/')
-                or requested_doi.startswith(page_doi + '/'))
+        return _same_doi(page_doi, requested_doi)
     if canonical.startswith('http'):
         return _url_matches(url, canonical)
     return None
@@ -575,14 +568,20 @@ def browser_tab_dom(url, log=None):
         # another work rejects the tab outright, even where the grammar would
         # match it. A tab that declares nothing, or cannot be asked, falls back
         # to the grammar exactly as before.
+        # A refusal is app-wide (the JavaScript switch), so after the first
+        # one no further tab of that browser is asked.
         exact = next(((w, t, u) for w, t, u in tabs if clean_url(u).rstrip('/') == target), None)
-        chosen, kind = (exact, 'exact') if exact else (None, None)
+        chosen, kind = exact, 'exact'
         if not chosen:
             host = urlsplit(target).netloc.lower()
+            may_ask = True
             for win_idx, tab_idx, tab_url in tabs:
                 if urlsplit(clean_url(tab_url)).netloc.lower() != host:
                     continue
-                declared = _tab_declarations(app_name, win_idx, tab_idx)
+                declared = None
+                if may_ask:
+                    js_status, declared = _tab_declarations(app_name, win_idx, tab_idx)
+                    may_ask = js_status != OSA_REFUSED
                 verdict = _declared_verdict(url, *declared) if declared else None
                 if verdict is True:
                     chosen, kind = (win_idx, tab_idx, tab_url), 'declared'
@@ -826,6 +825,18 @@ def _identifying_segments(path):
     return ids, slugs
 
 
+def _longest_doi(cleaned_url):
+    """The fullest DOI in a cleaned URL's path, lowercased, or ''. Only the
+    longest candidate - never doi_candidates()' truncation ladder."""
+    return (doi_candidates(cleaned_url) or [''])[0].lower().rstrip('/')
+
+
+def _same_doi(a, b):
+    """Two normalised DOIs name one record: equal, or one extends the other by
+    a path segment (Silverchair appends its article id)."""
+    return a == b or a.startswith(b + '/') or b.startswith(a + '/')
+
+
 def _url_matches(a, b):
     """True when two URLs name the same work - identity, not path equality.
 
@@ -860,12 +871,9 @@ def _url_matches(a, b):
     # One DOI extending the other by a further path segment is still the
     # same work: Silverchair appends its article id, so
     # 10.1093/jaac/kpag034/8725072 and 10.1093/jaac/kpag034 are one record.
-    doi_a = (doi_candidates(clean_a) or [''])[0].lower().rstrip('/')
-    doi_b = (doi_candidates(clean_b) or [''])[0].lower().rstrip('/')
+    doi_a, doi_b = _longest_doi(clean_a), _longest_doi(clean_b)
     if doi_a and doi_b:
-        return (doi_a == doi_b
-                or doi_a.startswith(doi_b + '/')
-                or doi_b.startswith(doi_a + '/'))
+        return _same_doi(doi_a, doi_b)
 
     ids_a, slugs_a = _identifying_segments(parts_a.path)
     ids_b, slugs_b = _identifying_segments(parts_b.path)
