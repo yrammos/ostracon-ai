@@ -228,6 +228,65 @@ def test_field_sources_reaches_the_saved_text():
     return True
 
 
+def _incomplete_line(entry_text):
+    """The `% INCOMPLETE` line save_entry() writes for this entry, or None."""
+    result = biblio_agent.ExtractionResult(entry=entry_text)
+    with tempfile.TemporaryDirectory() as td:
+        bib_path = Path(td) / "staging.bib"
+        agent = _agent(bib_path)
+        agent.config["interface"] = dict(agent.config.get("interface") or {}, notifications=False)
+        with redirect_stderr(io.StringIO()):
+            assert agent.save_entry(result, "x.webloc") is True
+        saved = bib_path.read_text(encoding="utf-8")
+    lines = [ln for ln in saved.splitlines() if ln.startswith("% INCOMPLETE")]
+    return lines[0] if lines else None
+
+
+def test_chapter_without_its_container_is_reported_incomplete():
+    # #30: a chapter entry with no Booktitle was saved as complete. The prompt
+    # now tells the model to omit Booktitle rather than invent it, so the gap
+    # has to be reported downstream or it is invisible.
+    line = _incomplete_line("@Incollection{C,\n  Title = {A Chapter},\n  Pages = {1-20},\n}")
+    assert line is not None and "booktitle" in line, line
+    line = _incomplete_line("@Inproceedings{P,\n  Title = {A Paper},\n  Pages = {1-20},\n}")
+    assert line == "% INCOMPLETE: missing booktitle", line
+    return True
+
+
+def test_container_named_otherwise_is_not_reported():
+    # @SuppBook's Title IS the book (notes-test.bib: polakow:afterw,
+    # prose:intro), and a chapter in an untitled volume of a multi-volume
+    # work names its container in Maintitle. Neither lacks anything.
+    assert _incomplete_line(
+        "@SuppBook{S,\n  Title = {The Book},\n  Afterword = {yes},\n  Pages = {200-210},\n}") is None
+    line = _incomplete_line(
+        "@Inbook{F,\n  Title = {Negation},\n  Maintitle = {Standard Edition},\n"
+        "  Volume = {19},\n  Chapter = {3},\n  Pages = {235-242},\n}")
+    assert line is None, line
+    return True
+
+
+def test_booktitle_alone_starts_no_lookup():
+    # CrossRef and Scholar cannot supply Booktitle, so its absence must not
+    # start a lookup - above all not the paid Scholar fallback.
+    import enrich
+    fields = {"title": "A Chapter", "chapter": "3", "pages": "1-20"}
+    assert enrich.missing_fields("incollection", fields) == (["booktitle"], [])
+    assert enrich.fields_to_look_up("incollection", fields) == ([], [])
+
+    def _no_network(*a, **kw):
+        raise AssertionError("a lookup ran for a field no lookup can fill")
+    saved = enrich.crossref_by_doi, enrich.crossref_by_biblio, enrich.scrapingdog_search
+    enrich.crossref_by_doi = enrich.crossref_by_biblio = enrich.scrapingdog_search = _no_network
+    try:
+        found = enrich.gather_enrichment("body 10.1000/xyz", "A Chapter", "incollection", fields,
+                                         scrapingdog_api_key="k")
+    finally:
+        enrich.crossref_by_doi, enrich.crossref_by_biblio, enrich.scrapingdog_search = saved
+    assert found == ({}, {}), found
+    return True
+
+
 def test_comment_lines_order_and_omission():
     # The rendering order is the contract the two assertions above depend on,
     # and it is worth asserting directly rather than only through the file.
@@ -326,6 +385,9 @@ TESTS = [
     test_pdf_still_auto_files,
     test_no_color_flag_means_no_color,
     test_field_sources_reaches_the_saved_text,
+    test_chapter_without_its_container_is_reported_incomplete,
+    test_container_named_otherwise_is_not_reported,
+    test_booktitle_alone_starts_no_lookup,
     test_comment_lines_order_and_omission,
     test_extract_bibtex_to_save_entry_round_trip,
 ]
