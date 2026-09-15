@@ -70,6 +70,34 @@ DESIRED_FIELDS = {
 
 _FIELD_RE = re.compile(r'(?m)^\s*([A-Za-z]+)\s*=\s*')
 
+# The same pattern as dev/bib_audit.py's ENTRY_RE, deliberately: dev/eval/run.py
+# scores the pipeline's output with bib_audit.scan(), so an opener accepted here
+# and rejected there would surface as "no parseable entry". Line-initial because
+# a bare '@' is not evidence of an entry - a model explaining itself will quote
+# `@Suppbook` in its prose before the entry itself (#32).
+ENTRY_OPENER = re.compile(r'^@([A-Za-z]+)\s*\{', re.MULTILINE)
+_FENCE_LINE = re.compile(r'^```[A-Za-z]*[ \t]*$', re.MULTILINE)
+
+
+def isolate_entry(text):
+    """The first complete entry in a model response, and what surrounded it.
+
+    Returns (entry, extra). `entry` runs from the first line-initial `@type{`
+    to its matching brace, or is None when there is no such opener or it never
+    closes - never a fallback to the first '@', which is what let prose through
+    as an entry. `extra` is the text outside the entry with code fences and
+    whitespace removed: empty for a bare or fenced entry, non-empty when the
+    response carried commentary or a second entry.
+    """
+    m = ENTRY_OPENER.search(text)
+    if m is None:
+        return None, text.strip()
+    close = _matching_brace(text, m.end() - 1)
+    if close is None:
+        return None, text.strip()
+    outside = text[:m.start()] + '\n' + text[close + 1:]
+    return text[m.start():close + 1], _FENCE_LINE.sub('', outside).strip()
+
 
 def get_entry_type(entry_text):
     m = re.search(r'@(\w+)\{', entry_text)

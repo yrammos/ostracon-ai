@@ -669,7 +669,30 @@ excerpt's text won't (e.g. an embedded Author field):
                 ]
             )
 
-            bibtex_entry = response_text(message)
+            raw = response_text(message)
+
+            # The prompt ends "Output ONLY the BibLaTeX entry", and compliance
+            # is not guaranteed: a model explaining itself quotes `@Type` in
+            # prose ahead of the entry (#32; seen in both full runs of
+            # 2026-08-29, Gollin2011a and Rimsky1952). Isolated
+            # here, once, so the forbidden-field strip, both merge prompts and
+            # save_entry() all see the entry and never the commentary. The
+            # commentary is discarded, but not silently. A response with no
+            # entry at all goes through unchanged for save_entry() to route to
+            # failed_bib_file, and skips enrichment, which would spend CrossRef
+            # and API calls on prose.
+            entry, extra = enrich.isolate_entry(raw)
+            if entry is None:
+                bibtex_entry = raw
+                self._log("   ⚠️  Response contains no complete BibLaTeX entry", 'warning')
+            else:
+                bibtex_entry = entry
+                if extra:
+                    self._log(
+                        f"   ⚠️  Response carried {len(extra)} characters outside the entry "
+                        "(commentary or a second entry) - discarded, entry kept",
+                        'warning'
+                    )
 
             # Structural safety net: the prompt above already asks Claude not
             # to include these, but doesn't reliably follow through (e.g. a
@@ -682,7 +705,7 @@ excerpt's text won't (e.g. an embedded Author field):
 
             needs_color = False
             field_sources = None
-            if self.config.get('enrich_missing_fields', True):
+            if self.config.get('enrich_missing_fields', True) and entry is not None:
                 bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
                 bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
 
@@ -790,9 +813,11 @@ commentary."""
                 max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
-            merged = self.clean_bibtex(response_text(message))
-            valid, _ = self.validate_braces(merged)
-            if not valid:
+            # Not clean_bibtex(): its fallback is the response itself, which
+            # for a commentary-only reply is prose - brace-balanced, so
+            # validate_braces() would have passed it as the merged entry.
+            merged, _ = enrich.isolate_entry(response_text(message))
+            if merged is None:
                 return entry_text, None
         except Exception as e:
             self._log(f"   ⚠️  Enrichment merge failed: {e}", 'warning')
@@ -949,9 +974,9 @@ BibLaTeX entry, with no additional commentary."""
                 max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
-            merged = self.clean_bibtex(response_text(message))
-            valid, _ = self.validate_braces(merged)
-            if not valid:
+            # isolate_entry(), not clean_bibtex() - see enrich_entry().
+            merged, _ = enrich.isolate_entry(response_text(message))
+            if merged is None:
                 return entry_text
 
             unexpected = set(enrich.parse_bibtex_fields(merged)) - allowed_fields
@@ -1048,35 +1073,15 @@ BibLaTeX entry, with no additional commentary."""
         return entry_text, unresolved
 
     def clean_bibtex(self, bibtex_entry):
-        """Remove code fencing and surrounding prose from BibLaTeX entry if present."""
-        entry = bibtex_entry.strip()
-        # Remove ```bibtex or ``` fencing
-        if entry.startswith("```"):
-            lines = entry.split("\n")
-            lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            entry = "\n".join(lines).strip()
+        """The entry alone, without code fencing or surrounding prose.
 
-        # Strip any preamble text before the first @
-        at_pos = entry.find('@')
-        if at_pos > 0:
-            entry = entry[at_pos:]
-
-        # Strip any trailing text after the entry's closing brace
-        depth = 0
-        entry_end = len(entry)
-        for i, char in enumerate(entry):
-            if char == '{':
-                depth += 1
-            elif char == '}':
-                depth -= 1
-                if depth == 0:
-                    entry_end = i + 1
-                    break
-        entry = entry[:entry_end]
-
-        return entry.strip()
+        Falls back to the stripped response when it holds no complete entry,
+        so a caller that prints or saves the result still shows what came
+        back. Whether there IS an entry is enrich.isolate_entry()'s question,
+        and save_entry() asks it directly rather than inferring it from this.
+        """
+        entry, _ = enrich.isolate_entry(bibtex_entry)
+        return entry if entry is not None else bibtex_entry.strip()
 
     def validate_braces(self, entry):
         """Check that all braces in the entry are balanced."""
@@ -1318,24 +1323,24 @@ end tell'''
         pdf_path = Path(pdf_path)
 
         needs_color = result.needs_color
-        # Outermost first: Source, then AMBER, then Sources. clean_bibtex()
-        # discards everything before the first '@', so these are attached
-        # after cleaning, not before.
+        # Outermost first: Source, then AMBER, then Sources. Isolating the
+        # entry discards everything outside it, so these are attached after,
+        # not before.
         comment_block = ''.join(line + "\n" for line in result.comment_lines())
 
-        entry = self.clean_bibtex(result.entry)
-
-        # Reject responses that are not BibTeX entries
-        if not entry.lstrip().startswith('@'):
-            error_msg = "response is not a BibTeX entry"
-            self.save_failure(entry, pdf_path.name, error_msg)
-            self.notify_failure(pdf_path.name, error_msg)
-            return False
-
-        # Validate brace balance before touching the main file
-        valid, error_msg = self.validate_braces(entry)
-        if not valid:
-            self.save_failure(entry, pdf_path.name, error_msg)
+        # Reject anything that is not one complete entry, before touching the
+        # main file. "Starts with '@'" was not that test: after the old
+        # first-'@' cleaning, prose quoting `@Suppbook` passed it, and
+        # validate_braces() passed it too, since prose has no braces (#32).
+        # isolate_entry() only returns an entry whose braces balance, so the
+        # brace check now serves to say WHY a response was rejected.
+        entry, _ = enrich.isolate_entry(result.entry)
+        if entry is None:
+            rejected = result.entry.strip()
+            valid, error_msg = self.validate_braces(rejected)
+            if valid:
+                error_msg = "response is not a BibTeX entry"
+            self.save_failure(rejected, pdf_path.name, error_msg)
             self.notify_failure(pdf_path.name, error_msg)
             return False
 
