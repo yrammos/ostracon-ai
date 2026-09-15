@@ -780,9 +780,13 @@ commentary."""
         """
         entry_type = enrich.get_entry_type(entry_text)
         fields = enrich.parse_bibtex_fields(entry_text)
-        required, desired = enrich.fields_to_look_up(entry_type, fields)
+        required, desired = enrich.missing_fields(entry_type, fields)
         if not required and not desired:
             self._log(f"   Source: {content.label} (all fields present, no enrichment needed)", 'info')
+            return entry_text, None
+        if not enrich.fillable_gaps(entry_type, fields, content.text):
+            self._log(f"   Source: {content.label} (missing {', '.join(required + desired)}; "
+                      f"no lookup can supply it)", 'info')
             return entry_text, None
 
         title = enrich.strip_latex(fields.get('title', ''))

@@ -281,21 +281,60 @@ def test_container_named_otherwise_is_not_reported():
     return True
 
 
-def test_booktitle_alone_starts_no_lookup():
-    # CrossRef and Scholar cannot supply Booktitle, so its absence must not
-    # start a lookup - above all not the paid Scholar fallback.
+def _lookups(entry_type, fields, pdf_text, doi_record=None):
+    """The lookups gather_enrichment() makes, in order, with every one stubbed:
+    the DOI lookup answers `doi_record`, the rest find nothing."""
     import enrich
-    fields = {"title": "A Chapter", "chapter": "3", "pages": "1-20"}
-    assert enrich.missing_fields("incollection", fields) == (["booktitle"], [])
-    assert enrich.fields_to_look_up("incollection", fields) == ([], [])
+    calls = []
+    def rec(name, result):
+        return lambda *a, **kw: calls.append(name) or result
+    with _patched(enrich, crossref_by_doi=rec("doi", doi_record),
+                  crossref_by_biblio=rec("search", None), scrapingdog_search=rec("scholar", [])):
+        enrich.gather_enrichment(pdf_text, fields.get("title", ""), entry_type, fields,
+                                 scrapingdog_api_key="k")
+    return calls
 
-    def _no_network(*a, **kw):
-        raise AssertionError("a lookup ran for a field no lookup can fill")
-    with _patched(enrich, crossref_by_doi=_no_network, crossref_by_biblio=_no_network,
-                  scrapingdog_search=_no_network):
-        found = enrich.gather_enrichment("body 10.1000/xyz", "A Chapter", "incollection", fields,
-                                         scrapingdog_api_key="k")
-    assert found == ({}, {}), found
+
+def test_lookups_start_only_for_what_they_can_fill():
+    # #52: a lookup is made for the missing fields some source can supply,
+    # and each source only for those it can.
+    import enrich
+    # No source supplies Chapter, so a chapter missing only that starts nothing,
+    # though % INCOMPLETE's own list is unchanged.
+    fields = {"title": "A Chapter", "booktitle": "B", "pages": "1-20", "publisher": "P"}
+    assert enrich.missing_fields("incollection", fields) == ([], ["chapter"])
+    assert enrich.fillable_gaps("incollection", fields, "doi 10.1000/xyz") == []
+    assert _lookups("incollection", fields, "doi 10.1000/xyz") == []
+
+    # Booktitle comes only from a DOI match: without a DOI nothing can fill it...
+    fields = {"title": "A Chapter", "chapter": "3", "pages": "1-20", "publisher": "P"}
+    assert enrich.missing_fields("incollection", fields) == (["booktitle"], [])
+    assert enrich.fillable_gaps("incollection", fields, "no identifier") == []
+    assert _lookups("incollection", fields, "no identifier") == []
+    # ...with one it is looked up by DOI alone: no title search when the DOI
+    # misses, since a search may not supply it, and never the paid Scholar.
+    assert enrich.fillable_gaps("incollection", fields, "doi 10.1000/xyz") == ["booktitle"]
+    assert _lookups("incollection", fields, "doi 10.1000/xyz") == ["doi"]
+
+    # An article missing volume and pages is looked up as before: DOI, then a
+    # title search when the DOI misses, then Scholar.
+    fields = {"title": "An Article", "journaltitle": "J", "number": "2"}
+    assert _lookups("article", fields, "doi 10.1000/xyz") == ["doi", "search", "scholar"]
+
+    # A book-like entry's missing Publisher starts a lookup of its own, and
+    # stays out of % INCOMPLETE.
+    fields = {"title": "A Chapter", "booktitle": "B", "chapter": "3", "pages": "1-20"}
+    assert enrich.missing_fields("inbook", fields) == ([], ["publisher"])
+    assert _lookups("inbook", fields, "no identifier") == ["search"]
+    return True
+
+
+def test_scholar_supplies_only_what_it_may():
+    # Scholar's Cite fields carry a publisher for articles too; Chicago
+    # articles take none, the same rule CrossRef's publisher already obeyed.
+    found = _gather_with("article", {"title": "T", "journaltitle": "J"},
+                         scholar={"volume": "3", "pages": "1-9", "publisher": "PLoS", "title": "X"})
+    assert found == {"volume": "3", "pages": "1-9"}, found
     return True
 
 
@@ -688,7 +727,8 @@ TESTS = [
     test_field_sources_reaches_the_saved_text,
     test_chapter_without_its_container_is_reported_incomplete,
     test_container_named_otherwise_is_not_reported,
-    test_booktitle_alone_starts_no_lookup,
+    test_lookups_start_only_for_what_they_can_fill,
+    test_scholar_supplies_only_what_it_may,
     test_crossref_container_is_a_booktitle_for_a_chapter,
     test_container_not_filled_without_an_identifying_record,
     test_comment_lines_order_and_omission,
