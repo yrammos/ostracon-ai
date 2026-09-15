@@ -14,7 +14,14 @@ already produced. A low-confidence match is discarded rather than merged.
 """
 import re
 import difflib
-import requests
+try:
+    import requests
+except ImportError:
+    # Only the lookups need it, and without it they fail loudly on first use.
+    # dev/eval/select_sample.py imports this module for missing_fields(), and
+    # dev/eval/test_eval.py runs with none of the pipeline's dependencies
+    # installed. dev/test_setup.py checks requests is present for extraction.
+    requests = None
 
 DOI_RE = re.compile(r'10\.\d{4,9}/[^\s"<>{}]+')
 
