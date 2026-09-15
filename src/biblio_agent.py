@@ -306,7 +306,7 @@ class BiblioAgent:
                 "fields to omit, when Url/Urldate may appear, title case, name format, "
                 "Title/Subtitle splitting. On a style question the guidelines win; on a "
                 "what-does-the-package-support question the corpora win.\n\n"
-                "<reference_template> covers 12 of the ~40 entry types and is NOT an "
+                "<reference_template> covers 13 of the ~40 entry types and is NOT an "
                 "allowlist: choose whichever type genuinely fits, including ones it omits "
                 "(@Letter, @CustomC, @Audio, @Artwork, @Manual, @Booklet, @Bookinbook, "
                 "@Dataset, @Standard, @Performance, @Patent, @Image, the @Mv* types, and "

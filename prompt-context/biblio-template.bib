@@ -28,6 +28,23 @@
 	Volume = {37--38},
 }
 
+% --- Review ---
+% The reviewed work goes in Title, not in related/relatedtype:
+% \bibstring{reviewof}, its title in \mkbibemph, \bibstring{by} and its
+% author. The colon inside the emphasised title is not this entry's own
+% boundary, so no split. Shorttitle shortens both halves: the reviewed title
+% is cut at its colon and its author reduced to a surname.
+@review{Dunsby1997,
+	Author = {Dunsby, Jonathan},
+	Date = {1997},
+	Journaltitle = {Music \& Letters},
+	Number = {1},
+	Pages = {132-135},
+	Shorttitle = {\bibstring{reviewof} \mkbibemph{Authenticities}, \bibstring{by} Kivy},
+	Title = {\bibstring{reviewof} \mkbibemph{Authenticities: Philosophical Reflections on Musical Performance}, \bibstring{by} Peter Kivy},
+	Volume = {78},
+}
+
 % --- Book ---
 % Earned Shorttitle: the title carries TWO top-level colons, so which is the
 % entry's own boundary is ambiguous and the splitter declines. Url kept
@@ -101,15 +118,16 @@
 
 % --- Online-only source ---
 % A title whose colon is sealed inside \foreignlanguage: the splitter
-% declines it, so the split was made by hand and BOTH halves carry their own
-% wrapper. Shorttitle then falls away. Url and Urldate, which an Online
-% entry must carry.
+% declines it, so the split was made by hand. Title is left unwrapped,
+% because under autolang=other a \foreignlanguage in an Online Title halts
+% the build; Langid covers it, and Subtitle keeps its wrapper. Shorttitle
+% then falls away. Url and Urldate, which an Online entry must carry.
 @online{Deliege2009,
 	Author = {Deliège, Célestin},
 	Langid = {french},
 	Organization = {\foreignlanguage{french}{Université de Paris-Sorbonne}},
 	Subtitle = {\foreignlanguage{french}{La \mkbibemph{Rêverie} des \mkbibemph{Scènes d'enfant} de Schumann}},
-	Title = {\foreignlanguage{french}{Une illustration de la perspective analytique du modèle schenkérien}},
+	Title = {Une illustration de la perspective analytique du modèle schenkérien},
 	Url = {http://www.plm.paris-sorbonne.fr/SchenkerMaster/Deliege.pdf},
 	Urldate = {2009-11-20},
 }
