@@ -48,11 +48,13 @@ _SATISFIED_BY = {
     'booktitle': ('booktitle', 'maintitle'),
 }
 
-# Reported as missing, never looked up. crossref_fields() maps container-title
-# to journaltitle and Scholar's Cite fields carry no booktitle, so a lookup
-# could never fill it - the same reason _CONTAINER_FIELDS leaves out series and
-# location. Counting it would only start CrossRef lookups, and the paid Scholar
-# fallback, for entries that previously needed none.
+# Reported as missing, but not a reason to look anything up. A lookup fills
+# booktitle only from a DOI-matched CrossRef record (_place_container), and
+# never from Scholar, so as a trigger it would mostly start CrossRef lookups
+# and the paid Scholar fallback that cannot fill it. In practice it rarely
+# needs to trigger: a chapter entry is almost always missing chapter, pages or
+# number, which start the lookup anyway (11 of the 12 chapter-type outputs in
+# the 2026-08-29 baseline, including both that lacked booktitle).
 _NOT_LOOKED_UP = frozenset({'booktitle'})
 
 # Fields worth attempting to fill, but whose absence doesn't block completeness -
@@ -549,6 +551,38 @@ def crossref_by_biblio(title, author_surname=None, year=None, mailto=None, timeo
     return best if best_score >= min_similarity else None
 
 
+_CHAPTER_TYPES = ('incollection', 'inbook', 'inproceedings')
+
+
+def _place_container(found, entry_type, fields, identified):
+    """Put a looked-up container title in the field it is for this entry type.
+
+    Both lookups report the container as `journaltitle`, which is right for an
+    article and wrong for a chapter, whose container is a book (#42). For the
+    chapter types it becomes Booktitle, split into Booksubtitle at a single
+    ': ', and only when `identified` - the record came from a DOI match. A
+    title search can land on the wrong work, and a wrong container reads as
+    evidence (see the omit-rather-than-invent rule in the prompt). Nothing is
+    filled when the entry already names its container in either field
+    missing_fields() accepts.
+    """
+    out = dict(found)
+    container = out.pop('journaltitle', None)
+    if container is None:
+        return out
+    if (entry_type or '').lower() not in _CHAPTER_TYPES:
+        out['journaltitle'] = container
+        return out
+    if not identified or any(fields.get(f) for f in _SATISFIED_BY['booktitle']):
+        return out
+    main, sep, sub = container.partition(': ')
+    if sep and ': ' not in sub:
+        out['booktitle'], out['booksubtitle'] = main.strip(), sub.strip()
+    else:
+        out['booktitle'] = container
+    return out
+
+
 def crossref_fields(message):
     if not message:
         return {}
@@ -746,10 +780,12 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
 
     doi = fields.get('doi') or extract_doi(pdf_text)
     message = crossref_by_doi(doi, mailto=crossref_email) if doi else None
+    identified = message is not None
     if not message and title:
         message = crossref_by_biblio(title, author_surname=author_surname, year=year, mailto=crossref_email)
     if message:
-        for k, v in crossref_fields(message).items():
+        crossref_found = _place_container(crossref_fields(message), entry_type, fields, identified)
+        for k, v in crossref_found.items():
             # CrossRef reports a publisher for journal articles too, but Chicago
             # doesn't carry one outside book-like types - merging it produced a
             # spurious `Publisher = {Public Library of Science (PLoS)}` on an
@@ -778,7 +814,9 @@ def gather_enrichment(pdf_text, title, entry_type, fields, crossref_email=None, 
         results = scrapingdog_search(scholar_query, scrapingdog_api_key)
         top = results[0] if results else None
         if top and top.get('id'):
-            scholar_found = scrapingdog_cite_fields(top['id'], scrapingdog_api_key)
+            scholar_found = _place_container(
+                scrapingdog_cite_fields(top['id'], scrapingdog_api_key), entry_type, fields,
+                identified=False)
             for k, v in scholar_found.items():
                 if k in _SCHOLAR_ENRICHMENT_FIELDS and not fields.get(k) and k not in found:
                     found[k] = v
