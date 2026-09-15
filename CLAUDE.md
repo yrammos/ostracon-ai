@@ -11,7 +11,7 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
 - Look for PDFs and `.webloc` files in the `./pdf-in` folder.
 - **Read only** the beginning (max of first page or ~450 words) and last ~150 words of each PDF for bibliographic data.
 - For a `.webloc` file, fetch the page it bookmarks and extract from that instead - the same recognition/formatting rules apply, source text and metadata just come from the fetched webpage (main body text and `citation_*`/`og:*`/JSON-LD metadata) rather than from PDF pages and embedded file metadata.
-- IMPORTANT: `biblio-template.bib` shows this project's **house style** — field ordering, title case, name format, `Shorttitle`/`Subtitle` handling, which fields to omit. Follow it on all such questions. It is **not** a list of permitted entry types: it covers only 20 of the roughly 40 types biblatex-chicago offers, and its coverage reflects what has come up so far, not what is allowed.
+- IMPORTANT: `biblio-template.bib` shows this project's **house style** — field ordering, title case, name format, `Shorttitle`/`Subtitle` handling, which fields to omit. Follow it on all such questions. It is **not** a list of permitted entry types: it covers only 13 of the roughly 40 types biblatex-chicago offers, and its coverage reflects what has come up so far, not what is allowed.
 - Select whichever entry type genuinely fits the source, drawing on the **full** biblatex-chicago repertoire — including types absent from `biblio-template.bib`, such as `@Letter`, `@CustomC` (archival material), `@Audio`, `@Artwork`, `@Manual`, `@Booklet`, `@Bookinbook`, `@Dataset`, `@Standard`, `@Performance`, `@Patent`, `@Image`, and the multi-volume `@Mv*` types. `notes-test.bib` has worked examples for most of these; `biblatex-chicago-notes-ref.md` lists every type, including the few (`@Jurisdiction`, `@Legal`, `@Legislation`, `@MvProceedings`, `@MvReference`, `@SuppPeriodical`) that no example file covers. Never force a source into a template type when a better-fitting one exists.
 - Two worked-example corpora carry the entry-type reasoning, and both are loaded into the extraction prompt automatically via `example_files` in `config.yaml`. Use them for **classification** — working out what kind of thing the source is and which of the ~40 types therefore fits — and not merely as a tie-breaker between two candidates you have already narrowed down to:
   - `cms-notes-intro-guide.md` — organised *by kind of source*, which is what makes it a classification aid. Its taxonomy sections map source kinds onto entry types, naming a worked example for each in `[brackets]`; its "Online materials" section governs the access-mode question directly ("an online edition of a printed book still calls for a `@Book` entry"); and its `entrysubtype` section covers the cases where the type alone is insufficient (magazine, newspaper, classical, letter).
@@ -43,7 +43,7 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
 
   - **Tier 3 cannot overrule tier 1.** A rule in `CLAUDE.md` that prescribes an encoding which renders incorrectly is not a house style; it is a defect, and it must be corrected here rather than worked around. Four such defects have been found and fixed: hyphens for date ranges, the prohibition on splitting at terminal punctuation, whole-field `\foreignlanguage` on names, and `Url` retention by entry type alone.
   - **Tier 1 does not settle questions of choice.** Where the package accepts several forms, its own files exercise only one of them, and that is not a ruling. `notes-test.bib` writes literal-field ranges with a single hyphen; both forms compile, so the choice is tier 3's and this project writes `--`.
-  - **Silence is not prohibition.** A type or field appearing in no tier-2 or tier-3 file is available whenever tier 1 defines it. `biblio-template.bib` covers 13 entry types and `notes-test.bib` 32, against roughly 40 the package defines; neither is a list of what is permitted. Absence is a gap in local coverage, never a restriction.
+  - **Silence is not prohibition.** A type or field appearing in no tier-2 or tier-3 file is available whenever tier 1 defines it. `biblio-template.bib` covers 13 entry types (in 14 entries) and `notes-test.bib` 32, against roughly 40 the package defines; neither is a list of what is permitted. Absence is a gap in local coverage, never a restriction.
 
   **This is not hypothetical.** `biblatex-chicago-notes-ref.md` described `foreword`/`introduction`/`afterword` as "author of a foreword" and so on — true of biblatex in general, false for `@SuppBook`/`@SuppCollection`, where the style reads the field's presence and never prints its value. Acting on it destroyed a working entry: deleting what looked like a stray placeholder cost the entry its label and the full stop after the author. Tier 1 had the answer all along, in `polakow:afterw` and `prose:intro`.
 
@@ -118,7 +118,7 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
   - A title carrying no boundary mark at all is the genuinely redundant case — there is nothing to shorten it *to* — and that is the only shape from which `Shorttitle` should be removed.
   - **`Shorttitle` is not decorative here: this project cites with `\shortcite`.** The short note is a form the maintainer uses directly, so verify a `Shorttitle` decision by compiling `\shortcite`, not only `\autocite` and `\printbibliography`. Doing so is what caught `Vanhande\"{l}` — a diaeresis planted on an `l`, invisible in the `.bib` and in the long note's line-breaking, but plain as `Vanhandel,̈` once the short form was set. Two commands make other fields load-bearing in the same way: **`\citejournal`** prints `Journaltitle` in place of the title, so that field's title case reaches the page on its own; and **`\headlesscite`** suppresses the author, so an entry whose author also appears in the title reads differently. Compiled confirmation that the rules above hold in the short form: `Cole, review of Sounds as They Are, by Beaudoin`; `Мусин, О воспитании дирижера`; `Gutierrez, \mkbibquote{An Enactive Approach to Learning Music Theory?}`; `Moore, \mkbibquote{… Digital Signal Processing: Part~I}`.
 - A conference paper is `@Unpublished` only if it was never collected into a published proceedings volume. For those items, the `Note` field is used with the following content: `\autocap{p}aper presented at <Conference Name>`, for example: `\autocap{p}aper presented at the 9th Meeting of the Russian Society for Music Theory`. If the paper WAS published in a proceedings volume, use `@Inproceedings` instead (`Booktitle` = the proceedings volume's own title, `Eventtitle` = the conference name if distinct from the volume title) - never `@Unpublished` for a paper that has an actual publication to cite.
-- For a review, encode the reviewed work directly in `Title` (and the compressed form in `Shorttitle`) rather than via `relatedtype`/`related`: `\bibstring{reviewof} \mkbibemph{<title of the work reviewed>}, \bibstring{by} <author of the work reviewed>`. See `Dunsby1997` in `biblio-template.bib` for a full worked example.
+- For a review, encode the reviewed work directly in `Title` (and the compressed form in `Shorttitle`) rather than via `relatedtype`/`related`: `\bibstring{reviewof} \mkbibemph{<title of the work reviewed>}, \bibstring{by} <author of the work reviewed>`. `Shorttitle` shortens both halves: the reviewed title is cut at its colon and its author reduced to a bare surname — `\bibstring{reviewof} \mkbibemph{Authenticities}, \bibstring{by} Kivy`. See `Dunsby1997` in `biblio-template.bib` for the full pair.
 - A dissertation issued by a commercial publisher is a `@Book`, not a `@Thesis`. What is being cited is the published edition, so it takes the ordinary book apparatus - `Publisher`, `Location`, `Date` - and, where the volume states them, `Series` and `Number` for the academic series it appeared in. The dissertation origin is then relegated to `Note`, again only if the volume states it: `\autocap{o}riginally presented as the author's doctoral dissertation, <Institution>, <Year>`. Omit `Note` entirely rather than inferring a degree or an institution the source does not name. Reserve `@Thesis` for a dissertation consulted as a dissertation - a university copy, a repository PDF, a microfilm - where no commercial imprint exists to cite. The tell is an imprint page carrying a publisher, a place, and usually a series: a German volume's `Zugl.: <Place>, Univ., Diss., <Year>` line records the origin of a book, it does not make the item a thesis.
 - `Series` takes the **name of the series alone**. Everything else the imprint page attaches to it goes in `Number`: a subseries or division (`Reihe XXXVI, Musikwissenschaft`, `2nd ser.`, `\bibstring{newseries}`), then the volume or number within the series. This is the package's own rule, not a presentation choice — `boxer:china` in `notes-test.bib` carries `Series = {Hakluyt Society Publications}`, `Number = {2nd ser., 106}`, and its `annote` says putting the division in `Number` "may seem counter-intuitive, but it's necessary for getting the punctuation to work out right." biblatex-chicago generates the punctuation between the two fields, so a division left inside `Series` is set wrongly. See also `wauchope:ceramics` (`Number = {\bibstring{volume} 1, \bibstring{number} 14}`) — "the name of the series alone goes in series, the rest in number" — and `palmatary:pottery`.
   - So a German volume whose CIP line reads `Europäische Hochschulschriften : Reihe 36, Musikwissenschaft ; Bd. 35` is encoded `Series = {\foreignlanguage{ngerman}{Europäische Hochschulschriften}}` and `Number = {\foreignlanguage{ngerman}{Reihe XXXVI, Musikwissenschaft}, 35}` — never as a single `Series` holding both, however the title page punctuates them. The spaced ` : ` and ` ; ` there are library-cataloguing convention, and mark the very boundaries along which the value should be split between the two fields.
@@ -199,8 +199,8 @@ Treat a confident completion report as the thing most likely to be wrong.
   prefix; a change silently alters extraction behaviour for every subsequent run
   and invalidates comparison against the current baseline. Propose the wording
   and wait.
-- **Spend more than 10 live API calls in one session.** Prefer `--rescore`
-  against `dev/eval/last-run/`, which is free. A full 61-entry run costs real
+- **Spend more than 10 live API calls in one session.** Measure offline where
+  the change allows it (saved outputs, fixtures). A full 61-entry run costs real
   money and needs asking for.
 - **Claim a GUI-dependent thing works.** BibDesk colouring, Safari and Chrome tab
   capture, the Quick Action, Apple Events permissions: none is visible from a
@@ -214,11 +214,20 @@ Treat a confident completion report as the thing most likely to be wrong.
   rebased.
 - **Run `python3 dev/eval/test_eval.py` and `python dev/test_setup.py` before
   every commit.** Plus the web-source suite when `src/web_source.py` is touched.
-- **`--rescore` after any change to extraction, and put the result in the PR
-  body**, against the most recent file in `dev/eval/baselines/`. A change that
-  moves fewer than about two entries in 61 is within noise: report it as
-  unchanged rather than as an improvement. One entry flipped between the first
-  two baseline runs with no attributable cause.
+- **`--rescore` measures the harness, not the pipeline.** It re-scores the
+  saved output in `dev/eval/last-run/` against `expected.bib`, so it reflects
+  changes to `scorer.py`, `run.py`'s parsing or `expected.bib`, and nothing
+  else: not a prompt change, and not post-processing such as `clean_bibtex()`
+  or `missing_fields()`. Run it after touching the harness or ground truth. For
+  a change to extraction, say in the PR body that `--rescore` cannot see it;
+  only a live run can, and that needs asking for. A live run that moves fewer
+  than about two entries in 61 is within noise: report it as unchanged rather
+  than as an improvement. One entry flipped between the first two baseline
+  runs with no attributable cause.
+- **Quote values from the file, not from memory.** A citekey, field value,
+  count, score or behaviour stated in a PR, issue or commit is read from its
+  source in the same session; anything stated from recall is marked as
+  recalled. A confidently wrong value looks exactly like a correct one.
 - **Distinguish what was tested from what was assumed.** A stub encodes the
   format you expected, not the format the system emits — which is exactly how
   the AppleScript terminology collision survived a round of testing. When a test

@@ -31,6 +31,12 @@ PICKS = [
      "Date as an ISO 8601-2 range (solidus); Volume as an en-dash range; "
      "Title/Subtitle split; nested \\mkbibemph, \\mkbibquote and "
      "\\foreignlanguage; Pages with a single hyphen."),
+    ("Dunsby1997", "Review",
+     "The reviewed work goes in Title, not in related/relatedtype: "
+     "\\bibstring{reviewof}, its title in \\mkbibemph, \\bibstring{by} and its "
+     "author. The colon inside the emphasised title is not this entry's own "
+     "boundary, so no split. Shorttitle shortens both halves: the reviewed "
+     "title is cut at its colon and its author reduced to a surname."),
     ("Czerny1839", "Book",
      "Earned Shorttitle: the title carries TWO top-level colons, so which is "
      "the entry's own boundary is ambiguous and the splitter declines. Url "
