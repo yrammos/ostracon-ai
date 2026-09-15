@@ -336,11 +336,13 @@ class _Osa:
     """Canned osascript results, keyed by what the script is asking."""
 
     def __init__(self, running=True, listing=SAFARI_TAB_LISTING,
-                 refuse_events=False, refuse_js=False, capture="", declarations=None):
+                 refuse_events=False, refuse_js=False, capture="", declarations=None,
+                 js_refusal=None):
         self.running = running
         self.listing = listing
         self.refuse_events = refuse_events
         self.refuse_js = refuse_js
+        self.js_refusal = js_refusal or self._REFUSAL
         self.capture = capture
         # {(window, tab): (canonical, doi)} - what each page declares about
         # itself (#38). A tab absent from it answers with nothing parseable,
@@ -369,7 +371,7 @@ class _Osa:
                 return self._R(0, "")
             return self._R(0, self.listing)
         if self.refuse_js:
-            return self._R(1, "", self._REFUSAL)
+            return self._R(1, "", self.js_refusal)
         if "citation_doi" in script:
             m = re.search(r"in tab (\d+) of window (\d+)", script)
             declared = self.declarations.get((int(m.group(2)), int(m.group(1)))) if m else None
@@ -661,6 +663,24 @@ def test_browser_probe_distinguishes_js_refusal_from_missing_tab():
     assert html is None
     assert "JavaScript from Apple Events refused" in summary, summary
     assert "no matching tab" not in summary, summary
+    assert "matched window 1 tab 12" in log, log
+    return True
+
+
+# Recorded from Safari on macOS 27 with the switch off, during the manual
+# check of #47. Not -1743: a generic error (8) naming the setting.
+SAFARI_JS_OFF = ("29:101: execution error: Safari got an error: You must enable "
+                 "'Allow JavaScript from Apple Events' in the Developer section of "
+                 "Safari Settings to use 'do JavaScript'. (8)")
+
+
+def test_safaris_own_js_refusal_wording_is_recognised():
+    # #48: the -1743 fixture above passed while the real message was
+    # reported as a generic error.
+    with _osa(refuse_js=True, js_refusal=SAFARI_JS_OFF):
+        html, app, summary, log = _probe()
+    assert html is None
+    assert "JavaScript from Apple Events refused" in summary, summary
     assert "matched window 1 tab 12" in log, log
     return True
 
@@ -1168,6 +1188,7 @@ TESTS = [
     test_browser_probe_reports_not_running,
     test_browser_probe_names_the_tabs_it_saw_on_no_match,
     test_browser_probe_distinguishes_js_refusal_from_missing_tab,
+    test_safaris_own_js_refusal_wording_is_recognised,
     test_browser_challenge_markup_produces_amber_entry,
     test_browser_thin_dom_produces_amber_entry,
     test_browser_genuine_article_succeeds,

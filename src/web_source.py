@@ -268,9 +268,14 @@ OSA_ERROR = 'error'          # anything else: no such tab, osascript absent, tim
 # macOS reports a denied Apple Events grant as error -1743; the accompanying
 # wording varies by OS version and locale, so the numeric code is what this
 # matches on, with the English phrasings as a secondary net. Safari's separate
-# "Allow JavaScript from Apple Events" switch reports -1743 as well when off.
+# "Allow JavaScript from Apple Events" switch does NOT report -1743 when off:
+# recorded on macOS 27 it is a generic error (8), "Safari got an error: You
+# must enable 'Allow JavaScript from Apple Events' in the Developer section of
+# Safari Settings to use 'do JavaScript'." Only the setting's own name
+# identifies it, so that is what the last marker matches (#48). Chrome's
+# wording for its equivalent switch has not been recorded.
 _REFUSED_MARKERS = ('-1743', 'not authorized', 'not authorised', 'not allowed',
-                    'not permitted')
+                    'not permitted', 'allow javascript from apple events')
 
 # How many non-matching tab URLs to name before summarising the rest. Tabs on
 # the target's own host are always named in full regardless of this cap: they
