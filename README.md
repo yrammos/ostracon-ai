@@ -292,29 +292,23 @@ conflict left deliberately unresolved.
 from the environment the quick action uses. Check `PYTHON` in
 `automator/script.sh`.
 
-**Quick action absent from Finder.** Look under the contextual menu's **Services**
-submenu; on macOS 26 that is where it appears, not under Quick Actions. Re-run
-`python3 dev/install_service.py`, which rebuilds the workflow, refreshes the
-Services cache and relaunches Finder; the menu is built at Finder launch, so a
-stale menu survives until Finder restarts. The action is confined to Finder and
-to PDF and `.webloc` files, so it appears in no other application and against no
-other file type. If it is still absent, check that it is ticked under System
-Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services ▸ Files and Folders.
+**Quick action absent from Finder.** On macOS 26 it sits under the contextual menu's
+**Services** submenu, and only for PDF and `.webloc` files in Finder. Re-run
+`python3 dev/install_service.py`, which rebuilds it and relaunches Finder. Failing
+that, tick it under System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services ▸
+Files and Folders.
 
 **“Context files configured in config.yaml are missing.”** A file named in
 `claude_md_file`, `template_file`, `ref_file` or `example_files` is not where the
 configuration says. These constitute the cached prefix, so the agent refuses to
 start rather than proceed without them.
 
-**A bot-challenged `.webloc` fails even with the page open in a tab.** The browser DOM
-fallback needs a one-time permission: in Safari, Develop ▸ Allow JavaScript from Apple
-Events (enable the Develop menu first under Settings ▸ Advanced, if it isn't visible);
-in Chrome, View ▸ Developer ▸ Allow JavaScript from Apple Events. Without it, capture
-silently fails exactly as if no tab had matched, and the CrossRef fallback (or the
-plain error) takes over instead. The same permission lets the agent ask each tab on
-the bookmark's site what it is — its canonical link and `citation_doi` — so a tab
-whose page declares a different work is skipped even when its address looks right;
-without it, tabs are matched on their addresses alone.
+**A bot-challenged `.webloc` fails even with the page open in a tab.** Reading a tab
+needs a one-time permission. Safari: Develop ▸ Allow JavaScript from Apple Events
+(enable the Develop menu under Settings ▸ Advanced). Chrome: View ▸ Developer ▸
+Allow JavaScript from Apple Events. Without it, the log reports the refusal and the
+agent falls back to CrossRef or an error; tabs are also matched on their address
+alone, rather than on the work the page declares.
 
 **OCR not running.** Install `ocrmypdf`. Without it the agent falls back to direct
 extraction.
