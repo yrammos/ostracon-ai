@@ -553,9 +553,13 @@ excerpt's text won't (e.g. an embedded Author field):
    bibliographic registry rather than from that address itself.)
    Identify the publication type from the work itself as
    usual (step 1) - a webpage may still be a printable book, article, etc.
-   with its own type, not necessarily @Online. Set Url to exactly this
-   address: {content.url}
-   Set Urldate to {now.strftime('%Y-%m-%d')} (today's date).
+   with its own type, not necessarily @Online.
+   Include Url and Urldate only where the URL rule above allows them - an
+   @Online entry, an online reference work, or an entry with no Date. A
+   dated book or article is cited as the book or article, not by the page
+   it was read on, and takes neither field. Where they do belong, Url is
+   exactly this address: {content.url}
+   and Urldate is {now.strftime('%Y-%m-%d')} (today's date).
 """
 
         prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
