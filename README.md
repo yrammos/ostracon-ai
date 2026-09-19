@@ -37,7 +37,7 @@ With or without BibDesk, this agent enhances BibLaTeX-Chicago writing workflows 
 
 Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context; it is left as a trivial exercise for the reader.
 
-## What it does
+## Function
 
 For each source in turn: extracts text (OCR if scanned; for a `.webloc`,
 fetches the bookmarked page),
