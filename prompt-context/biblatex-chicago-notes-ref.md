@@ -210,7 +210,7 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 | Field | Description |
 |---|---|
 | `doi` | Digital Object Identifier (without the `https://doi.org/` prefix). |
-| `url` | URL. Package-legal on any entry type, but per project guidelines populate only when the entry is `@Online`, is an online reference work, has no `date`, or carries no `doi` (see note below). |
+| `url` | URL. Package-legal on any entry type, but per project guidelines populate only when the entry is `@Online`, is an online reference work, or has no `date` (see note below). |
 | `urldate` | Date the URL was last accessed (format: `YYYY-MM-DD`). An access-date-only `urldate` (no `userd`) prints as "accessed <date>"; the style prints no "n.d." beside it, and an undated online source needs none, so add no `year = {\bibstring{nodate}}`. With `userd` (e.g. `last modified`) it prints as a qualified date instead. |
 | `eprint` | Eprint identifier (e.g. arXiv ID). |
 | `eprinttype` | Eprint archive type (e.g. `arxiv`). |
@@ -254,7 +254,7 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 
 ## Fields to Omit (per project guidelines)
 
-Do **not** populate: `isbn`, `issn`, `keywords`. `url`/`urldate` are populated for `@Online` entries, online reference works, entries with no `date`, and entries carrying no `doi`; omit otherwise. The principle is one canonical locator per entry - Chicago prefers a DOI to a URL, so a `url` beside a `doi` is redundant, while an entry with no DOI keeps its `url` whatever its type.
+Do **not** populate: `isbn`, `issn`, `keywords`. `url`/`urldate` are populated for `@Online` entries, online reference works, and entries with no `date`; omit otherwise, with or without a `doi`. The principle is one canonical locator per entry, and a work with a date of its own is cited by that rather than by an access date.
 
 ## Choosing @Online vs. a Print-Equivalent Type
 

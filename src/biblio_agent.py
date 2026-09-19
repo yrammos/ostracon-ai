@@ -553,9 +553,13 @@ excerpt's text won't (e.g. an embedded Author field):
    bibliographic registry rather than from that address itself.)
    Identify the publication type from the work itself as
    usual (step 1) - a webpage may still be a printable book, article, etc.
-   with its own type, not necessarily @Online. Set Url to exactly this
-   address: {content.url}
-   Set Urldate to {now.strftime('%Y-%m-%d')} (today's date).
+   with its own type, not necessarily @Online.
+   Include Url and Urldate only where the URL rule above allows them - an
+   @Online entry, an online reference work, or an entry with no Date. A
+   dated book or article is cited as the book or article, not by the page
+   it was read on, and takes neither field. Where they do belong, Url is
+   exactly this address: {content.url}
+   and Urldate is {now.strftime('%Y-%m-%d')} (today's date).
 """
 
         prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
@@ -692,25 +696,29 @@ excerpt's text won't (e.g. an embedded Author field):
                         'warning'
                     )
 
-            # Structural safety net: the prompt above already asks Claude not
-            # to include these, but doesn't reliably follow through (e.g. a
-            # PDF whose own body text states a URL can still get a Url field
-            # despite the instruction against it) - so strip them here rather
-            # than trusting prompt compliance alone.
-            # The nodate move runs first: a Date holding "n.d." would
-            # otherwise count as a date and cost the entry its Url.
+            # The nodate move runs before anything reads the Date: a Date
+            # holding "n.d." would otherwise count as a date and cost the
+            # entry its Url.
             bibtex_entry, moved = enrich.move_nodate_to_year(bibtex_entry)
             if moved:
                 self._log("   Moved \\bibstring{nodate} out of Date, which discards it", 'warning')
-            bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry)
-            if stripped:
-                self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
             needs_color = False
             field_sources = None
             if self.config.get('enrich_missing_fields', True) and entry is not None:
                 bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
                 bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
+
+            # Structural safety net: the prompt above already asks Claude not
+            # to include these, but doesn't reliably follow through (e.g. a
+            # PDF whose own body text states a URL can still get a Url field
+            # despite the instruction against it) - so strip them here rather
+            # than trusting prompt compliance alone. After enrichment, not
+            # before: a webloc entry with no Date keeps its Url/Urldate, and
+            # verify_and_flag_recollection() may then fill that Date in.
+            bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry)
+            if stripped:
+                self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
             # content.amber is web_source.py's plausibility check flagging a
             # source that's genuine but thin or sparse (no Author/Doi/

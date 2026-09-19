@@ -334,9 +334,11 @@ def strip_forbidden_fields(entry_text):
     the entry was sourced from a PDF or a webloc:
     - the entry is typed @Online, the one type with no other locator to
       fall back on; or
-    - the entry has no Date, in which case Urldate is the only dating
-      evidence available and Url its necessary companion.
-    Otherwise both are stripped.
+    - the entry has no Date (nor a Year other than "no date"), in which
+      case Urldate is the only dating evidence available and Url its
+      necessary companion.
+    Otherwise both are stripped. Run it last: the enrichment steps can still
+    add a Date, which moves an entry out of the second case.
 
     Returns (entry_text, stripped_field_names).
     """
@@ -351,7 +353,9 @@ def strip_forbidden_fields(entry_text):
     # would otherwise be stripped of exactly the fields it requires.
     online_reference = (entry_type in ('inreference', 'reference')
                         and fields.get('entrysubtype', '').strip().lower() == 'online')
-    keep_url = entry_type == 'online' or online_reference or not fields.get('date')
+    year = fields.get('year', '')
+    dated = fields.get('date') or (year and not _NODATE_VALUE.match(year))
+    keep_url = entry_type == 'online' or online_reference or not dated
     if not keep_url:
         to_strip += [f for f in ('url', 'urldate') if fields.get(f)]
 
@@ -364,6 +368,7 @@ def strip_forbidden_fields(entry_text):
 # `Date = {\bibstring{nodate}}` (or `n.d.`): biber parses Date as ISO 8601-2,
 # discards the value as invalid, and no "n.d." prints. Year takes non-numeric
 # input. Same value test as dev/bib_audit.py's NODATE_VALUE.
+_NODATE_VALUE = re.compile(r'^\s*(?:\\bibstring\{nodate\}|n\.\s?d\.)\s*$', re.I)
 _NODATE_IN_DATE = re.compile(
     r'(?im)^([ \t]*)(date)(\s*=\s*)\{\s*(?:\\bibstring\{nodate\}|n\.\s?d\.)\s*\}')
 

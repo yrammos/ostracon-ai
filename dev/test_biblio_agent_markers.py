@@ -749,6 +749,32 @@ def test_extract_bibtex_moves_nodate_from_date_to_year():
     return True
 
 
+def test_url_rule_sees_the_date_enrichment_adds():
+    # A webloc entry with no Date keeps Url/Urldate, as Urldate is then its
+    # only dating evidence. The recollection check can fill the Date in from
+    # CrossRef; the Url rule must judge the entry as it leaves, not as it was.
+    import enrich
+    response = ("@Book{W,\n  Author = {Doe, Jane},\n  Title = {T},\n"
+                "  Url = {https://example.org/w},\n  Urldate = {2026-09-19},\n}")
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td)
+        agent.enrich_entry = lambda entry, content: (entry, None)
+        agent.verify_and_flag_recollection = lambda entry, content: (
+            enrich.add_field(entry, "date", "1998"), False)
+        result, err, _ = _extract_with(agent, td, response)
+    assert "1998" in result.entry, result.entry
+    assert "Url" not in result.entry and "Urldate" not in result.entry, result.entry
+    assert "Stripped disallowed field(s): url, urldate" in err, err
+
+    # A Year dates the entry as a Date does; a "no date" Year does not.
+    for year, kept in (("1998", False), ("\\bibstring{nodate}", True)):
+        entry = ("@Article{A,\n  Year = {%s},\n  Url = {https://example.org/a},\n"
+                 "  Urldate = {2026-09-19},\n}" % year)
+        _, stripped = enrich.strip_forbidden_fields(entry)
+        assert (stripped == []) is kept, (year, stripped)
+    return True
+
+
 TESTS = [
     test_source_and_amber_comments_survive_needs_color_flag_is_discarded,
     test_entry_without_amber_marker_is_unaffected,
@@ -774,6 +800,7 @@ TESTS = [
     test_extract_bibtex_does_not_enrich_prose,
     test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose,
     test_extract_bibtex_moves_nodate_from_date_to_year,
+    test_url_rule_sees_the_date_enrichment_adds,
 ]
 
 
