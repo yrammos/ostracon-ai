@@ -29,7 +29,7 @@ Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 
 ## Rationale
 
-[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission history, to various types of authorship, and to detail in general. Its “notes and bibliography” variant relies on footnotes or endnotes rather than inline “author-date” references, and is the more common one in music theory and musicology. This agent enhances BibLaTeX-Chicago writing workflows by providing Zotero-like auto-creation and auto-fill capabilities for new bibliographic materials, whether in the form of PDF files or `.webloc` links. Thanks to its reliance on AI models, multiple metadata sources, and elaborate prompting, the agent should not only match Zotero but actually outperform it.
+[Chicago](https://www.chicagomanualofstyle.org/tools_citationguide/citation-guide-1.html) is the bibliography style typically used in the humanities, cherished for its attention to source and transmission history, to various types of authorship, and to detail in general. Its “notes and bibliography” variant relies on footnotes or endnotes rather than inline “author-date” references, and is the more common one in music theory and musicology. This Claude agent adds Zotero-like auto-fill capabilities to BibLaTeX-Chicago writing workflows, generating `.bib` entries for new sources supplied as PDF files or `.webloc` bookmarks. Thanks to its reliance on AI models, multiple metadata sources, and elaborate prompting, the agent should not only match Zotero but actually outperform it.
 
 The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero unsustainable as a bibliography manager, with the otherwise excellent [Better BibTeX](https://retorque.re/zotero-better-bibtex/) extension only alleviating a painful experience. For many writers, [BibDesk](https://bibdesk.sourceforge.io) is the only macOS manager that elegantly navigates the style’s ontological complexity. They will be relieved to know that the agent optionally imports the new references into BibDesk.
 
@@ -47,7 +47,7 @@ and saves.
 A malformed entry is stashed away in `failed_bib_file`; a field that could not be confirmed
 leaves the entry amber in BibDesk.
 
-A `.webloc` page is not always the page it claims to be. Some publishers (Oxford
+A `.webloc` bookmark does not always refer to the intended page. Some publishers (Oxford
 Academic and other Silverchair platforms) sit behind a Cloudflare challenge no HTTP
 client can pass; others return a login wall or consent gate that looks like an
 ordinary page. So each `.webloc` is tried in turn:
