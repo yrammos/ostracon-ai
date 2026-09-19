@@ -701,7 +701,7 @@ excerpt's text won't (e.g. an embedded Author field):
             # otherwise count as a date and cost the entry its Url.
             bibtex_entry, moved = enrich.move_nodate_to_year(bibtex_entry)
             if moved:
-                self._log("   Moved \\bibstring{nodate} from Date to Year", 'warning')
+                self._log("   Moved \\bibstring{nodate} out of Date, which discards it", 'warning')
             bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry)
             if stripped:
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')

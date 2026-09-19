@@ -731,13 +731,21 @@ def test_extract_bibtex_moves_nodate_from_date_to_year():
     assert "Year = {\\bibstring{nodate}}" in result.entry, result.entry
     assert "Date = " not in result.entry, result.entry
     assert "Url = {https://example.org/k}" in result.entry, result.entry
-    assert "from Date to Year" in err, err
+    assert "out of Date" in err, err
 
     # A real Date, and a Year already present, are left alone.
     import enrich
     for entry in ("@Book{A,\n  Date = {1952},\n}",
                   "@Book{B,\n  Date = {\\bibstring{nodate}},\n  Year = {1900},\n}"):
         assert enrich.move_nodate_to_year(entry) == (entry, False), entry
+
+    # Dated by its access date alone, an @Online entry takes no Year:
+    # "n.d., accessed ..." would say the same thing twice.
+    online = ("@Online{W,\n  Title = {T},\n  Date = {\\bibstring{nodate}},\n"
+              "  Url = {https://example.org/w},\n  Urldate = {2026-09-19},\n}")
+    out, changed = enrich.move_nodate_to_year(online)
+    assert changed and "nodate" not in out and "Year" not in out, out
+    assert "Urldate = {2026-09-19}" in out, out
     return True
 
 

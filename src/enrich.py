@@ -371,12 +371,21 @@ _NODATE_IN_DATE = re.compile(
 def move_nodate_to_year(entry_text):
     """Rename a `Date` holding only "no date" to `Year = {\\bibstring{nodate}}`,
     in place and in the entry's own casing. Left alone when a Year already
-    exists. Returns (entry_text, moved)."""
-    if 'year' in parse_bibtex_fields(entry_text):
+    exists. An @Online entry or online reference work dated by Urldate takes
+    no Year at all - the access date is its date - so there the Date is
+    dropped instead. Returns (entry_text, changed)."""
+    fields = parse_bibtex_fields(entry_text)
+    if 'year' in fields:
         return entry_text, False
     m = _NODATE_IN_DATE.search(entry_text)
     if not m:
         return entry_text, False
+    entry_type = get_entry_type(entry_text)
+    online = entry_type == 'online' or (
+        entry_type in ('inreference', 'reference')
+        and fields.get('entrysubtype', '').strip().lower() == 'online')
+    if online and fields.get('urldate'):
+        return remove_field(entry_text, m.group(2)), True
     name = 'Year' if m.group(2)[0].isupper() else 'year'
     new = f'{m.group(1)}{name}{m.group(3)}{{\\bibstring{{nodate}}}}'
     return entry_text[:m.start()] + new + entry_text[m.end():], True

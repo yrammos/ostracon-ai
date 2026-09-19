@@ -211,7 +211,7 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 |---|---|
 | `doi` | Digital Object Identifier (without the `https://doi.org/` prefix). |
 | `url` | URL. Package-legal on any entry type, but per project guidelines populate only when the entry is `@Online`, is an online reference work, has no `date`, or carries no `doi` (see note below). |
-| `urldate` | Date the URL was last accessed (format: `YYYY-MM-DD`). An access-date-only `urldate` (no `userd`) does not stand in for `date` in citations - Chicago still prints "n.d." there; `urldate` is recorded as separate access evidence, not a substitute headline date. This is standard, documented behavior for undated online material, not a workaround. |
+| `urldate` | Date the URL was last accessed (format: `YYYY-MM-DD`). An access-date-only `urldate` (no `userd`) prints as "accessed <date>"; the style prints no "n.d." beside it, and an undated online source needs none, so add no `year = {\bibstring{nodate}}`. With `userd` (e.g. `last modified`) it prints as a qualified date instead. |
 | `eprint` | Eprint identifier (e.g. arXiv ID). |
 | `eprinttype` | Eprint archive type (e.g. `arxiv`). |
 | `eprintclass` | Subject class within the eprint archive. |

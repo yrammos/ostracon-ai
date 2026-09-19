@@ -386,9 +386,17 @@ def plan_edits(text: str, entries):
         if d and NODATE_VALUE.match(d.value):
             anchor = next((f for f in e.fields if f.key.startswith("bdsk-")), None)
             span = field_removal_span(text, e, d)
+            sub = e.get("entrysubtype")
+            online = e.etype == "online" or (
+                e.etype in ("inreference", "reference")
+                and sub is not None and sub.value.strip().lower() == "online")
             if e.has("year"):
                 reports["nodate-in-date-with-year-REVIEW"].append(
                     (e.citekey, e.get("year").value[:40]))
+            elif online and e.has("urldate"):
+                # Takes no Year at all (CLAUDE.md); dropping a field from the
+                # library is the maintainer's call, so report it.
+                reports["nodate-in-dated-online-REVIEW"].append((e.citekey, d.value))
             elif anchor is None or span is None:
                 reports["nodate-in-date-unplaceable-REVIEW"].append((e.citekey, d.value))
             else:
