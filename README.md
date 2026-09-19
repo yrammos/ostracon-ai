@@ -33,7 +33,7 @@ Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 
 The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirrors.cicku.me/ctan/macros/latex/contrib/biblatex-contrib/biblatex-chicago/doc/biblatex-chicago.pdf) package makes Zotero unsustainable as a bibliography manager, with the otherwise excellent [Better BibTeX](https://retorque.re/zotero-better-bibtex/) extension only alleviating a painful experience. For many writers, [BibDesk](https://bibdesk.sourceforge.io) is the only macOS manager that elegantly navigates the style’s ontological complexity. They will be relieved to know that the agent optionally imports the new references into BibDesk.
 
-The Chicago Manual of Style is hard-wired into this agent. Using alternative styles (e.g., APA) would involve only minor modifications to the prompts and context. This is left as a trivial exercise for the reader.
+The agent assumes the Chicago Manual of Style throughout. Adapting it to another style, such as APA, is left as a trivial exercise for the reader.
 
 ## Function
 
