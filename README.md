@@ -49,24 +49,20 @@ and saves.
 A malformed entry is stashed away in `failed_bib_file`; a field that could not be confirmed
 leaves the entry amber in BibDesk.
 
-Some publishers — Oxford Academic and other Silverchair platforms among them — front every page
-with a Cloudflare bot challenge that no HTTP client can pass, so a `.webloc` pointing at one
-cannot be fetched at all; others (login walls, consent gates, DataDome/Kasada) answer a plain
-HTTP 200 with an interstitial instead, which arrives looking exactly like a real page. Every
-page - fetched, read from a browser tab, or built from CrossRef - is checked for plausibility
-before it's trusted. Only one thing there is treated as a failure: the content doesn't
-correspond to the URL requested (a login wall, a captured tab that's navigated elsewhere) -
-that's the wrong document, and the next source is tried rather than handing Claude a confident
-wrong entry. A source that's merely thin - no Author, Doi or PublicationDate beyond an
-access-date `Urldate`, or a short body - still produces an entry, marked amber for a glance
-rather than discarded: this project's library carries plenty of real `@Online` sources (a
-personal page, a manufacturer's spec sheet) with a title and nothing else, for which `Urldate`
-is the ordinary dating evidence, not a defect. If the bookmarked URL happens to still be open
-in a Safari or Chrome tab, the page's DOM is read from there instead of fetched again - a
-browser already holds the session cookie and a genuine TLS fingerprint, which is what a
-Cloudflare challenge actually checks (see Troubleshooting) - tried on any fetch failure, not
-only a Cloudflare one. Failing that, if the fetch hit a classified bot challenge and the URL
-carries a DOI in its path, the entry is built from the CrossRef record instead.
+A `.webloc` page is not always the page it claims to be. Some publishers (Oxford
+Academic and other Silverchair platforms) sit behind a Cloudflare challenge no HTTP
+client can pass; others return a login wall or consent gate that looks like an
+ordinary page. So each `.webloc` is tried in turn:
+
+1. **Fetched** directly.
+2. **Read from an open Safari or Chrome tab** showing the same URL, if the fetch
+   fails. The browser already holds your session (see Troubleshooting).
+3. **Built from CrossRef**, if the fetch hit a bot challenge and the URL contains a DOI.
+
+Each result is checked before use. A page that is not the one requested (a login
+wall, a tab navigated elsewhere) is rejected and the next route tried. A page that
+is merely thin (no author, DOI or date; little text) still yields an entry, marked
+amber for review.
 
 ![Progress window](screenshot.png)
 
@@ -97,28 +93,16 @@ every command-line flag and every tracked file. The quick action runs
 `dev/test_setup.py --preflight` before each batch: silent when all is well, and
 abandoning the run with a message when it is not.
 
-`python3 dev/test_web_source.py` self-tests `web_source.py`'s fetch/browser-tab/CrossRef
-fallback and plausibility check (including the amber-vs-fail split) against canned
-fixtures - the live failures it guards against (an actual bot challenge, a half-loaded
-tab) can't be staged by hand.
+`python3 dev/test_web_source.py` self-tests the `.webloc` fallbacks and the
+plausibility check against canned pages, since a real bot challenge can't be staged.
 
-`python3 dev/test_extract_pages.py` self-tests the thin-yield check - the amber
-flag a PDF gets when extraction finishes having produced almost nothing. It runs
-against canned page text rather than a fixture PDF, so the word counts are exact
-and no OCR is invoked.
+`python3 dev/test_extract_pages.py` self-tests the amber marking of a PDF that yields
+almost no text, using canned page text and no OCR.
 
-`python3 dev/test_biblio_agent_markers.py` self-tests what `save_entry()` writes -
-in particular that the `% AMBER: ...` comment a thin/sparse `.webloc` source needs
-(see above) actually survives into the saved `.bib` text, and that the review colour
-reaches BibDesk on the other branch. It also runs `extract_bibtex()` end to end, with
-only the API call stubbed, so a state the extractor stops populating fails a test
-rather than passing quietly: the review state travels from one to the other as an
-`ExtractionResult` (`src/extraction_result.py`), and the `%` comments are rendered at
-the point of writing. They were formerly prepended to the entry text and parsed back
-out positionally, which is how the amber colouring failed silently for a month.
-It also covers a model response that is not one bare entry: commentary around the
-entry is discarded with a warning, and a response with no complete entry goes to
-`failed_bib_file` rather than into the library (#32).
+`python3 dev/test_biblio_agent_markers.py` self-tests what `save_entry()` writes:
+that an amber entry keeps its `% AMBER: ...` comment in the saved `.bib` and gets
+its colour in BibDesk, and that a malformed model response goes to `failed_bib_file`
+rather than into the library.
 
 ## Configuration
 
@@ -289,20 +273,10 @@ python3 dev/eval/run.py           # score dev/eval/sample/ against dev/eval/expe
 python3 dev/eval/test_eval.py     # exercise the harness itself - no sample, no API call
 ```
 
-`dev/eval/run.py` runs the real pipeline over `dev/eval/sample/` - real sources,
-matched by `dev/eval/sample/manifest.json` to ground-truth entries in
-`dev/eval/expected.bib` - and scores each field as exact, present-but-different,
-missing or spurious via `dev/eval/scorer.py`; entry-type accuracy is reported
-separately, since a wrong type invalidates everything scored under it. Both
-`sample/` and `expected.bib` ship empty and are populated by
-`dev/eval/select_sample.py`, which draws a stratified sample from
-`dev/eval/biblio.bib` - a stripped, gitignored copy of the library placed by
-hand, since the entries in it predate the pipeline and are ground truth only
-for that reason. `dev/eval/test_eval.py` proves the harness itself works,
-against a synthetic fixture pair it builds at run time.
-`dev/eval/populate_sample.py` holds the BibDesk attachment resolver
-`select_sample.py` imports, and remains usable on its own against any
-hand-verified `.bib` file - see its own docstring. See
+`run.py` runs the pipeline over a sample of real sources and compares each result,
+field by field, with a hand-verified entry for the same source; entry-type accuracy
+is reported separately. The sample and its ground truth ship empty: build them from
+your own library with `dev/eval/select_sample.py`. Details are in
 [`dev/eval/README.md`](dev/eval/README.md).
 
 ## Troubleshooting
