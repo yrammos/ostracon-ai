@@ -361,6 +361,27 @@ def strip_forbidden_fields(entry_text):
     return entry_text, to_strip
 
 
+# `Date = {\bibstring{nodate}}` (or `n.d.`): biber parses Date as ISO 8601-2,
+# discards the value as invalid, and no "n.d." prints. Year takes non-numeric
+# input. Same value test as dev/bib_audit.py's NODATE_VALUE.
+_NODATE_IN_DATE = re.compile(
+    r'(?im)^([ \t]*)(date)(\s*=\s*)\{\s*(?:\\bibstring\{nodate\}|n\.\s?d\.)\s*\}')
+
+
+def move_nodate_to_year(entry_text):
+    """Rename a `Date` holding only "no date" to `Year = {\\bibstring{nodate}}`,
+    in place and in the entry's own casing. Left alone when a Year already
+    exists. Returns (entry_text, moved)."""
+    if 'year' in parse_bibtex_fields(entry_text):
+        return entry_text, False
+    m = _NODATE_IN_DATE.search(entry_text)
+    if not m:
+        return entry_text, False
+    name = 'Year' if m.group(2)[0].isupper() else 'year'
+    new = f'{m.group(1)}{name}{m.group(3)}{{\\bibstring{{nodate}}}}'
+    return entry_text[:m.start()] + new + entry_text[m.end():], True
+
+
 # Macros whose FIRST brace group is a parameter rather than content. The
 # generic rule below unwraps every group it sees, which on \foreignlanguage
 # leaves the language name welded to the front of the title - "Die Romanzen

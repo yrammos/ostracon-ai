@@ -69,6 +69,7 @@ This repository contains academic publications - PDFs, and `.webloc` bookmarks t
 - In the date field only the four-digit year, unless the item is:
   - @unpublished
   - @article with `entrysubtype={magazine}`.
+- **An undated work takes `Year = {\bibstring{nodate}}`, never `Date`.** `Date` is parsed as ISO 8601-2, so biber discards `\bibstring{nodate}` there (`Invalid format … ignoring`) and no "n.d." reaches the page; `Year` accepts non-numeric input and prints it. Tier 1: the manual under `year`, and `ross:thesis` in `notes-test.bib`; compile-proved. Use it only where the work itself bears no date, not where the date merely lies outside the text supplied; there, omit the field.
 - If the main language of the publication is English, the following fields should appear in title case (according to Chicago Manual of Style sense of "title case"):
   - Title
   - Journaltitle

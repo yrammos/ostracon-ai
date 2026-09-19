@@ -718,6 +718,29 @@ def test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose():
     return True
 
 
+def test_extract_bibtex_moves_nodate_from_date_to_year():
+    # biber discards \bibstring{nodate} from Date as an invalid date, so the
+    # entry prints no "n.d." at all. It must leave extract_bibtex() in Year -
+    # and before the Url rule runs, which would read the Date as a real date.
+    response = ("@Unpublished{Kane,\n  Author = {Kane, Brian},\n  Title = {T},\n"
+                "  Date = {\\bibstring{nodate}},\n  Url = {https://example.org/k},\n"
+                "  Urldate = {2026-09-19},\n}")
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        result, err, _ = _extract_with(agent, td, response)
+    assert "Year = {\\bibstring{nodate}}" in result.entry, result.entry
+    assert "Date = " not in result.entry, result.entry
+    assert "Url = {https://example.org/k}" in result.entry, result.entry
+    assert "from Date to Year" in err, err
+
+    # A real Date, and a Year already present, are left alone.
+    import enrich
+    for entry in ("@Book{A,\n  Date = {1952},\n}",
+                  "@Book{B,\n  Date = {\\bibstring{nodate}},\n  Year = {1900},\n}"):
+        assert enrich.move_nodate_to_year(entry) == (entry, False), entry
+    return True
+
+
 TESTS = [
     test_source_and_amber_comments_survive_needs_color_flag_is_discarded,
     test_entry_without_amber_marker_is_unaffected,
@@ -742,6 +765,7 @@ TESTS = [
     test_extract_bibtex_isolates_the_entry_and_says_so,
     test_extract_bibtex_does_not_enrich_prose,
     test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose,
+    test_extract_bibtex_moves_nodate_from_date_to_year,
 ]
 
 

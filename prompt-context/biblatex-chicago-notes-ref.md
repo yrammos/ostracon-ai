@@ -174,7 +174,7 @@ All proper-name fields use `Last, First~I.` format. Separate multiple names with
 | Field | Description |
 |---|---|
 | `date` | Full date (preferred format: `YYYY`, `YYYY-MM`, `YYYY-MM-DD`; use `YYYY/YYYY` for ranges). |
-| `year` | Year only (use `date` whenever possible). |
+| `year` | Year. Unlike `date`, accepts non-numeric input: an undated work takes `\bibstring{nodate}` here, never in `date`, which discards it. Use `date` for any real date. |
 | `month` | Month (use with `year` if full `date` unavailable). |
 | `origdate` | Date of the original publication (for reprints, translations). |
 | `publisher` | Publisher name. |

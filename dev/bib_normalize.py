@@ -37,6 +37,7 @@ from bib_audit import (  # noqa: E402
     Entry,
     full_stop_boundary,
     merged_fields,
+    NODATE_VALUE,
     roundtrip_ok,
     scan,
     SERIES_DIVISION,
@@ -376,6 +377,27 @@ def plan_edits(text: str, entries):
                                 edits.append(Edit(uspan[0], uspan[1], "",
                                                   "drop-orphaned-urldate",
                                                   e.citekey, before=ud.value))
+
+        # ---- R7: an undated work's `\bibstring{nodate}` belongs in Year
+        # biber discards it from Date as an invalid date, so no "n.d." prints.
+        # Year sorts after every ordinary field, so it goes just before the
+        # bdsk-* block BibDesk keeps last.
+        d = e.get("date")
+        if d and NODATE_VALUE.match(d.value):
+            anchor = next((f for f in e.fields if f.key.startswith("bdsk-")), None)
+            span = field_removal_span(text, e, d)
+            if e.has("year"):
+                reports["nodate-in-date-with-year-REVIEW"].append(
+                    (e.citekey, e.get("year").value[:40]))
+            elif anchor is None or span is None:
+                reports["nodate-in-date-unplaceable-REVIEW"].append((e.citekey, d.value))
+            else:
+                pos, ins = field_insertion(text, e, anchor, "year", r"\bibstring{nodate}")
+                if pos is not None:
+                    edits.append(Edit(span[0], span[1], "", "nodate-to-year",
+                                      e.citekey, before=d.value))
+                    edits.append(Edit(pos, pos, ins, "nodate-to-year", e.citekey,
+                                      after=r"year = {\bibstring{nodate}}"))
 
         # ---- Report-only: needs a maintainer decision, never rewritten
         s = e.get("series")

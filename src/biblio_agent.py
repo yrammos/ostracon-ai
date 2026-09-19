@@ -529,7 +529,9 @@ excerpt's text won't (e.g. an embedded Author field):
    the field rather than inventing one.
 6. Format as a single BibLaTeX entry using biblatex-chicago standards
 7. Use a citation key in the format: AuthorYEAR (e.g., Smith2023)
-8. Use single hyphens (-) for all ranges (pages, dates, etc.)
+8. Range separators depend on the field: Pages takes a single hyphen (67-97);
+   Date, Origdate, Eventdate and Urldate take a solidus with both endpoints in
+   full (2012/2013); every other field takes -- (Number = {1--2}).
 9. Do NOT include these fields: ISSN, ISBN, keywords, reference, devonthink
 10. Omit any field you cannot populate from the given text/metadata entirely -
    do not include it with an empty value (e.g. do not write `Langid = {}` for
@@ -695,6 +697,11 @@ excerpt's text won't (e.g. an embedded Author field):
             # PDF whose own body text states a URL can still get a Url field
             # despite the instruction against it) - so strip them here rather
             # than trusting prompt compliance alone.
+            # The nodate move runs first: a Date holding "n.d." would
+            # otherwise count as a date and cost the entry its Url.
+            bibtex_entry, moved = enrich.move_nodate_to_year(bibtex_entry)
+            if moved:
+                self._log("   Moved \\bibstring{nodate} from Date to Year", 'warning')
             bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry)
             if stripped:
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')

@@ -292,6 +292,43 @@ def colon_at_top_level(value: str):
 RANGE_FIELDS = ("pages", "date", "origdate", "eventdate", "urldate", "volumes")
 BAD_RANGE = re.compile(r"--|[\u2010\u2011\u2012\u2013\u2014\u2015]")
 
+# The fields biber parses as ISO 8601-2 dates. A value it cannot parse is not
+# an error: biber warns "Invalid format ... ignoring" and the date silently
+# vanishes from the page. `\bibstring{nodate}` belongs in `year`, which takes
+# non-numeric input (manual, under `year`; `ross:thesis` in notes-test.bib).
+DATE_FIELDS = ("date", "origdate", "eventdate", "urldate")
+NODATE_VALUE = re.compile(r"^\s*(?:\\bibstring\{nodate\}|n\.\s?d\.)\s*$", re.I)
+
+# One endpoint: year (with ISO 8601-2 unspecified digits), optional month or
+# year division and day, optional time and zone, optional uncertainty marker.
+_DATE_POINT = re.compile(r"""
+    -?(?:Y-?\d{5,}|\d{4}|\d{3}X|\d{2}XX)
+    (?:-(\d{2}|XX)(?:-(\d{2}|XX))?)?
+    (?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}(?::?\d{2})?)?)?
+    [?~%]?
+""", re.X)
+
+
+def date_value_invalid(value: str) -> bool:
+    """True if biber would discard `value` as a date. `/` separates endpoints;
+    one endpoint may be empty or `..` (open or unknown), not both."""
+    parts = value.strip().split("/")
+    if len(parts) > 2 or all(p in ("", "..") for p in parts):
+        return True
+    for p in parts:
+        if len(parts) == 2 and p in ("", ".."):
+            continue
+        m = _DATE_POINT.fullmatch(p)
+        if not m:
+            return True
+        month, day = m.group(1), m.group(2)
+        # 21-41 are ISO 8601-2 year divisions (seasons, quarters...).
+        if month and month != "XX" and not (1 <= int(month) <= 12 or 21 <= int(month) <= 41):
+            return True
+        if day and day != "XX" and not 1 <= int(day) <= 31:
+            return True
+    return False
+
 NON_ASCII = re.compile(r"[^\x00-\x7F]")
 
 # Non-ASCII that says nothing about language. Curly quotes, dashes, an ellipsis
@@ -912,6 +949,16 @@ def run_rules(entries):
         # --- Straight quotes in title ------------------------------------
         if t and re.search(r"(?<![A-Za-z])['\"]", t.value) and "\\mkbibquote" not in t.value:
             hit("raw-quotes-in-title", e.citekey, t.value[:50])
+
+        # --- Unparsable date -----------------------------------------------
+        # A title in `date` (Rimsky1952, 2026-09) or `\bibstring{nodate}`
+        # there (six entries) compiles cleanly and prints no date at all.
+        for df in DATE_FIELDS:
+            f = e.get(df)
+            if f and date_value_invalid(f.value):
+                rule = ("nodate-in-date" if df == "date" and NODATE_VALUE.match(f.value)
+                        else "date-not-iso")
+                hit(rule, e.citekey, f"{df}: {f.value[:50]}")
 
         # --- Missing date --------------------------------------------------
         if not e.has("date") and not e.has("year"):
