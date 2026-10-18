@@ -2,9 +2,20 @@
 # Copy this file to config.yaml and edit with your settings:
 #   cp config.yaml.example config.yaml
 
-# Your Anthropic API key
-# Get one at: https://console.anthropic.com/settings/keys
-anthropic_api_key: "sk-ant-api03-REPLACE_WITH_YOUR_KEY"
+# Your Anthropic API key. Get one at: https://console.anthropic.com/settings/keys
+# Recommended: name a command that prints the key, so config.yaml holds no
+# secret. It runs without a shell; its first line of output is the key. The
+# Quick Action's PATH is minimal, so give a program outside /usr/bin by its full
+# path (~ is expanded).
+# Any command that prints the key works, for instance
+#   ~/.local/bin/secret biblio-ai   (a helper script of your own)
+#   pass show biblio-ai             (pass)
+# The default below reads the macOS Keychain; store the key there first with
+#   security add-generic-password -s biblio-ai -a "$USER" -w
+anthropic_api_key_command: "security find-generic-password -s biblio-ai -w"
+# Alternatively, the key itself. Order of precedence: anthropic_api_key,
+# then $ANTHROPIC_API_KEY, then anthropic_api_key_command.
+# anthropic_api_key: "sk-ant-api03-REPLACE_WITH_YOUR_KEY"
 
 # Paths
 pdf_in_folder: "./pdf-in" # Incoming PDFs to process
@@ -66,7 +77,10 @@ interactive_ocr: true  # false: never show the OCR-language dropdown, always use
 # "% INCOMPLETE: ..." comment rather than blocked.
 enrich_missing_fields: true
 crossref_email: "" # Optional: your email, for CrossRef's "polite pool" (faster, more reliable)
-scrapingdog_api_key: "" # Optional: ScrapingDog API key for Google Scholar fallback lookups (paid, https://scrapingdog.com)
+# Optional: ScrapingDog API key for Google Scholar fallback lookups (paid,
+# https://scrapingdog.com). As above, a command is preferred to the key itself.
+# scrapingdog_api_key_command: "security find-generic-password -s ostracon-scrapingdog-api-key -w"
+scrapingdog_api_key: ""
 
 # Logging
 verbose: true

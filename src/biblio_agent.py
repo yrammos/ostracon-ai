@@ -19,6 +19,7 @@ from extract_pages import extract_pdf
 from extraction_result import ExtractionResult
 import web_source
 import enrich
+from api_keys import resolve_api_keys
 
 # Tesseract language codes shown in the OCR language picker.
 OCR_LANGUAGES = [
@@ -167,10 +168,12 @@ class BiblioAgent:
             config = yaml.safe_load(f)
 
         # Validate required fields
-        if not config.get('anthropic_api_key') or config['anthropic_api_key'] == 'YOUR_API_KEY_HERE':
+        resolve_api_keys(config)
+        if not config.get('anthropic_api_key'):
             raise ValueError(
-                "Please set your Anthropic API key in config.yaml\n"
-                "Get one at: https://console.anthropic.com/settings/keys"
+                "Please set anthropic_api_key_command (or anthropic_api_key) in "
+                "config.yaml, or export ANTHROPIC_API_KEY\n"
+                "Get a key at: https://console.anthropic.com/settings/keys"
             )
 
         for key in _PATH_KEYS:
