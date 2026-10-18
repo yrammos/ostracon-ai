@@ -75,7 +75,7 @@ pip install -r requirements.txt                      # anthropic, pypdf, pyyaml,
                                                      # requests, beautifulsoup4,
                                                      # pyobjc-framework-Cocoa
 
-cp config.yaml.example config.yaml                   # then set anthropic_api_key
+cp config.yaml.example config.yaml                   # then set anthropic_api_key_command
 cp automator/script.sh.example automator/script.sh   # then set PYTHON and WORKDIR
 
 python3 dev/install_service.py                       # the Finder quick action
@@ -97,6 +97,10 @@ plausibility check against canned pages, since a real bot challenge can't be sta
 `python3 dev/test_extract_pages.py` self-tests the amber marking of a PDF that yields
 almost no text, using canned page text and no OCR.
 
+`python3 dev/test_api_keys.py` self-tests how API keys are resolved: plaintext,
+environment and command, and that a failing command's message never carries its
+output.
+
 `python3 dev/test_biblio_agent_markers.py` self-tests what `save_entry()` writes:
 that an amber entry keeps its `% AMBER: ...` comment in the saved `.bib` and gets
 its colour in BibDesk, and that a malformed model response goes to `failed_bib_file`
@@ -107,10 +111,19 @@ rather than into the library.
 Three keys need a value; the rest have defaults.
 
 ```yaml
-anthropic_api_key: "sk-ant-..."
+anthropic_api_key_command: "~/.local/bin/secret biblio-ai"
 main_bib_file: "~/Desktop/biblio-staging.bib" # where entries are appended
 failed_bib_file: "~/Desktop/biblio-failed.bib" # where invalid entries go
 ```
+
+The API key is best kept out of `config.yaml`. `anthropic_api_key_command` names a
+command, run without a shell, whose first line of output is the key; any command
+that prints it will do, for instance `security find-generic-password -s NAME -w`
+(macOS Keychain) or `pass show NAME`. The Quick Action's `PATH` is minimal, so name a
+program outside `/usr/bin` by its full path; `~` is expanded. A plaintext
+`anthropic_api_key` takes precedence, then the `ANTHROPIC_API_KEY` environment
+variable, then the command. A command that fails, prints nothing or hangs for ten
+seconds stops the run with its first line of stderr.
 
 Relative paths resolve against the repository rather than the working directory, so
 the commands below work from anywhere. A context file named in `config.yaml` but
@@ -132,6 +145,8 @@ absent from disk is an error at startup, not a warning.
 | `autofile_bibdesk`      | `false`             | Import into BibDesk directly rather than to the staging file.                                                     |
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
+| `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
+| `anthropic_api_key`     | —                   | The key in plaintext, instead of `anthropic_api_key_command`. Not recommended.                                    |
 
 Presentation settings — nothing below affects extraction — live under one
 `interface:` block:
@@ -328,6 +343,7 @@ ostracon-ai/
 │   ├── extract_pages.py    # PDF text, OCR, and the thin-yield check
 │   ├── web_source.py       # .webloc page fetching
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
+│   ├── api_keys.py         # API keys from config, environment or a command
 │   └── progress_window.py  # The floating window
 ├── prompt-context/         # The cached prefix
 │   ├── biblio-template.bib            # One worked example per entry type

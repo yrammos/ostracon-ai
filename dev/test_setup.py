@@ -57,9 +57,17 @@ def test_config():
         with open(config_path) as f:
             config = yaml.safe_load(f)
         
-        api_key = config.get('anthropic_api_key', '')
-        if not api_key or api_key == 'YOUR_API_KEY_HERE':
-            print("  ✗ API key not set in config.yaml")
+        # The same resolution the run performs, so a failing key command
+        # stops the batch here rather than after the progress window opens.
+        sys.path.insert(0, str(ROOT / "src"))
+        from api_keys import resolve_api_keys
+        try:
+            api_key = resolve_api_keys(config)['anthropic_api_key']
+        except ValueError as e:
+            print(f"  ✗ {e}")
+            return False
+        if not api_key:
+            print("  ✗ API key not set: add anthropic_api_key_command to config.yaml")
             print("    Get your key at: https://console.anthropic.com/settings/keys")
             return False
         
