@@ -63,8 +63,8 @@ def _matching_brace(text: str, start: int):
     Jumps between significant characters with a compiled pattern instead of
     walking every character in Python. On a 5,700-entry library the two are
     called ~175,000 times over 16.7 MB, and the per-character form accounted
-    for 3.9 s of scan()'s 4.2 s -- which is most of what a `nrch` run costs
-    on every save. `search(text, i)` rather than `search(text[i:])`: the
+    for 3.9 s of scan()'s 4.2 s, then most of what a BibDesk save-hook run
+    of the scanner cost. `search(text, i)` rather than `search(text[i:])`: the
     latter copies the remaining megabytes on each call and is slower than
     what it replaces.
     """

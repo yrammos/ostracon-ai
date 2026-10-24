@@ -1274,13 +1274,25 @@ end tell'''
         )
 
     def _save_bibdesk_document(self):
-        """Save the BibDesk document for main_bib_file if it is currently open."""
+        """Save the BibDesk document for main_bib_file if it is currently open.
+
+        A `Save Document` script hook runs inside `save` and may edit the
+        document after its bytes reach disk, so a document still modified
+        afterwards is saved once more. The timeouts allow for a slow hook
+        rather than reporting a completed save as failed.
+        """
         bib_path = str(Path(self.config['main_bib_file']).expanduser().resolve())
         script = f'''
 tell application "BibDesk"
     repeat with d in documents
         if path of d is "{bib_path}" then
-            save d
+            set theDoc to contents of d
+            with timeout of 600 seconds
+                save theDoc
+                try
+                    if modified of theDoc then save theDoc
+                end try
+            end timeout
             return "ok"
         end if
     end repeat
@@ -1289,7 +1301,7 @@ end tell'''
         try:
             result = subprocess.run(
                 ['osascript', '-e', script],
-                capture_output=True, text=True, timeout=15
+                capture_output=True, text=True, timeout=1260
             )
             if result.stdout.strip() == "ok":
                 self._log("   ✓ Staging file saved", 'success')
