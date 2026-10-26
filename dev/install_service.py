@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Build and install the Ostracon AI Quick Action to ~/Library/Services/."""
 
+import os
 import plistlib
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -151,7 +153,21 @@ def main():
 
     workflow_dir = SERVICES_DIR / WORKFLOW_NAME
     contents_dir = workflow_dir / "Contents"
+    wflow = contents_dir / "document.wflow"
 
+    # ./install rebuilds only when document.wflow is older than its sources, so
+    # a run that fails after writing it dates it to 1970 and exits nonzero.
+    registered = False
+    try:
+        registered = install(workflow_dir, contents_dir, script_content)
+    finally:
+        if not registered and wflow.exists():
+            os.utime(wflow, (0, 0))
+    if not registered:
+        sys.exit(1)
+
+
+def install(workflow_dir: Path, contents_dir: Path, script_content: str) -> bool:
     # Remove existing installation if present
     if workflow_dir.exists():
         shutil.rmtree(workflow_dir)
@@ -180,7 +196,7 @@ def main():
         print(f"  ⚠️  Automator registration failed: {result.stderr.strip()}")
         print("  Open Automator manually, open the workflow and save it,")
         print("  then re-run this script — saving in Automator rewrites Info.plist.")
-        return
+        return False
 
     # Automator regenerates Info.plist from document.wflow on save, widening
     # NSSendFileTypes to public.item and dropping NSRequiredContext, but also
@@ -197,7 +213,7 @@ def main():
     if flush.returncode != 0:
         print(f"  ⚠️  Could not refresh the Services cache: {flush.stderr.strip()}")
         print("  Log out and back in, or restart, for Finder to pick up the change.")
-        return
+        return False
 
     # Finder builds its Services menu once, at launch, by asking pbs. Relaunching
     # it before pbs has finished rebuilding after the flush caches an incomplete
@@ -206,11 +222,12 @@ def main():
     if not wait_for_registration(workflow_dir):
         print("  ⚠️  The Services cache did not list the workflow within 15s.")
         print(f"  Run: killall Finder    (or re-run {Path(__file__).name})")
-        return
+        return False
 
     # A plain SIGTERM makes Finder relaunch and rebuild its menus; -HUP does not.
     subprocess.run(["killall", "Finder"], capture_output=True)
     print("✓ Registered — right-click a PDF or .webloc file in Finder, under Quick Actions")
+    return True
 
 
 if __name__ == "__main__":
