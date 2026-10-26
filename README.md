@@ -78,12 +78,13 @@ pip install -r requirements.txt                      # anthropic, pypdf, pyyaml,
 cp config.yaml.example config.yaml                   # then set anthropic_api_key_command
 cp automator/script.sh.example automator/script.sh   # then set PYTHON and WORKDIR
 
-./install                                            # bib-audit link; the Finder quick action, once
+./install                                            # bib-audit link; the Finder quick action
 python3 dev/test_setup.py                            # verify
 ```
 
 `config.yaml` and `automator/script.sh` are excluded from version control. Re-run
-`dev/install_service.py` after any change to `script.sh`.
+`./install` after any change to `script.sh`: it rebuilds the quick action when
+`script.sh` or `dev/install_service.py` is newer than the installed one.
 
 `dev/test_setup.py` checks dependencies, configuration, the context files and OCR
 availability, and confirms the documentation still names every configuration key,
@@ -336,7 +337,7 @@ successfully. Strip the layer, or OCR the file externally, and re-run.
 ostracon-ai/
 ├── CLAUDE.md               # House style; first file in the cached prefix
 ├── config.yaml.example     # Copy to config.yaml
-├── install                 # Links bib-audit; builds the quick action if absent
+├── install                 # Links bib-audit; rebuilds the quick action when stale
 ├── requirements.txt
 ├── src/
 │   ├── biblio_agent.py     # Orchestrator; run this

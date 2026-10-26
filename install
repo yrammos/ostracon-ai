@@ -4,8 +4,9 @@
 # installer runs it.
 #
 #   ~/.local/bin/bib-audit   dev/bib_audit.py on PATH; dotfiles' nrch imports it through this link
-#   Finder Quick Action      built by dev/install_service.py, once: it relaunches Finder,
-#                            and needs automator/script.sh (copied by hand from the .example)
+#   Finder Quick Action      rebuilt by dev/install_service.py when missing or older than
+#                            it or automator/script.sh (copied by hand from the .example);
+#                            a build relaunches Finder, so it is skipped when current
 
 set -eu
 
@@ -14,11 +15,11 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$here/dev/bib_audit.py" "$HOME/.local/bin/bib-audit"
 
-workflow="$HOME/Library/Services/Extract BibLaTeX-Chicago Bibliography (via Claude).workflow"
-if [ -d "$workflow" ]; then
-    :
-elif [ -f "$here/automator/script.sh" ]; then
-    python3 "$here/dev/install_service.py"
-else
+wflow="$HOME/Library/Services/Extract BibLaTeX-Chicago Bibliography (via Claude).workflow/Contents/document.wflow"
+if [ ! -f "$here/automator/script.sh" ]; then
     echo "install: Quick Action skipped; create automator/script.sh from its .example, then rerun" >&2
+elif [ ! -f "$wflow" ] ||
+     [ "$here/automator/script.sh" -nt "$wflow" ] ||
+     [ "$here/dev/install_service.py" -nt "$wflow" ]; then
+    python3 "$here/dev/install_service.py"
 fi
