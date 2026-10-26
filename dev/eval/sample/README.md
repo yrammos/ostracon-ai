@@ -3,7 +3,7 @@
 The evaluation harness's labelled sample: real sources drawn from actual
 intake, each scored against a hand-verified entry in
 [`../expected.bib`](../expected.bib). Empty until populated by hand - see
-[Issue #6](https://github.com/yrammos/biblatex-chicago-claude/issues/6) for
+[Issue #6](https://github.com/yrammos/ostracon-ai/issues/6) for
 why this can't be done any other way.
 
 ## What goes here
@@ -70,7 +70,7 @@ correspondence with the page-count ratio is exact.
 The key marks them so that a reader of a report knows which failures are the
 pipeline's. Nothing consumes it yet; teaching `run.py` and `scorer.py` to
 honour it belongs with the same decision for a starved source
-([#16](https://github.com/yrammos/biblatex-chicago-claude/issues/16)), which
+([#16](https://github.com/yrammos/ostracon-ai/issues/16)), which
 proposes `insufficient_source` for a different cause - the file is the right
 one but yields almost no text. The two are kept apart deliberately.
 

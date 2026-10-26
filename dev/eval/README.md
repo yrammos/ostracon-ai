@@ -2,7 +2,7 @@
 
 Measures whether an entry is right, rather than just what a run costs
 (`NOTES.md` already covers the latter). See
-[Issue #6](https://github.com/yrammos/biblatex-chicago-claude/issues/6).
+[Issue #6](https://github.com/yrammos/ostracon-ai/issues/6).
 
 ```bash
 python3 dev/eval/run.py                       # score dev/eval/sample/ against dev/eval/expected.bib
@@ -105,7 +105,7 @@ one it should, and nothing here will notice either way.
 That is not hypothetical: BibDesk's amber colouring was inert for every entry
 and every source type from 2026-07-30 until 2026-08-29, and no run of this
 harness was capable of reporting it (Issue
-[#17](https://github.com/yrammos/biblatex-chicago-claude/issues/17)). A change
+[#17](https://github.com/yrammos/ostracon-ai/issues/17)). A change
 to the flagging mechanism therefore needs its own tests -
 `dev/test_biblio_agent_markers.py` and `dev/test_extract_pages.py` - and, where
 BibDesk itself is involved, an import done by hand. A green report here is
