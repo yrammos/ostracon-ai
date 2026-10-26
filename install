@@ -1,0 +1,24 @@
+#!/bin/sh
+#
+# Wire this checkout into the machine (macOS). Idempotent; the dotfiles
+# installer runs it.
+#
+#   ~/.local/bin/bib-audit   dev/bib_audit.py on PATH; dotfiles' nrch imports it through this link
+#   Finder Quick Action      built by dev/install_service.py, once: it relaunches Finder,
+#                            and needs automator/script.sh (copied by hand from the .example)
+
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd -P)"
+
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$here/dev/bib_audit.py" "$HOME/.local/bin/bib-audit"
+
+workflow="$HOME/Library/Services/Extract BibLaTeX-Chicago Bibliography (via Claude).workflow"
+if [ -d "$workflow" ]; then
+    :
+elif [ -f "$here/automator/script.sh" ]; then
+    python3 "$here/dev/install_service.py"
+else
+    echo "install: Quick Action skipped; create automator/script.sh from its .example, then rerun" >&2
+fi

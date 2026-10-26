@@ -78,7 +78,7 @@ pip install -r requirements.txt                      # anthropic, pypdf, pyyaml,
 cp config.yaml.example config.yaml                   # then set anthropic_api_key_command
 cp automator/script.sh.example automator/script.sh   # then set PYTHON and WORKDIR
 
-python3 dev/install_service.py                       # the Finder quick action
+./install                                            # bib-audit link; the Finder quick action, once
 python3 dev/test_setup.py                            # verify
 ```
 
@@ -336,6 +336,7 @@ successfully. Strip the layer, or OCR the file externally, and re-run.
 ostracon-ai/
 ├── CLAUDE.md               # House style; first file in the cached prefix
 ├── config.yaml.example     # Copy to config.yaml
+├── install                 # Links bib-audit; builds the quick action if absent
 ├── requirements.txt
 ├── src/
 │   ├── biblio_agent.py     # Orchestrator; run this
