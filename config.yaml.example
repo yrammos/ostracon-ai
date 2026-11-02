@@ -50,7 +50,15 @@ ocr_timeout: 180 # Seconds to allow ocrmypdf on the extracted page subset before
 # ocr_threshold, or it could never fire. Set to 0 to disable.
 thin_yield_threshold: 400
 max_tokens: 4000 # Maximum tokens for Claude response
-model: "claude-sonnet-4-20250514" # Claude model to use
+model: "claude-sonnet-4-6" # Claude model to use
+
+# Optional: output_config.effort (low/medium/high/xhigh/max) for every call.
+# Models that always think (Sonnet 5.5, Opus 5.5) count thinking tokens
+# against max_tokens, so setting effort also raises every call's limit to
+# thinking_max_tokens. A reply cut off at the limit fails loudly.
+# effort: "medium"
+# thinking_max_tokens: 16000
+# audit_max_tokens: 600   # the grounding audit's own limit
 
 # Model used automatically for source files placed in pdf-in/careful/ during
 # an --all run, instead of `model` above. Replaces having to notice a
