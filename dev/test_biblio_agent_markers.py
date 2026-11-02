@@ -537,17 +537,25 @@ def _quiet_agent(tmp_dir, **config):
     return agent
 
 
-def _stub_client(agent, text):
-    """Every messages.create() call returns `text`; the calls are recorded."""
+def _stub_client(agent, text, stop_reason="end_turn", thinking=False):
+    """Every messages.create() call returns `text`; the calls are recorded.
+    `thinking` puts an (empty) thinking block first, as models that always
+    think return it; usage is a fixed, recognisable record."""
     calls = []
 
     class _Msg:
-        content = [type("B", (), {"type": "text", "text": text})()]
+        content = ([type("T", (), {"type": "thinking", "thinking": ""})()] if thinking else []) + [
+            type("B", (), {"type": "text", "text": text})()]
+        usage = type("U", (), {"input_tokens": 11, "output_tokens": 7,
+                               "cache_creation_input_tokens": 5,
+                               "cache_read_input_tokens": None})()
 
     class _Messages:
         def create(self, **kwargs):
             calls.append(kwargs)
-            return _Msg()
+            msg = _Msg()
+            msg.stop_reason = stop_reason
+            return msg
 
     agent.client = type("C", (), {"messages": _Messages()})()
     return calls
@@ -649,12 +657,12 @@ def test_save_entry_rejects_a_response_with_no_entry():
     return True
 
 
-def _extract_with(agent, td, response):
+def _extract_with(agent, td, response, **stub):
     """Run the real extract_bibtex() on a `.fake` source, the API stubbed."""
     import extract_pages
     source = Path(td) / "src.fake"
     source.write_text("placeholder", encoding="utf-8")
-    calls = _stub_client(agent, response)
+    calls = _stub_client(agent, response, **stub)
     biblio_agent.EXTRACTORS[".fake"] = lambda path, **kw: extract_pages.SourceContent(
         text="some body text", label="PDF", url=None)
     try:
@@ -715,6 +723,58 @@ def test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose():
         with redirect_stderr(io.StringIO()):
             out = agent.reconcile_fields(entry, content, candidates)
     assert out == entry, out
+    return True
+
+
+def test_truncated_extraction_fails_instead_of_passing_partial_text():
+    # Constructed: a reply stopped at max_tokens. Its text parses as an entry,
+    # which is exactly why it must not be accepted - the old code took it.
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        result, _, _ = _extract_with(agent, td, "@Book{Y,\n  Title = {Z},\n}",
+                                     stop_reason="max_tokens")
+    assert result.failed, result
+    assert "truncated" in result.error, result.error
+    assert agent.usage and agent.usage[0]["call"] == "extraction", agent.usage
+    return True
+
+
+def test_effort_is_sent_and_raises_the_token_limit():
+    # Thinking block first, as Sonnet 5.5 / Opus 5.5 reply; effort configured.
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False, effort="medium")
+        result, _, calls = _extract_with(agent, td, "@Book{Y,\n  Title = {Z},\n}",
+                                         thinking=True)
+    assert not result.failed, result
+    assert calls[0]["output_config"] == {"effort": "medium"}, calls[0]
+    assert calls[0]["max_tokens"] >= 16000, calls[0]["max_tokens"]
+    assert agent.usage[0] == {"call": "extraction", "model": agent.config["model"],
+                              "input": 11, "output": 7, "cache_write": 5,
+                              "cache_read": 0}, agent.usage
+    return True
+
+
+def test_no_effort_leaves_the_request_unchanged():
+    # Sonnet 4.6 runs (the baseline) must send exactly what they sent before.
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        agent.config.pop("effort", None)
+        _, _, calls = _extract_with(agent, td, "@Book{Y,\n  Title = {Z},\n}")
+    assert "output_config" not in calls[0], calls[0]
+    assert calls[0]["max_tokens"] == agent.config["max_tokens"], calls[0]
+    return True
+
+
+def test_truncated_audit_flags_for_review():
+    import extract_pages
+    content = extract_pages.SourceContent(text="body", label="PDF", url=None)
+    entry = "@Book{Y,\n  Title = {Z},\n}"
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td)
+        _stub_client(agent, "UNGROUNDED_FIELDS: NONE", stop_reason="max_tokens")
+        with redirect_stderr(io.StringIO()):
+            out, flag = agent.verify_and_flag_recollection(entry, content)
+    assert out == entry and flag is True, (out, flag)
     return True
 
 
@@ -801,6 +861,10 @@ TESTS = [
     test_reconcile_keeps_the_entry_when_the_merge_reply_is_prose,
     test_extract_bibtex_moves_nodate_from_date_to_year,
     test_url_rule_sees_the_date_enrichment_adds,
+    test_truncated_extraction_fails_instead_of_passing_partial_text,
+    test_effort_is_sent_and_raises_the_token_limit,
+    test_no_effort_leaves_the_request_unchanged,
+    test_truncated_audit_flags_for_review,
 ]
 
 
