@@ -4,6 +4,9 @@
 # installer runs it.
 #
 #   ~/.local/bin/bib-audit   dev/bib_audit.py on PATH; dotfiles' nrch imports it through this link
+#   ~/.local/share/ostracon-ai/bib_validate.py
+#                            the biber data-model validator, for other repositories to import
+#                            (dotfiles' bib-validate.py) instead of keeping a copy
 #   Finder Quick Action      rebuilt by dev/install_service.py when missing or older than
 #                            it or automator/script.sh (copied by hand from the .example);
 #                            a build relaunches Finder, so it is skipped when current
@@ -14,6 +17,10 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$here/dev/bib_audit.py" "$HOME/.local/bin/bib-audit"
+
+share="${XDG_DATA_HOME:-$HOME/.local/share}/ostracon-ai"
+mkdir -p "$share"
+ln -sfn "$here/src/bib_validate.py" "$share/bib_validate.py"
 
 wflow="$HOME/Library/Services/Extract BibLaTeX-Chicago Bibliography (via Claude).workflow/Contents/document.wflow"
 if [ ! -f "$here/automator/script.sh" ]; then
