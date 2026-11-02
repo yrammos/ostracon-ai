@@ -5,6 +5,7 @@ score the result against dev/eval/expected.bib, field by field.
 
     python3 dev/eval/run.py                       # score the real sample
     python3 dev/eval/run.py --model claude-opus-5  # score with a different model
+    python3 dev/eval/run.py --model claude-opus-5-5 --effort medium
     python3 dev/eval/run.py --rescore              # re-score dev/eval/last-run/, no API call
 
 Every produced entry is saved to dev/eval/last-run/<citekey>.bib as it's
@@ -174,7 +175,7 @@ def evaluate(manifest, sample_dir, expected_entries, run_one):
     return entry_scores, warnings
 
 
-def write_json_report(path, entry_scores, warnings) -> None:
+def write_json_report(path, entry_scores, warnings, usage=None) -> None:
     """Serialize what format_report()'s console table discards: the actual
     expected/produced value behind every 'different' and 'spurious' verdict.
     Pure serialization of EntryScore/FieldScore, already computed by
@@ -196,7 +197,33 @@ def write_json_report(path, entry_scores, warnings) -> None:
         ],
         "warnings": warnings,
     }
+    if usage is not None:
+        payload["usage"] = usage
     Path(path).write_text(json.dumps(payload, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def format_usage(usage, ttl) -> str:
+    """Token totals and measured cost from BiblioAgent.usage records, keyed by
+    citekey in run order. The first source pays the prompt-cache write, so it
+    is reported apart from the mean of the rest."""
+    from estimate_cost import usage_cost
+
+    keys = list(usage)
+    costs = [usage_cost(usage[k], ttl) for k in keys]
+    sums = {f: sum(r[f] for k in keys for r in usage[k])
+            for f in ('input', 'output', 'cache_write', 'cache_read')}
+    calls = sum(len(usage[k]) for k in keys)
+    lines = [
+        "",
+        f"Usage ({calls} API calls over {len(keys)} sources, cache TTL {ttl}):",
+        "  tokens: " + ", ".join(f"{f} {n:,}" for f, n in sums.items()),
+        f"  measured cost: ${sum(costs):.2f} total",
+    ]
+    if costs:
+        lines.append(f"  first source ${costs[0]:.3f}"
+                     + (f"; later sources ${sum(costs[1:]) / (len(costs) - 1):.3f} mean"
+                        if len(costs) > 1 else ""))
+    return "\n".join(lines)
 
 
 def main(argv=None):
@@ -209,6 +236,9 @@ def main(argv=None):
     parser.add_argument('--config', default='config.yaml',
                          help='Path to config file (default: config.yaml)')
     parser.add_argument('--model', help='Claude model to use (overrides config)')
+    parser.add_argument('--effort', choices=['low', 'medium', 'high', 'xhigh', 'max'],
+                         help='output_config.effort for every call (overrides config); '
+                              'also raises max_tokens to thinking_max_tokens')
     parser.add_argument('--json',
                          help='Also write full per-field detail (citekey, verdict, expected, '
                               'produced for every scored field) to this path - the console '
@@ -263,6 +293,8 @@ def main(argv=None):
         agent = biblio_agent.BiblioAgent(args.config)
         if args.model:
             agent.config['model'] = args.model
+        if args.effort:
+            agent.config['effort'] = args.effort
         # An eval run has no one at the keyboard to answer the OCR-language
         # dropdown - see interactive_ocr in _pdf_extractor_kwargs(). Each
         # source's own expected Langid stands in for the human's answer.
@@ -272,14 +304,21 @@ def main(argv=None):
         def run_one(citekey, source):
             agent.config['default_ocr_language'] = ocr_language_hint(
                 expected_entries.get(citekey), base_lang)
-            return run_pipeline(agent, source, citekey=citekey, save_dir=args.last_run_dir)
+            agent.usage = []
+            try:
+                return run_pipeline(agent, source, citekey=citekey, save_dir=args.last_run_dir)
+            finally:
+                usage[citekey] = agent.usage
 
+    usage = {}  # citekey -> BiblioAgent.usage records; stays empty under --rescore
     entry_scores, warnings = evaluate(manifest, sample_dir, expected_entries, run_one=run_one)
 
     print(format_report(entry_scores, warnings))
+    if usage:
+        print(format_usage(usage, agent.config.get('cache_ttl') or '5m'))
 
     if args.json:
-        write_json_report(args.json, entry_scores, warnings)
+        write_json_report(args.json, entry_scores, warnings, usage=usage or None)
         print(f"\nFull per-field detail written to {args.json}")
 
     return 0

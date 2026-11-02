@@ -142,6 +142,9 @@ class BiblioAgent:
         self.config = self.load_config(config_path)
         self.client = Anthropic(api_key=self.config['anthropic_api_key'])
         self._progress_callback = None  # set to win.make_callback() in windowed path
+        # One record per API call: which call, model, and token counts.
+        # dev/eval/run.py reads and resets it per source to measure cost.
+        self.usage = []
 
     def _log(self, message: str, level: str = 'info') -> None:
         """Emit a progress message to stderr (if verbose) and/or the progress window."""
@@ -149,6 +152,44 @@ class BiblioAgent:
             print(message, file=sys.stderr)
         if self._progress_callback:
             self._progress_callback(message, level)
+
+    def _create(self, call, max_tokens, **kwargs):
+        """messages.create() for every pipeline call.
+
+        - `effort` (config, optional) is sent as output_config.effort, and
+          raises the token limit to `thinking_max_tokens` (default 16000):
+          models that always think count thinking tokens against max_tokens,
+          so the old limits (4000; 600 for the audit) can leave no room for
+          the reply itself.
+        - A reply cut off at the limit, or refused, raises instead of being
+          passed on: its text is partial or empty, and downstream code would
+          otherwise treat it as an answer.
+        - Usage is appended to self.usage whatever the outcome.
+        """
+        effort = self.config.get('effort')
+        if effort:
+            kwargs['output_config'] = {'effort': effort}
+            max_tokens = max(max_tokens, int(self.config.get('thinking_max_tokens', 16000)))
+        message = self.client.messages.create(max_tokens=max_tokens, **kwargs)
+
+        usage = getattr(message, 'usage', None)
+        self.usage.append({
+            'call': call,
+            'model': kwargs.get('model'),
+            'input': getattr(usage, 'input_tokens', 0) or 0,
+            'output': getattr(usage, 'output_tokens', 0) or 0,
+            'cache_write': getattr(usage, 'cache_creation_input_tokens', 0) or 0,
+            'cache_read': getattr(usage, 'cache_read_input_tokens', 0) or 0,
+        })
+
+        stop = getattr(message, 'stop_reason', None)
+        if stop == 'max_tokens':
+            raise RuntimeError(
+                f"{call} reply truncated at max_tokens={max_tokens}; "
+                "raise max_tokens (or thinking_max_tokens) in config.yaml")
+        if stop == 'refusal':
+            raise RuntimeError(f"{call} request refused by the model")
+        return message
 
     def load_config(self, config_path):
         """Load configuration from YAML file.
@@ -670,9 +711,9 @@ excerpt's text won't (e.g. an embedded Author field):
             self._log("   Sending to Claude...", 'info')
 
         try:
-            message = self.client.messages.create(
+            message = self._create(
+                'extraction', self.config['max_tokens'],
                 model=model,
-                max_tokens=self.config['max_tokens'],
                 messages=[
                     {"role": "user", "content": self._cached_message_content(context, prompt)}
                 ]
@@ -826,9 +867,9 @@ commentary."""
         context = self.load_context_files()
         prompt = self._build_enrich_prompt(entry_text, found)
         try:
-            message = self.client.messages.create(
+            message = self._create(
+                'merge', self.config['max_tokens'],
                 model=self.config['model'],
-                max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
             # isolate_entry(), not clean_bibtex(): a reply with no entry must
@@ -892,13 +933,14 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
         Returns a list of ungrounded field names (possibly empty).
         """
         prompt = self._build_audit_prompt(entry_text, content)
-        message = self.client.messages.create(
-            model=self.config['model'],
+        message = self._create(
+            'audit',
             # Generous enough that a reply which ignores the one-line format and
             # narrates instead still reaches the marker. At 150 the model would
             # analyse each field in prose, hit the cap mid-sentence, and never
             # emit the marker at all - see the parse-failure branch below.
-            max_tokens=600,
+            self.config.get('audit_max_tokens', 600),
+            model=self.config['model'],
             messages=[{"role": "user", "content": prompt}],
         )
         response = response_text(message)
@@ -986,9 +1028,9 @@ BibLaTeX entry, with no additional commentary."""
         prompt = self._build_reconcile_prompt(entry_text, content, candidates)
         allowed_fields = set(enrich.parse_bibtex_fields(entry_text)) | {c['field'].lower() for c in candidates}
         try:
-            message = self.client.messages.create(
+            message = self._create(
+                'reconcile', self.config['max_tokens'],
                 model=self.config['model'],
-                max_tokens=self.config['max_tokens'],
                 messages=[{"role": "user", "content": self._cached_message_content(context, prompt)}],
             )
             # isolate_entry(), not clean_bibtex() - see enrich_entry().

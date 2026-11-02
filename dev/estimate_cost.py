@@ -30,11 +30,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import biblio_agent as ba
 
-# USD per 1M tokens, (input, output). Update from
+# USD per 1M tokens, (input, output[, cache read]). Update from
 # https://platform.claude.com/docs/en/pricing - there is no pricing API to read
 # these from, so this table is the one thing here that must be maintained by hand.
+# The optional third value overrides CACHE_READ x input where a model's cache-read
+# price is not the usual tenth of its input price.
 PRICING = {
     'claude-fable-5':    (10.00, 50.00),
+    'claude-opus-5-5':    (4.00, 20.00, 0.20),
+    'claude-sonnet-5-5':  (2.00, 10.00, 0.20),
     'claude-opus-5':      (5.00, 25.00),
     'claude-opus-4-8':    (5.00, 25.00),
     'claude-opus-4-7':    (5.00, 25.00),
@@ -123,19 +127,38 @@ def measure(agent, count):
     }
 
 
-def price(tokens, model, ttl):
-    """Per-call costs in USD for the given model and cache tier."""
+def rates(model):
+    """(input, output, cache read) in USD per token."""
     if model not in PRICING:
         raise SystemExit(
             f"No pricing on record for {model!r}.\n"
             f"Known: {', '.join(sorted(PRICING))}\n"
             "Add it to PRICING (see https://platform.claude.com/docs/en/pricing)."
         )
-    rate_in, rate_out = (r / 1e6 for r in PRICING[model])
+    rate_in, rate_out, *read = PRICING[model]
+    rate_read = read[0] if read else rate_in * CACHE_READ
+    return rate_in / 1e6, rate_out / 1e6, rate_read / 1e6
+
+
+def usage_cost(records, ttl='1h'):
+    """Measured cost in USD of BiblioAgent.usage records (see _create()).
+    Cache writes are priced at the `ttl` tier the run was configured with."""
+    total = 0.0
+    for r in records:
+        rate_in, rate_out, rate_read = rates(r['model'])
+        total += (r['input'] * rate_in + r['output'] * rate_out
+                  + r['cache_write'] * rate_in * CACHE_WRITE[ttl]
+                  + r['cache_read'] * rate_read)
+    return total
+
+
+def price(tokens, model, ttl):
+    """Per-call costs in USD for the given model and cache tier."""
+    rate_in, rate_out, rate_read = rates(model)
     static = tokens['static']
 
     write = static * rate_in * CACHE_WRITE[ttl]
-    read = static * rate_in * CACHE_READ
+    read = static * rate_read
 
     def call(dynamic, output, cached):
         prefix = 0.0 if cached is None else (write if cached == 'write' else read)
@@ -255,8 +278,13 @@ def main():
     else:
         agent = ba.BiblioAgent(args.config)
 
+    # Count with the priced model's own tokenizer: --model used to price a
+    # model with the configured model's token counts, which understates
+    # Opus 4.7+ (a larger tokenizer) by roughly a quarter.
+    if args.model:
+        agent.config['model'] = args.model
     tokens = measure(agent, build_counter(agent, use_api=not args.no_api))
-    report(tokens, args.model or agent.config['model'], args.markdown)
+    report(tokens, agent.config['model'], args.markdown)
 
     if args.no_api:
         print(f"\n(estimated at {CHARS_PER_TOKEN} chars/token; run without --no-api"

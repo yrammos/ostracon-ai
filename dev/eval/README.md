@@ -7,6 +7,7 @@ Measures whether an entry is right, rather than just what a run costs
 ```bash
 python3 dev/eval/run.py                       # score dev/eval/sample/ against dev/eval/expected.bib
 python3 dev/eval/run.py --model claude-opus-5  # score with a different model
+python3 dev/eval/run.py --model claude-opus-5-5 --effort medium  # a model that always thinks
 python3 dev/eval/run.py --json out.json        # also persist per-field expected/produced values
 python3 dev/eval/run.py --rescore              # re-score dev/eval/last-run/, no API call
 python3 dev/eval/run.py --only Foo2019,Bar2020 # extract/score only these citekeys
@@ -39,6 +40,11 @@ sample source can't stall an unattended run on the OCR-language dropdown -
 each source's own `Langid` in `expected.bib` stands in as the hint (see
 `ocr_language_hint()`), falling back to `default_ocr_language` where absent
 or unmapped.
+
+A live run also prints the tokens and **measured** cost of its API calls
+(first source, which pays the prompt-cache write, apart from the mean of the
+rest), and `--json` stores each source's per-call usage under `usage`.
+Prices come from `PRICING` in `dev/estimate_cost.py`.
 
 ## How it fits together
 
