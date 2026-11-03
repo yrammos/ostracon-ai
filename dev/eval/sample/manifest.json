@@ -306,7 +306,7 @@
   "note": "@periodical — plain (control)"
  },
  {
-  "citekey": "Guettler2017",
+  "citekey": "Guettler2013",
   "source": "Guettler2017.pdf",
   "sha256": "649674dea58be48266b3494110ee79f42aaf9e259deeeb5f38f24a3300334da0",
   "note": "@inbook — plain (control)"
@@ -834,7 +834,7 @@
   "note": "@article — plain (control)"
  },
  {
-  "citekey": "Tarasti2012b",
+  "citekey": "Tarasti2015",
   "source": "Tarasti2012b.pdf",
   "sha256": "017df6fe15aa80d328a804b270a38190dde3715db119cc1f98a372712aa0ce4c",
   "note": "@inbook — plain (control)"
