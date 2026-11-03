@@ -87,7 +87,8 @@ def test_project_files():
     print("\nTesting project files...")
     
     files = {
-        'CLAUDE.md': 'Project guidelines',
+        'CLAUDE.md': 'Development guidelines',
+        'prompt-context/extraction-rules.md': 'Extraction rules',
         'prompt-context/biblio-template.bib': 'Reference template',
         'prompt-context/biblatex-chicago-notes-ref.md': 'Field reference',
         'prompt-context/notes-test.bib': 'Annotated test suite (example_files)',
@@ -114,9 +115,9 @@ _NOTES_TEST_KEY = re.compile(r"[a-z]+:[a-z]+")
 
 
 def test_citekeys_named_in_guidelines():
-    """Check that every example CLAUDE.md sends the model to actually exists.
+    """Check that every example extraction-rules.md sends the model to actually exists.
 
-    The template is generated (dev/build_template.py), so a citekey CLAUDE.md
+    The template is generated (dev/build_template.py), so a citekey extraction-rules.md
     cites is present only if the generator happens to pick it. A missing one
     raises nothing: the model just doesn't find it, which is how #15/#19 went
     unseen for weeks (#35). Two rules, one per corpus:
@@ -131,12 +132,12 @@ def test_citekeys_named_in_guidelines():
     told from any other code span. Stating a convention inline rather than
     by citekey avoids the problem altogether.
     """
-    print("\nTesting citekeys named in CLAUDE.md...")
-    guidelines = ROOT / "CLAUDE.md"
+    print("\nTesting citekeys named in extraction-rules.md...")
+    guidelines = ROOT / "prompt-context" / "extraction-rules.md"
     template = ROOT / "prompt-context" / "biblio-template.bib"
     notes_test = ROOT / "prompt-context" / "notes-test.bib"
     if not all(p.exists() for p in (guidelines, template, notes_test)):
-        print("  ⚠  CLAUDE.md or a prompt-context file is missing; see above")
+        print("  ⚠  extraction-rules.md or a prompt-context file is missing; see above")
         return False
     in_template = set(_CITEKEY_DEF.findall(template.read_text(encoding="utf-8")))
     in_notes_test = set(_CITEKEY_DEF.findall(notes_test.read_text(encoding="utf-8")))
@@ -149,11 +150,11 @@ def test_citekeys_named_in_guidelines():
             if names_template and _LIBRARY_KEY.fullmatch(tok):
                 checked.add(tok)
                 if tok not in in_template:
-                    dangling.append(f"CLAUDE.md:{n} `{tok}` is not in biblio-template.bib")
+                    dangling.append(f"extraction-rules.md:{n} `{tok}` is not in biblio-template.bib")
             elif _NOTES_TEST_KEY.fullmatch(tok):
                 checked.add(tok)
                 if tok not in in_notes_test:
-                    dangling.append(f"CLAUDE.md:{n} `{tok}` is not in notes-test.bib")
+                    dangling.append(f"extraction-rules.md:{n} `{tok}` is not in notes-test.bib")
 
     if dangling:
         for d in dangling:
@@ -380,7 +381,7 @@ def main():
         if not results['documentation']:
             print("   - README.md has drifted from the code (see above)")
         if not results['citekeys']:
-            print("   - CLAUDE.md cites an example that no longer exists (see above)")
+            print("   - extraction-rules.md cites an example that no longer exists (see above)")
     
     print()
 

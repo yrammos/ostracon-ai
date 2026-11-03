@@ -110,7 +110,8 @@ def measure(agent, count):
     static = agent._static_context_block(context) or ""
 
     components = [
-        ('CLAUDE.md', context['claude_md']),
+        ('extraction rules', context['rules']),
+        ('house style', context.get('house_style', '')),
         ('biblio-template.bib', context['template']),
         ('field reference', context['ref']),
     ] + list(context['examples'])

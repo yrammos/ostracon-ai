@@ -40,7 +40,7 @@ DEFAULT_EXPECTED = ROOT / 'dev' / 'eval' / 'expected.bib'
 DEFAULT_LAST_RUN_DIR = ROOT / 'dev' / 'eval' / 'last-run'
 
 # Chicago/babel Langid values seen in this project's .bib files (see
-# CLAUDE.md's naming rules - "ngerman" not "german", "norsk" not
+# extraction-rules.md's naming rules - "ngerman" not "german", "norsk" not
 # "norwegian"), mapped to the Tesseract language code OCR needs. Used only
 # as a per-source hint when a sample source needs OCR at all; unmapped or
 # absent Langid falls back to the agent's configured default_ocr_language.

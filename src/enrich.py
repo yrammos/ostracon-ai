@@ -323,7 +323,7 @@ FORBIDDEN_FIELDS_ALWAYS = {'issn', 'isbn', 'keywords', 'reference', 'devonthink'
 
 def strip_forbidden_fields(entry_text):
     """
-    Remove fields CLAUDE.md forbids from a raw BibLaTeX entry, structurally -
+    Remove fields extraction-rules.md forbids from a raw BibLaTeX entry, structurally -
     the initial extraction prompt already asks Claude not to include these,
     but doesn't reliably follow through (e.g. a PDF that's actually a
     printout of an online-only page can get typed as something other than
@@ -373,20 +373,21 @@ _NODATE_IN_DATE = re.compile(
     r'(?im)^([ \t]*)(date)(\s*=\s*)\{\s*(?:\\bibstring\{nodate\}|n\.\s?d\.)\s*\}')
 
 
-# Langid values naming English. The maintainer's preamble loads babel's
-# `american` only; under autolang=other any of these switches an entry out of
-# Chicago's American forms (compile-proved 2026-11-03 for `english`: "no."
-# becomes "number", punctuation moves outside the quotes, the full note prints
-# a raw `cbyeditor`), while `american` renders identically to no Langid.
+# Langid values naming English. Under autolang=other any of these but
+# `american` switches an entry out of Chicago's American forms (compile-proved
+# 2026-11-03 for `english`, with babel's `american` loaded: "no." becomes
+# "number", punctuation moves outside the quotes, the full note prints a raw
+# `cbyeditor`), while `american` renders identically to no Langid.
 ENGLISH_LANGIDS = {'english', 'british', 'ukenglish', 'usenglish', 'american',
                    'australian', 'canadian', 'newzealand'}
 _LANGID_RE = re.compile(r'^(\s*langid\s*=\s*\{)([^}]*)(\})', re.I | re.M)
 
 
 def normalize_langid(entry_text):
-    """Every entry carries Langid, and an English one carries `american`.
-    Rewrites any English variant to `american` in place; a missing Langid is
-    reported, not guessed, since the entry's language is not knowable here.
+    """An English Langid is `american`. Rewrites any English variant to
+    `american` in place; a missing Langid is reported, not guessed, since the
+    entry's language is not knowable here (the caller decides whether that
+    matters: see require_langid).
     Returns (entry_text, change): change is None, 'rewritten' or 'missing'."""
     m = _LANGID_RE.search(entry_text)
     if not m:

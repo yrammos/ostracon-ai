@@ -26,8 +26,8 @@ VERDICTS = ('exact', 'different', 'missing', 'spurious')
 # fields that are correctly absent. Three groups, kept separate because they
 # come from different sources and drift differently:
 #
-#   - CLAUDE.md's suppression list: issn, isbn, keywords, reference,
-#     devonthink. CLAUDE.md is prose, not a file this module can read, so
+#   - extraction-rules.md's suppression list: issn, isbn, keywords, reference,
+#     devonthink. extraction-rules.md is prose, not a file this module can read, so
 #     this set has to be kept in step by hand if that list changes. The
 #     devonthink\d*, local-url(-\d+)? and bdsk- forms below follow this
 #     project's own numbered-attachment convention (dev/bib_audit.py's
@@ -74,7 +74,7 @@ class EntryScore:
 
 # biber's own field aliases: each pair is the same field under two names, so
 # a value written under either scores against the other. The library writes
-# `journal` (2,888 entries); CLAUDE.md asks the pipeline for `Journaltitle`.
+# `journal` (2,888 entries); extraction-rules.md asks the pipeline for `Journaltitle`.
 FIELD_ALIASES = {'journal': 'journaltitle', 'address': 'location', 'school': 'institution'}
 
 

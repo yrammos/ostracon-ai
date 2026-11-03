@@ -164,13 +164,16 @@ layout) is still read for one release if `interface:` is absent or omits it, wit
 one-time deprecation warning on stderr; move it under `interface:` when convenient.
 
 The remaining paths — `pdf_in_folder`, `pdf_out_folder`, `template_file`,
-`claude_md_file`, `ref_file`, `example_files` — name the files constituting the
+`rules_file`, `ref_file`, `example_files` — name the files constituting the
 cached prefix and may be left as they are. [`NOTES.md`](NOTES.md) sets out what each
 contributes and what dropping it would save.
 
-Edit `CLAUDE.md` to match your own conventions: field exclusions, title-case rules
-for the languages you work in, the entry types you rely on. It is the first file in
-the prefix, and the agent is only as exacting as it is.
+`rules_file` (default `prompt-context/extraction-rules.md`) holds the generic
+extraction rules. Put your own conventions — your preamble, the languages you work
+in, fields to require or omit — in a private **house-style file** instead of editing
+the rules: `~/.config/ostracon-ai/house-style.md` (or `house_style_file` in
+`config.yaml`) is read when present, sent after the rules, and takes precedence over
+them. `require_langid: true` makes an entry without `Langid` go to review.
 
 ## Usage
 
@@ -313,7 +316,7 @@ that, tick it under System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Serv
 Files and Folders.
 
 **“Context files configured in config.yaml are missing.”** A file named in
-`claude_md_file`, `template_file`, `ref_file` or `example_files` is not where the
+`rules_file`, `house_style_file`, `template_file`, `ref_file` or `example_files` is not where the
 configuration says. These constitute the cached prefix, so the agent refuses to
 start rather than proceed without them.
 
@@ -335,7 +338,7 @@ successfully. Strip the layer, or OCR the file externally, and re-run.
 
 ```
 ostracon-ai/
-├── CLAUDE.md               # House style; first file in the cached prefix
+├── CLAUDE.md               # Instructions for agents developing this repository
 ├── config.yaml.example     # Copy to config.yaml
 ├── install                 # Links bib-audit; rebuilds the quick action when stale
 ├── requirements.txt
@@ -346,14 +349,21 @@ ostracon-ai/
 │   ├── web_source.py       # .webloc page fetching
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
 │   ├── api_keys.py         # API keys from config, environment or a command
+│   ├── bib_validate.py     # biber data-model check; published by ./install
+│   ├── bib_render.py       # Render check: fields that never reach the page
+│   ├── tex/previewtemplate.tex # Neutral template for the render check
 │   └── progress_window.py  # The floating window
 ├── prompt-context/         # The cached prefix
+│   ├── extraction-rules.md            # The extraction rules; first in the prefix
 │   ├── biblio-template.bib            # One worked example per entry type
 │   ├── biblatex-chicago-notes-ref.md  # Condensed field reference
 │   ├── notes-test.bib                 # The package's annotated test suite
 │   ├── cms-notes-intro-guide.md       # Entry types by kind of source
 │   └── biblatex-chicago-fields.md     # Manual §4.2; consulted, not loaded
 ├── dev/                    # Tooling; see NOTES.md. Nothing here runs during extraction
+│   ├── validate_entries.py # bib_validate over a .bib or saved run outputs
+│   ├── render_entries.py   # bib_render over a .bib or saved run outputs
+│   ├── test_bib_validate.py, test_bib_render.py # Their self-tests
 │   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison

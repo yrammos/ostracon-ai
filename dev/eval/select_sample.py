@@ -19,7 +19,7 @@ selecting rather than after is what removes the propose/check/substitute cycle;
 an entry with a dead bookmark is never a candidate in the first place.
 
 Re-running with a different --seed gives a disjoint sample from the same
-strata, which is how to check later whether CLAUDE.md has been tuned to one
+strata, which is how to check later whether extraction-rules.md has been tuned to one
 particular 61. The seed and cutoff are recorded in sample/selection.json so a
 sample can be reproduced.
 

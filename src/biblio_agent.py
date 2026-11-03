@@ -56,6 +56,17 @@ def glob_input_files(folder):
 
 # Model used for sources placed in pdf-in/careful/ when config.yaml sets no
 # careful_model of its own - see the reference-work operator note in CLAUDE.md.
+
+import os
+
+# The generic extraction rules, used when config.yaml names no rules_file.
+DEFAULT_RULES_FILE = "./prompt-context/extraction-rules.md"
+
+# A user's own conventions, sent after the generic rules and taking precedence
+# over them. Optional and private: read when config.yaml names one, or else
+# from this location when a file exists there. Never shipped with the repository.
+DEFAULT_HOUSE_STYLE_FILE = (Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+                            / "ostracon-ai" / "house-style.md")
 DEFAULT_CAREFUL_MODEL = "claude-opus-5"
 
 
@@ -69,7 +80,7 @@ def glob_batch_files(folder):
     return sorted(files)
 
 
-# Config paths are written relative to the repository ("./CLAUDE.md"), so they
+# Config paths are written relative to the repository ("./prompt-context/..."), so they
 # must resolve against it rather than against the working directory - otherwise
 # the tool only runs from the repo root, and the Automator wrapper's `cd
 # "$WORKDIR"` is load-bearing rather than a convenience.
@@ -79,7 +90,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Config keys holding a path that should be made absolute at load time, so every
 # downstream consumer receives an absolute path without repeating this logic.
 _PATH_KEYS = (
-    'claude_md_file', 'template_file', 'ref_file',
+    'rules_file', 'house_style_file', 'template_file', 'ref_file',
     'pdf_in_folder', 'pdf_out_folder',
     'main_bib_file', 'failed_bib_file',
 )
@@ -89,7 +100,7 @@ _PATH_KEYS = (
 # otherwise substitute an empty string, and the run would silently produce
 # entries with no template, field reference, or worked examples - degraded
 # output that looks like success.
-_REQUIRED_IF_SET = ('claude_md_file', 'template_file', 'ref_file')
+_REQUIRED_IF_SET = ('rules_file', 'house_style_file', 'template_file', 'ref_file')
 
 
 def resolve_path(value):
@@ -217,6 +228,16 @@ class BiblioAgent:
                 "Get a key at: https://console.anthropic.com/settings/keys"
             )
 
+        # CLAUDE.md is instructions for agents developing this repository; the
+        # extraction rules moved to their own file. A config still naming it
+        # would send development instructions to the extracting model.
+        if config.pop('claude_md_file', None):
+            print("config: claude_md_file is no longer read; the extraction rules are "
+                  f"rules_file (default {DEFAULT_RULES_FILE})", file=sys.stderr)
+        config.setdefault('rules_file', DEFAULT_RULES_FILE)
+        if not config.get('house_style_file') and DEFAULT_HOUSE_STYLE_FILE.is_file():
+            config['house_style_file'] = str(DEFAULT_HOUSE_STYLE_FILE)
+
         for key in _PATH_KEYS:
             if config.get(key):
                 config[key] = str(resolve_path(config[key]))
@@ -278,7 +299,8 @@ class BiblioAgent:
                 return f.read()
 
         context = {
-            'claude_md': read('claude_md_file'),
+            'rules': read('rules_file'),
+            'house_style': read('house_style_file'),
             'template': read('template_file'),
             'ref': read('ref_file'),
         }
@@ -304,8 +326,10 @@ class BiblioAgent:
         it can be cached as a stable prefix - see _cached_message_content().
         """
         parts = []
-        if context['claude_md']:
-            parts.append(f"<guidelines>\n{context['claude_md']}\n</guidelines>")
+        if context['rules']:
+            parts.append(f"<guidelines>\n{context['rules']}\n</guidelines>")
+        if context.get('house_style'):
+            parts.append(f"<house_style>\n{context['house_style']}\n</house_style>")
         if context['template']:
             parts.append(f"<reference_template>\n{context['template']}\n</reference_template>")
         if context['ref']:
@@ -321,6 +345,11 @@ class BiblioAgent:
             "Project guidelines, reference template, and biblatex-chicago field "
             "reference for BibLaTeX-Chicago entries:"
         )
+        if context.get('house_style'):
+            preamble += (
+                "\n\n<house_style> is the user's own conventions. Where it differs "
+                "from <guidelines> or <reference_template>, follow <house_style>."
+            )
         if context.get('examples'):
             # The upstream corpora follow the package's own house style, which
             # diverges from this project's on several points (they split
@@ -775,14 +804,14 @@ excerpt's text won't (e.g. an embedded Author field):
             # appended as text and no color is possible; each survives where
             # the other cannot.
             # Langid decides quotation marks, key terms and punctuation under
-            # the maintainer's autolang=other, so it is normalized in code
-            # rather than trusted to the prompt: English variants become
-            # `american`, and an entry without Langid goes to review.
+            # autolang=other, so it is normalized in code rather than trusted
+            # to the prompt: English variants become `american`, and, where
+            # config sets require_langid, an entry without one goes to review.
             if entry is not None:
                 bibtex_entry, langid = enrich.normalize_langid(bibtex_entry)
                 if langid == 'rewritten':
                     self._log("   Rewrote an English Langid to `american`", 'warning')
-                elif langid == 'missing':
+                elif langid == 'missing' and self.config.get('require_langid'):
                     self._log("   ⚠️  No Langid - flagging for review", 'warning')
                     needs_color = True
 

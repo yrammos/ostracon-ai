@@ -778,6 +778,22 @@ def test_truncated_audit_flags_for_review():
     return True
 
 
+def test_house_style_follows_and_overrides_the_rules():
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td)
+        house = Path(td) / "house-style.md"
+        house.write_text("Every entry carries Langid.", encoding="utf-8")
+        agent.config["house_style_file"] = str(house)
+        block = agent._static_context_block(agent.load_context_files())
+        assert block.index("<guidelines>\n") < block.index("<house_style>\n"), block[:400]
+        assert "Every entry carries Langid." in block
+        assert "follow <house_style>" in block
+        agent.config["house_style_file"] = None
+        block = agent._static_context_block(agent.load_context_files())
+        assert "<house_style>" not in block and "follow <house_style>" not in block
+    return True
+
+
 def test_normalize_langid():
     import enrich
     english = "@Book{Y,\n\tLangid = {english},\n\tTitle = {Z},\n}"
@@ -792,10 +808,15 @@ def test_normalize_langid():
 
 
 def test_extract_bibtex_flags_a_missing_langid():
+    # Only where the user's config asks for Langid on every entry.
     with tempfile.TemporaryDirectory() as td:
-        agent = _quiet_agent(td, enrich_missing_fields=False)
+        agent = _quiet_agent(td, enrich_missing_fields=False, require_langid=True)
         result, err, _ = _extract_with(agent, td, "@Book{Y,\n  Title = {Z},\n}")
     assert result.needs_color is True and "No Langid" in err, (result, err)
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False, require_langid=False)
+        result, err, _ = _extract_with(agent, td, "@Book{Y,\n  Title = {Z},\n}")
+    assert result.needs_color is False and "No Langid" not in err, (result, err)
     with tempfile.TemporaryDirectory() as td:
         agent = _quiet_agent(td, enrich_missing_fields=False)
         result, err, _ = _extract_with(agent, td, "@Book{Y,\n  Langid = {english},\n  Title = {Z},\n}")
@@ -891,6 +912,7 @@ TESTS = [
     test_effort_is_sent_and_raises_the_token_limit,
     test_no_effort_leaves_the_request_unchanged,
     test_truncated_audit_flags_for_review,
+    test_house_style_follows_and_overrides_the_rules,
     test_normalize_langid,
     test_extract_bibtex_flags_a_missing_langid,
 ]
