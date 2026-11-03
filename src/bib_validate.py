@@ -7,10 +7,9 @@ not biblatex's default. Read-only: nothing here edits an entry.
 
 Ported 2026-11-03 from the maintainer's library validator
 (dotfiles: BibDesk/bib-validate.py, with the skip-rule sources from its
-NOTES.md). This copy is meant to become the only one: ./install publishes it
-at ~/.local/share/ostracon-ai/bib_validate.py, as the skills repository
-publishes its skills, so dotfiles can import it from there rather than keep
-its own. Until it does, the two copies may drift.
+NOTES.md). It is now the only copy: ./install publishes it at
+~/.local/share/ostracon-ai/bib_validate.py, and dotfiles' bib-validate.py
+imports it from there.
 
 biblatex-chicago prints more than biblatex's data model declares, so biber
 reports some documented usages as errors. classify() drops those, each with
