@@ -1,12 +1,12 @@
 #!/bin/sh
 #
-# Wire this checkout into the machine (macOS). Idempotent; the dotfiles
-# installer runs it. Prints one line per item: what it did, or why not.
+# Wire this checkout into the machine (macOS). Idempotent. Prints one line per
+# item: what it did, or why not.
 #
-#   ~/.local/bin/bib-audit   dev/bib_audit.py on PATH; dotfiles' nrch imports it through this link
+#   ~/.local/bin/bib-audit   dev/bib_audit.py on PATH, for other tools to run or import
 #   ~/.local/share/ostracon-ai/bib_validate.py
-#                            the biber data-model validator, for other repositories to import
-#                            (dotfiles' bib-validate.py) instead of keeping a copy
+#                            the biber data-model validator, for other tools to import
+#                            (validate(), ValidatorUnavailable) instead of keeping a copy
 #   Finder Quick Action      rebuilt by dev/install_service.py when missing or older than
 #                            it or automator/script.sh (copied by hand from the .example);
 #                            a build relaunches Finder, so it is skipped when current

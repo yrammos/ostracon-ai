@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Self-tests for src/bib_render.py.
 
-dropped_fields() runs on rendered text recorded 2026-11-03 under the
-maintainer's preview template (constructed entries). The integration test
-compiles, and needs pdflatex, biber, pdftotext and the template
-($OSTRACON_PREVIEW_TEMPLATE or ~/.local/share/bibdesk/previewtemplate.tex);
-it is skipped without them.
+dropped_fields() runs on rendered text recorded 2026-11-03 (constructed
+entries); the integration test re-renders the same entry, and holds under
+both the shipped template and a user's own. It needs pdflatex, biber and
+pdftotext, and is skipped without them.
 """
 import sys
 from pathlib import Path
@@ -73,7 +72,33 @@ def test_render_integration():
     raise AssertionError("an unescaped _ compiled")
 
 
-TESTS = [test_unprinted_fields_are_reported,
+def test_template_precedence():
+    import os
+    import tempfile
+    saved = os.environ.pop("OSTRACON_PREVIEW_TEMPLATE", None)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            own = Path(td) / "own.tex"
+            original = bib_render.USER_TEMPLATE
+            bib_render.USER_TEMPLATE = own
+            try:
+                assert bib_render.template_path() == bib_render.SHIPPED_TEMPLATE
+                assert bib_render.SHIPPED_TEMPLATE.is_file()
+                own.write_text("x", encoding="utf-8")
+                assert bib_render.template_path() == own
+                os.environ["OSTRACON_PREVIEW_TEMPLATE"] = "/elsewhere.tex"
+                assert bib_render.template_path() == Path("/elsewhere.tex")
+            finally:
+                bib_render.USER_TEMPLATE = original
+                os.environ.pop("OSTRACON_PREVIEW_TEMPLATE", None)
+    finally:
+        if saved is not None:
+            os.environ["OSTRACON_PREVIEW_TEMPLATE"] = saved
+    return True
+
+
+TESTS = [test_template_precedence,
+         test_unprinted_fields_are_reported,
          test_bibstrings_and_elided_ranges_are_not_reported,
          test_render_integration]
 

@@ -5,11 +5,11 @@ A throwaway document loads biblatex-chicago (notes) and \\nocite{*}s the
 entries, so biber checks them against the data model a real document uses,
 not biblatex's default. Read-only: nothing here edits an entry.
 
-Ported 2026-11-03 from the maintainer's library validator
-(dotfiles: BibDesk/bib-validate.py, with the skip-rule sources from its
-NOTES.md). It is now the only copy: ./install publishes it at
-~/.local/share/ostracon-ai/bib_validate.py, and dotfiles' bib-validate.py
-imports it from there.
+./install publishes this module at
+~/.local/share/ostracon-ai/bib_validate.py for other tools to import. Its
+interface, validate(bib_text) and ValidatorUnavailable, is kept stable for
+them; rules specific to one library belong in the importing tool, layered on
+validate(), not here.
 
 biblatex-chicago prints more than biblatex's data model declares, so biber
 reports some documented usages as errors. classify() drops those, each with

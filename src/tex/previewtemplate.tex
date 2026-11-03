@@ -1,0 +1,24 @@
+% Neutral preview template for src/bib_render.py: biblatex-chicago (notes),
+% pdflatex, nothing user-specific. A user's own template, in the same format,
+% overrides it: $OSTRACON_PREVIEW_TEMPLATE, or
+% ${XDG_CONFIG_HOME:-~/.config}/ostracon-ai/previewtemplate.tex.
+% <<File>> is the .bib stem and <<CiteKeys>> the citekey (BibDesk's
+% preview-template placeholders, so a BibDesk template can be used as is).
+\documentclass{article}
+% Common bibliography languages, so that Langid and \foreignlanguage values
+% compile; a language missing here makes its entries fail to compile. The
+% last option, american, is the main language.
+\usepackage[T1,T2A]{fontenc}
+\usepackage[ngerman,french,italian,spanish,russian,greek,american]{babel}
+\usepackage{csquotes}
+\usepackage[notes,backend=biber]{biblatex-chicago}
+\addbibresource{<<File>>.bib}
+\pagestyle{empty}
+\begin{document}
+\nocite{<<CiteKeys>>}
+\noindent Bibliography:
+\printbibliography[heading=none]
+\noindent Full: \fullcite{<<CiteKeys>>}.
+
+\noindent Short: \shortcite{<<CiteKeys>>}.
+\end{document}
