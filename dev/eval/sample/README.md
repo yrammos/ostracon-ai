@@ -48,10 +48,10 @@ A JSON array of objects:
   the figures. Present on one source so far. See below.
 - `excluded` (optional) - the reason an entry is left out of the evaluation:
   `run.py` neither extracts nor scores it, and lists it among the warnings.
-  Present on Adorno2011, Cavell1969a, Roudiez1984 and Schenker1994a since
-  2026-11-03 (the maintainer's ruling: nothing in the file says which part is
-  cited). Motte2004 keeps `container_source` but is scored: its entry is the
-  whole collection, which the file is.
+  On the 61-entry sample it marked Adorno2011, Cavell1969a, Roudiez1984 and
+  Schenker1994a (the maintainer's ruling: nothing in the file says which part
+  is cited). The 172-entry sample of 2026-11-03 needs none: `select_sample.py`
+  now skips such entries when it samples.
 
 ## `container_source`: entries no extraction can score
 
