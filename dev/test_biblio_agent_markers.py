@@ -778,6 +778,32 @@ def test_truncated_audit_flags_for_review():
     return True
 
 
+def test_normalize_langid():
+    import enrich
+    english = "@Book{Y,\n\tLangid = {english},\n\tTitle = {Z},\n}"
+    out, change = enrich.normalize_langid(english)
+    assert change == "rewritten" and "Langid = {american}" in out, out
+    assert enrich.normalize_langid(out) == (out, None)
+    german = english.replace("english", "ngerman")
+    assert enrich.normalize_langid(german) == (german, None)
+    bare = "@Book{Y,\n\tTitle = {Z},\n}"
+    assert enrich.normalize_langid(bare) == (bare, "missing")
+    return True
+
+
+def test_extract_bibtex_flags_a_missing_langid():
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        result, err, _ = _extract_with(agent, td, "@Book{Y,\n  Title = {Z},\n}")
+    assert result.needs_color is True and "No Langid" in err, (result, err)
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        result, err, _ = _extract_with(agent, td, "@Book{Y,\n  Langid = {english},\n  Title = {Z},\n}")
+    assert result.needs_color is False, result
+    assert "Langid = {american}" in result.entry, result.entry
+    return True
+
+
 def test_extract_bibtex_moves_nodate_from_date_to_year():
     # biber discards \bibstring{nodate} from Date as an invalid date, so the
     # entry prints no "n.d." at all. It must leave extract_bibtex() in Year -
@@ -865,6 +891,8 @@ TESTS = [
     test_effort_is_sent_and_raises_the_token_limit,
     test_no_effort_leaves_the_request_unchanged,
     test_truncated_audit_flags_for_review,
+    test_normalize_langid,
+    test_extract_bibtex_flags_a_missing_langid,
 ]
 
 
