@@ -61,7 +61,9 @@ Prices come from `PRICING` in `dev/estimate_cost.py`.
   connecting each source file to a citekey. See `sample/README.md` for its
   format. Empty until populated by `select_sample.py`.
 - [`expected.bib`](expected.bib) - one ground-truth entry per citekey in
-  the manifest, copied verbatim from `biblio.bib` by `select_sample.py`.
+  the manifest, copied from `biblio.bib` by `select_sample.py` less the
+  private bookkeeping fields (`strip_private_fields()`), since this file is
+  published with the repository.
   Empty until populated that way.
 - [`run.py`](run.py) - for each manifest item with both a source file and a
   matching `expected.bib` entry: runs the real extraction pipeline on the
@@ -154,7 +156,7 @@ than the report - which is the previous point again, from the other side.
 whose plausible-looking error is invisible, because everything else in this
 harness is measured against it.
 
-`expected.bib` entries are copied verbatim from `biblio.bib` by
+`expected.bib` entries are copied (less private bookkeeping fields) from `biblio.bib` by
 `select_sample.py` - they're ground truth by provenance (written before the
 pipeline existed), not by construction, so a hand error in the source
 library still reaches `expected.bib` unchanged. Found and fixed by hand,
@@ -170,6 +172,7 @@ checked against the physical source, never automatically:
 | 2026-09-19 | Rimsky1952 | Title, Date, Author | Title and Date swapped back; trailing ` and` dropped from Author | Title held `1952` and Date the book's title, which biber discards as an invalid date. Taken from the maintainer's own correction in the library (date-modified 2026-09-19). |
 | 2026-11-03 | 54 English-language entries | Langid | Added `american` to 50; `ngerman`→`american` on Lewin2006a, Laufer1981, Finson1993, Drabkin1983 | House rule from #63: every entry carries `Langid`, English ones `american`. The four are English texts (a chapter and three reviews of German books) that `ngerman` was setting in German: Drabkin1983 printed "Rezension des … von … Nr." Maintainer's list. |
 | 2026-11-03 | all 61 | all | Re-copied verbatim from `biblio.bib` after the maintainer's 2026-11-02 cleanup, matched by `devonthink` URI; the `Langid = {american}` ruling above re-applied where the library does not carry it yet | Maintainer's request. Bibliographic changes: `journaltitle`→`journal` (the library's form; scored as one field, see `FIELD_ALIASES` in `scorer.py`); field corrections in Bjork2013 (publisher), Byom2023 (institution), Cavell1969a (location), Kaldis2013 (publisher), Meeus1980 and Menke2004 (location, publisher), Monelle2008 (date, eventdate, publisher), Motte2004, Schachter2000 and Weber1842 (publisher), Schenker1994a (location, title), Schenker1987b (volume), ScienceDirect2020 (urldate), Vasdekis (year), Zemtsovsky2016 (location); two keys changed, `Schenker1987`→`Schenker1987b` and `ScienceDirect0`→`ScienceDirect2020` (manifest updated; outputs archived before this date are filed under the old keys). |
+| 2026-11-03 | all 61 | `local-url*`, `devonthink*`, `keywords`, `bdsk-*`, `reference`, `rating` | Removed (399 fields) | Private bookkeeping (local file paths, DEVONthink links, personal keywords and ratings) in a public file. The scorer already ignored every one, so scores are unchanged (re-scored the 2026-11-03 run: identical). `date-added` kept as the identifier for matching back to the library. |
 
 Jeong2017's `Score-Informed`/`score-informed` disagreement is deliberately
 *not* here: that one is the pipeline's error (a hyphenated-compound
