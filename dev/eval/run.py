@@ -154,6 +154,13 @@ def evaluate(manifest, sample_dir, expected_entries, run_one):
         citekey = item['citekey']
         source = sample_dir / item['source']
 
+        # An entry the maintainer has ruled unscorable is neither extracted
+        # (no API call) nor scored, and is reported so that it is never
+        # silently missing from a count.
+        if item.get('excluded'):
+            warnings.append(f"{citekey}: excluded from scoring - {item['excluded']}")
+            continue
+
         expected_entry = expected_entries.get(citekey)
         if expected_entry is None:
             warnings.append(f"{citekey}: no matching entry in expected.bib")
