@@ -185,6 +185,7 @@ def consistency_flags(entry):
     out = []
     t = entry.etype.lower()
     has = lambda k: bool(entry.get(k))  # noqa: E731
+    get = lambda k: entry.get(k).value if entry.get(k) else ""  # noqa: E731
 
     # Asked of the pipeline's own rule, so the two cannot disagree again (#30):
     # this list once included suppbook, which takes no booktitle in this style.
@@ -195,7 +196,9 @@ def consistency_flags(entry):
         out.append("chapter with neither editor nor bookauthor")
     if t == "article" and not has("journaltitle") and not has("journal"):
         out.append("article with no journaltitle")
-    if t == "review" and not any(
+    # The house form names the reviewed work in Title itself
+    # (\bibstring{reviewof} \mkbibemph{...}), so that counts as identifying it.
+    if t == "review" and "\\bibstring{reviewof}" not in get("title") and not any(
         has(k) for k in ("related", "userd", "booktitle", "titleaddon", "note")
     ):
         out.append("review with nothing identifying the work reviewed")
@@ -229,6 +232,30 @@ def consistency_flags(entry):
 
 
 # ── Selection ────────────────────────────────────────────────────────────
+
+
+PART_TYPES = {"inbook", "incollection", "inproceedings", "suppbook", "suppcollection", "inreference"}
+
+
+def is_whole_volume(entry, path):
+    """True when the entry cites a part (a chapter, a preface) but its file is
+    the whole volume. Nothing in such a file says which part is cited, so no
+    extraction can be scored against it (the maintainer's ruling, 2026-11-03).
+    Judged by page count: more than 60 pages, and more than twice the part's
+    own page span where the entry gives one."""
+    if entry.etype.lower() not in PART_TYPES or not str(path).lower().endswith(".pdf"):
+        return False
+    try:
+        from pypdf import PdfReader
+        import logging
+        logging.getLogger("pypdf").setLevel(logging.ERROR)
+        n = len(PdfReader(str(path)).pages)
+    except Exception:
+        return False
+    pages = entry.get("pages").value if entry.get("pages") else ""
+    m = re.match(r"\s*(\d+)\s*-+\s*(\d+)", pages)
+    span = int(m.group(2)) - int(m.group(1)) + 1 if m else None
+    return n > 60 and (span is None or n > 2 * span + 10)
 
 
 def select(candidates, quota, seed):
@@ -397,13 +424,24 @@ def main(argv=None):
         f"{len(eligible)} added before {args.created_before}; "
         f"{len(entries) - len(eligible)} excluded on provenance"
     )
+    # The extracting model sees the template's worked examples in every prompt,
+    # so an entry that is one of them would be scored against an answer the
+    # model was shown.
+    template = ROOT / "prompt-context" / "biblio-template.bib"
+    shown = {e.citekey for e in bib_audit.scan(template.read_text(encoding="utf-8"))[0]}
+    before = len(eligible)
+    eligible = [e for e in eligible if e.citekey not in shown]
+    print(f"{before - len(eligible)} excluded as worked examples in the template")
 
     # Then resolve: only entries with a file on disk can be candidates.
-    candidates, unresolved = [], 0
+    candidates, unresolved, whole_volume = [], 0, 0
     for e in eligible:
         path = resolve_attachment(e)
         if not path or not Path(path).exists():
             unresolved += 1
+            continue
+        if is_whole_volume(e, path):
+            whole_volume += 1
             continue
         candidates.append(
             {
@@ -415,7 +453,8 @@ def main(argv=None):
                 "surname": surname(e),
             }
         )
-    print(f"{len(candidates)} with a live attachment; {unresolved} without\n")
+    print(f"{len(candidates)} with a live attachment; {unresolved} without; "
+          f"{whole_volume} parts whose file is the whole volume\n")
 
     scale = args.n / sum(QUOTA.values())
     quota = {t: max(1, round(n * scale)) for t, n in QUOTA.items()}

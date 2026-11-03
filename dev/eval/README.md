@@ -124,9 +124,10 @@ different reasons - `container_source` (the file is the whole volume, the entry
 is one chapter of it) and `insufficient_source` (the right file, yielding almost
 no text). Neither changes scoring by itself. A third key, `excluded`, does: an
 entry carrying it is neither extracted nor scored, and is listed among the
-report's warnings. The four `container_source` entries whose expected type is a
-part of the volume (Adorno2011, Cavell1969a, Roudiez1984, Schenker1994a) carry
-it since 2026-11-03, so reports count 57 entries, not 61. See
+report's warnings. Since 2026-11-03 `select_sample.py` keeps such entries out
+of a sample in the first place: a part (chapter, preface, reference article)
+whose file is the whole volume is never a candidate, nor is an entry the
+template shows the model as a worked example. See
 [`sample/README.md`](sample/README.md).
 
 **Nor can it tell a field read from the source apart from one the model
@@ -177,6 +178,7 @@ checked against the physical source, never automatically:
 | 2026-11-03 | 54 English-language entries | Langid | Added `american` to 50; `ngerman`→`american` on Lewin2006a, Laufer1981, Finson1993, Drabkin1983 | House rule from #63: every entry carries `Langid`, English ones `american`. The four are English texts (a chapter and three reviews of German books) that `ngerman` was setting in German: Drabkin1983 printed "Rezension des … von … Nr." Maintainer's list. |
 | 2026-11-03 | all 61 | all | Re-copied verbatim from `biblio.bib` after the maintainer's 2026-11-02 cleanup, matched by `devonthink` URI; the `Langid = {american}` ruling above re-applied where the library does not carry it yet | Maintainer's request. Bibliographic changes: `journaltitle`→`journal` (the library's form; scored as one field, see `FIELD_ALIASES` in `scorer.py`); field corrections in Bjork2013 (publisher), Byom2023 (institution), Cavell1969a (location), Kaldis2013 (publisher), Meeus1980 and Menke2004 (location, publisher), Monelle2008 (date, eventdate, publisher), Motte2004, Schachter2000 and Weber1842 (publisher), Schenker1994a (location, title), Schenker1987b (volume), ScienceDirect2020 (urldate), Vasdekis (year), Zemtsovsky2016 (location); two keys changed, `Schenker1987`→`Schenker1987b` and `ScienceDirect0`→`ScienceDirect2020` (manifest updated; outputs archived before this date are filed under the old keys). |
 | 2026-11-03 | all 61 | `local-url*`, `devonthink*`, `keywords`, `bdsk-*`, `reference`, `rating` | Removed (399 fields) | Private bookkeeping (local file paths, DEVONthink links, personal keywords and ratings) in a public file. The scorer already ignored every one, so scores are unchanged (re-scored the 2026-11-03 run: identical). `date-added` kept as the identifier for matching back to the library. |
+| 2026-11-03 | the sample | all | Replaced: 172 entries (seed 11, `--n 180`) drawn from the cleaned library, in place of 61 (seed 7). The selector now skips whole-volume files for part entries (195 such candidates) and the template's worked examples (13); 14 entries recur from the old sample. Baselines before this date refer to the old sample. | The maintainer's decision, for resolution: with 57 scored entries, run-to-run noise (about ±2 types) was the size of the effects being measured. |
 
 Jeong2017's `Score-Informed`/`score-informed` disagreement is deliberately
 *not* here: that one is the pipeline's error (a hyphenated-compound
