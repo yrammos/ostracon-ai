@@ -185,6 +185,32 @@ def test_resolve_attachment_reconstructs_wrapped_local_url():
 
 # ── run.py: evaluate() and the load_* helpers, extraction stubbed ─────────
 
+def test_evaluate_skips_excluded_entries():
+    # An entry ruled unscorable is never extracted or scored, and is reported.
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        sample_dir = td / 'sample'
+        sample_dir.mkdir()
+        (sample_dir / 'a.pdf').write_bytes(b'a')
+        (sample_dir / 'b.pdf').write_bytes(b'b')
+        manifest = [
+            {"citekey": "Kept", "source": "a.pdf"},
+            {"citekey": "Gone", "source": "b.pdf", "excluded": "whole volume"},
+        ]
+        bib = td / 'expected.bib'
+        bib.write_text("@Article{Kept,\n  Title = {T},\n}\n\n@Book{Gone,\n  Title = {U},\n}\n")
+        ran = []
+
+        def run_one(citekey, source):
+            ran.append(citekey)
+            return None
+        scores, warnings = eval_run.evaluate(manifest, sample_dir, eval_run.load_bib(bib), run_one)
+    assert ran == ["Kept"], ran
+    assert [s.citekey for s in scores] == ["Kept"], scores
+    assert any(w.startswith("Gone: excluded from scoring - whole volume") for w in warnings), warnings
+    return True
+
+
 def test_evaluate_end_to_end():
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
@@ -489,6 +515,7 @@ TESTS = [
     test_aggregate_and_report_do_not_crash_on_empty,
     test_unwrap_collapses_both_wrap_forms,
     test_resolve_attachment_reconstructs_wrapped_local_url,
+    test_evaluate_skips_excluded_entries,
     test_evaluate_end_to_end,
     test_run_pipeline_persists_and_reloads,
     test_run_pipeline_prints_failure_cause,

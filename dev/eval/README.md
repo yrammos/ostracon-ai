@@ -122,8 +122,12 @@ silent on all of it.
 Two manifest keys mark sample entries no extraction can score at all, for two
 different reasons - `container_source` (the file is the whole volume, the entry
 is one chapter of it) and `insufficient_source` (the right file, yielding almost
-no text). Neither is consumed by the scorer yet: they are read by whoever reads
-a report. See [`sample/README.md`](sample/README.md).
+no text). Neither changes scoring by itself. A third key, `excluded`, does: an
+entry carrying it is neither extracted nor scored, and is listed among the
+report's warnings. The four `container_source` entries whose expected type is a
+part of the volume (Adorno2011, Cavell1969a, Roudiez1984, Schenker1994a) carry
+it since 2026-11-03, so reports count 57 entries, not 61. See
+[`sample/README.md`](sample/README.md).
 
 **Nor can it tell a field read from the source apart from one the model
 recalled.** Both score `exact`. The harness compares strings; it has no view of

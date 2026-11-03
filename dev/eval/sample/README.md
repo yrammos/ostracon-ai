@@ -46,6 +46,12 @@ A JSON array of objects:
 - `insufficient_source` (optional) - a sentence saying that the attached file,
   though the right one, yields too little text to build the entry from, and
   the figures. Present on one source so far. See below.
+- `excluded` (optional) - the reason an entry is left out of the evaluation:
+  `run.py` neither extracts nor scores it, and lists it among the warnings.
+  Present on Adorno2011, Cavell1969a, Roudiez1984 and Schenker1994a since
+  2026-11-03 (the maintainer's ruling: nothing in the file says which part is
+  cited). Motte2004 keeps `container_source` but is scored: its entry is the
+  whole collection, which the file is.
 
 ## `container_source`: entries no extraction can score
 
