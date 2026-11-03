@@ -2,8 +2,10 @@
 """Render every entry of .bib files or directories and report fields that
 never reach the page, and entries that break the build; no API calls.
 
-    OSTRACON_PREVIEW_TEMPLATE=/path/previewtemplate.tex \\
-        python3 dev/render_entries.py dev/eval/expected.bib dev/eval/out/last-run-X/
+    python3 dev/render_entries.py dev/eval/expected.bib dev/eval/out/last-run-X/
+
+The template is chosen as in src/bib_render.py (environment variable, then
+the user's own, then the one shipped in src/tex/).
 
 Each entry is compiled alone (three LaTeX passes and biber, a few seconds),
 several at a time. A directory is read as one entry per file, the shape
