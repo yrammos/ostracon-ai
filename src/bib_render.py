@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Render one BibLaTeX entry under the maintainer's real preamble and report
-fields it fills that never reach the page.
+"""Render one BibLaTeX entry and report fields it fills that never reach the
+page.
 
-The preamble is the BibDesk preview template (pdflatex; babel; fontenc T1/T2A;
-csquotes; biblatex-chicago notes with autolang=other), which prints the
-bibliography entry, the full note and the short note. It is owned by the
-maintainer's dotfiles and read only from the shared location they publish it
-to, or from $OSTRACON_PREVIEW_TEMPLATE; never from a dotfiles checkout.
+The template prints the bibliography entry, the full note and the short note
+for one citekey. The first of these that exists is used:
+
+1. $OSTRACON_PREVIEW_TEMPLATE
+2. ${XDG_CONFIG_HOME:-~/.config}/ostracon-ai/previewtemplate.tex, a user's own
+   preamble (packages, languages, biblatex options), so that what is checked is
+   what that user actually prints
+3. src/tex/previewtemplate.tex, shipped here: biblatex-chicago notes, pdflatex,
+   nothing user-specific
+
+A template uses BibDesk's preview placeholders, <<File>> and <<CiteKeys>>.
 
 A compile that dies is reported as such, never as a clean render: a harness
 that fails quietly answers confidently, and wrongly.
@@ -20,8 +26,9 @@ from pathlib import Path
 
 from bib_validate import ValidatorUnavailable, tool
 
-SHARED_TEMPLATE = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) \
-    / "bibdesk" / "previewtemplate.tex"
+USER_TEMPLATE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") \
+    / "ostracon-ai" / "previewtemplate.tex"
+SHIPPED_TEMPLATE = Path(__file__).resolve().parent / "tex" / "previewtemplate.tex"
 
 # Fields whose value should appear in print. Names are checked by surname,
 # dates by year, numeric fields by their digits; the rest as text.
@@ -43,7 +50,9 @@ class RenderFailed(RuntimeError):
 
 def template_path():
     p = os.environ.get("OSTRACON_PREVIEW_TEMPLATE")
-    return Path(p) if p else SHARED_TEMPLATE
+    if p:
+        return Path(p)
+    return USER_TEMPLATE if USER_TEMPLATE.is_file() else SHIPPED_TEMPLATE
 
 
 def render(entry_text, citekey):
