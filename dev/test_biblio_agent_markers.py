@@ -533,6 +533,9 @@ def _quiet_agent(tmp_dir, **config):
     agent.config["failed_bib_file"] = str(Path(tmp_dir) / "failed.bib")
     agent.config["interface"] = dict(agent.config.get("interface") or {}, notifications=False)
     agent.config["verbose"] = True
+    # biber validation compiles a document per entry; tests that want it
+    # turn it on explicitly.
+    agent.config["validate_entries"] = False
     agent.config.update(config)
     return agent
 
@@ -794,6 +797,29 @@ def test_house_style_follows_and_overrides_the_rules():
     return True
 
 
+def test_validation_flags_and_comments_a_rejected_field():
+    import bib_validate
+    if not bib_validate.available():
+        print("    (skipped: pdflatex/biber not found)")
+        return True
+    entry = ("@Article{V,\n  Author = {Doe, Jane},\n  Title = {T},\n  Journaltitle = {J},\n"
+             "  Publisher = {P},\n  Date = {2001},\n  Langid = {american},\n}")
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False, validate_entries=True)
+        result, err, _ = _extract_with(agent, td, entry)
+    assert result.needs_color is True, result
+    assert result.validation == ["@article: Invalid field 'publisher' for entrytype 'article'"], result.validation
+    assert "% VALIDATION: @article: Invalid field 'publisher'" in "\n".join(result.comment_lines())
+    return True
+
+
+def test_inferred_fields_reach_the_comments():
+    from extraction_result import ExtractionResult
+    r = ExtractionResult(entry="@Book{Y,\n}", inferred_fields=["publisher", "location"])
+    assert "% INFERRED (not read from the source): publisher, location" in r.comment_lines()
+    return True
+
+
 def test_normalize_langid():
     import enrich
     english = "@Book{Y,\n\tLangid = {english},\n\tTitle = {Z},\n}"
@@ -913,6 +939,8 @@ TESTS = [
     test_no_effort_leaves_the_request_unchanged,
     test_truncated_audit_flags_for_review,
     test_house_style_follows_and_overrides_the_rules,
+    test_validation_flags_and_comments_a_rejected_field,
+    test_inferred_fields_reach_the_comments,
     test_normalize_langid,
     test_extract_bibtex_flags_a_missing_langid,
 ]
