@@ -56,6 +56,11 @@ SKIPPED = """@online{O,
   Title = {Collected},
   Year = {\\bibstring{nodate}},
 }
+@periodical{P,
+  Title = {A Journal},
+  Issuetitle = {A Special Issue},
+  Date = {2015},
+}
 @unpublished{T,
   Author = {Doe, Jane},
   Title = {Talk},
@@ -67,6 +72,7 @@ SKIPPED_LOG = """\
 [1] Biber.pm:132> WARN - Datamodel: book entry 'B' (v.bib): Missing mandatory field 'author'
 [1] Biber.pm:132> WARN - Datamodel: book entry 'B' (v.bib): Invalid value of field 'year' must be datatype 'datepart' - ignoring field
 [1] Biber.pm:132> WARN - Datamodel: unpublished entry 'T' (v.bib): Missing mandatory field - one of 'date, year' must be defined
+[1] Biber.pm:132> WARN - Datamodel: periodical entry 'P' (v.bib): Missing mandatory field 'editor'
 [1] Biber.pm:132> WARN - Datamodel: online entry 'O' (v.bib): Field 'date-added' invalid in data model - ignoring
 """
 

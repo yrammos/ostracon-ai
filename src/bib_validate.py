@@ -218,6 +218,11 @@ def _documented(etype, key, detail, typed, facts):
         # A talk dated by its eventdate. notes-test.bib nass:address.
         etype == "unpublished" and key in facts["evented"]
         and starts("Missing mandatory field - one of 'date, year'"),
+        # A whole issue whose editor is unknown: the manual says an unknown
+        # author or editor "may simply be omitted" and that "Anonymous" is
+        # "generally to be avoided" (biblatex-chicago.tex, "author"; CMOS
+        # 14.79). The issue title then leads (compile-proved 2026-11-03).
+        etype == "periodical" and starts("Missing mandatory field 'editor'"),
         # The holding collection. biblatex-chicago.tex, "misc".
         etype == "misc" and key in facts["subtype"]
         and starts("Invalid field 'institution'"),
