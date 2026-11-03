@@ -168,6 +168,7 @@ checked against the physical source, never automatically:
 | 2026-08-29 | Cavell1969a | Pages | `180-2012`→`180-201` | Typo: the source runs to 197 pages, so the range was impossible on its face. Reported as #20. |
 | 2026-08-29 | Arndt2014 | Title | `Robert P. Morgan`→`Robert~P. Morgan` | Internal inconsistency: the same file wrote `Lee~A. Rothfarb`, so no output could score exact on both. Settled on the unspaced-tie form throughout. Reported as #24. |
 | 2026-09-19 | Rimsky1952 | Title, Date, Author | Title and Date swapped back; trailing ` and` dropped from Author | Title held `1952` and Date the book's title, which biber discards as an invalid date. Taken from the maintainer's own correction in the library (date-modified 2026-09-19). |
+| 2026-11-03 | 54 English-language entries | Langid | Added `american` to 50; `ngerman`→`american` on Lewin2006a, Laufer1981, Finson1993, Drabkin1983 | House rule from #63: every entry carries `Langid`, English ones `american`. The four are English texts (a chapter and three reviews of German books) that `ngerman` was setting in German: Drabkin1983 printed "Rezension des … von … Nr." Maintainer's list. |
 
 Jeong2017's `Score-Informed`/`score-informed` disagreement is deliberately
 *not* here: that one is the pipeline's error (a hyphenated-compound
