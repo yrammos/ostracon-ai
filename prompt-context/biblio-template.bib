@@ -56,7 +56,7 @@
 	Origdate = {1839},
 	Publisher = {Universal Edition},
 	Subtitle = {Reminiscences of Beethoven, and, Chapters II and III from Volume IV of the Complete Theoretical and Practical Piano Forte School: Op.~500},
-	Title = {On the Proper Performance of All Beethoven's Works for the Piano}
+	Title = {On the Proper Performance of All Beethoven's Works for the Piano},
 }
 
 % --- Chapter within a book ---
@@ -77,17 +77,19 @@
 }
 
 % --- Article in a reference work ---
-% The work goes in Title, the article in Lista. Printed edition, so no Url;
-% an online-only reference work would add Entrysubtype = {online} with Url
-% and Urldate.
+% The work goes in Title, the article in Lista. Consulted online:
+% Entrysubtype = {online} keeps its Url, and an online reference work also
+% takes a Urldate.
 @inreference{Marston2001,
 	Author = {Marston, Nicholas},
 	Date = {2001},
+	Entrysubtype = {Online},
 	Langid = {american},
 	Lista = {Autograph},
 	Location = {New York},
 	Publisher = {Oxford University Press},
-	Title = {Grove Music Online}
+	Title = {Grove Music Online},
+	Url = {http://www.oxfordmusiconline.com/},
 }
 
 % --- Miscellaneous item ---
