@@ -373,6 +373,30 @@ _NODATE_IN_DATE = re.compile(
     r'(?im)^([ \t]*)(date)(\s*=\s*)\{\s*(?:\\bibstring\{nodate\}|n\.\s?d\.)\s*\}')
 
 
+# Langid values naming English. The maintainer's preamble loads babel's
+# `american` only; under autolang=other any of these switches an entry out of
+# Chicago's American forms (compile-proved 2026-11-03 for `english`: "no."
+# becomes "number", punctuation moves outside the quotes, the full note prints
+# a raw `cbyeditor`), while `american` renders identically to no Langid.
+ENGLISH_LANGIDS = {'english', 'british', 'ukenglish', 'usenglish', 'american',
+                   'australian', 'canadian', 'newzealand'}
+_LANGID_RE = re.compile(r'^(\s*langid\s*=\s*\{)([^}]*)(\})', re.I | re.M)
+
+
+def normalize_langid(entry_text):
+    """Every entry carries Langid, and an English one carries `american`.
+    Rewrites any English variant to `american` in place; a missing Langid is
+    reported, not guessed, since the entry's language is not knowable here.
+    Returns (entry_text, change): change is None, 'rewritten' or 'missing'."""
+    m = _LANGID_RE.search(entry_text)
+    if not m:
+        return entry_text, 'missing'
+    value = m.group(2).strip()
+    if value.lower() in ENGLISH_LANGIDS and value != 'american':
+        return entry_text[:m.start(2)] + 'american' + entry_text[m.end(2):], 'rewritten'
+    return entry_text, None
+
+
 def move_nodate_to_year(entry_text):
     """Rename a `Date` holding only "no date" to `Year = {\\bibstring{nodate}}`,
     in place and in the entry's own casing. Left alone when a Year already

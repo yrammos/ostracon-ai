@@ -774,6 +774,18 @@ excerpt's text won't (e.g. an embedded Author field):
             # carries the same flag on the other branch, where entries are
             # appended as text and no color is possible; each survives where
             # the other cannot.
+            # Langid decides quotation marks, key terms and punctuation under
+            # the maintainer's autolang=other, so it is normalized in code
+            # rather than trusted to the prompt: English variants become
+            # `american`, and an entry without Langid goes to review.
+            if entry is not None:
+                bibtex_entry, langid = enrich.normalize_langid(bibtex_entry)
+                if langid == 'rewritten':
+                    self._log("   Rewrote an English Langid to `american`", 'warning')
+                elif langid == 'missing':
+                    self._log("   ⚠️  No Langid - flagging for review", 'warning')
+                    needs_color = True
+
             amber_reason = None
             if content.amber:
                 needs_color = True
