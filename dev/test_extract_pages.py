@@ -148,7 +148,25 @@ def test_extract_content_reports_zero_words_on_error():
     return True
 
 
+def test_pdf_creation_date_is_not_passed_on():
+    # Constructed: a one-page PDF whose file metadata carries a CreationDate.
+    import tempfile
+    from pypdf import PdfWriter
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "m.pdf"
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.add_metadata({"/Title": "A Title", "/CreationDate": "D:20190101000000"})
+        with open(path, "wb") as f:
+            writer.write(f)
+        meta = extract_pages.extract_pdf_metadata(path)
+    assert meta.get("Title") == "A Title", meta
+    assert "CreationDate" not in meta, meta
+    return True
+
+
 TESTS = [
+    test_pdf_creation_date_is_not_passed_on,
     test_thin_yield_is_flagged_amber,
     test_ordinary_yield_is_not_flagged,
     test_threshold_boundary_is_exclusive,

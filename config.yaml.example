@@ -65,6 +65,12 @@ model: "claude-sonnet-4-6" # Claude model to use
 # Send an entry without Langid to review (amber), for libraries that record
 # the language of every entry.
 # require_langid: true
+
+# Check each entry against biblatex-chicago's data model with biber (needs
+# pdflatex and biber; skipped with a note where they are missing). A field
+# biber rejects for the entry type, or a missing mandatory one, sends the
+# entry to review (amber) and is noted in a "% VALIDATION:" comment.
+validate_entries: true
 # thinking_max_tokens: 16000
 # audit_max_tokens: 600   # the grounding audit's own limit
 

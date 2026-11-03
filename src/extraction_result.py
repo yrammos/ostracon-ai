@@ -36,7 +36,7 @@ fault; sharing the real class is what stops that here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -72,6 +72,14 @@ class ExtractionResult:
     # Written as "% Sources -- ...".
     field_sources: Optional[str] = None
 
+    # Fields the grounding audit found were neither read from the source nor
+    # confirmed by a primary record. Written as "% INFERRED: ...".
+    inferred_fields: list = field(default_factory=list)
+
+    # biber data-model warnings left after biblatex-chicago's documented
+    # usages are excused. Written as "% VALIDATION: ...".
+    validation: list = field(default_factory=list)
+
     @property
     def failed(self) -> bool:
         return self.error is not None
@@ -91,4 +99,8 @@ class ExtractionResult:
             lines.append(f"% AMBER: {self.amber_reason}")
         if self.field_sources:
             lines.append(f"% Sources -- {self.field_sources}")
+        if self.inferred_fields:
+            lines.append(f"% INFERRED (not read from the source): {', '.join(self.inferred_fields)}")
+        for message in self.validation:
+            lines.append(f"% VALIDATION: {message}")
         return lines

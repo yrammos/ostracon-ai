@@ -50,8 +50,11 @@ class SourceContent:
 
 def extract_pdf_metadata(pdf_path):
     """
-    Extract embedded PDF file metadata (Title, Author, Subject, CreationDate)
-    when present.
+    Extract embedded PDF file metadata (Title, Author, Subject) when present.
+
+    CreationDate is deliberately not passed on: it records when the file was
+    made (a scan, an export, a download), not when the work was published,
+    and a model shown it will use it as the date of an undated work.
 
     This is a first-party signal from the file itself, distinct from the
     document's body text - and it's sometimes the ONLY textual clue to
@@ -72,7 +75,7 @@ def extract_pdf_metadata(pdf_path):
 
     fields = {}
     for key, label in [('/Title', 'Title'), ('/Author', 'Author'),
-                        ('/Subject', 'Subject'), ('/CreationDate', 'CreationDate')]:
+                        ('/Subject', 'Subject')]:
         try:
             value = meta.get(key)
             value = value.get_object() if hasattr(value, 'get_object') else value

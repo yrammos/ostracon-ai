@@ -175,6 +175,12 @@ the rules: `~/.config/ostracon-ai/house-style.md` (or `house_style_file` in
 `config.yaml`) is read when present, sent after the rules, and takes precedence over
 them. `require_langid: true` makes an entry without `Langid` go to review.
 
+`validate_entries` (default `true`) checks each new entry with biber against
+biblatex-chicago's data model, excusing the usages the package documents. A
+field biber rejects for the type, or a missing mandatory one, sends the entry to
+review. Fields the model could neither read from the source nor confirm in a
+catalogue record are reported too, as `% INFERRED:`.
+
 ## Usage
 
 Right-click a PDF or `.webloc` file in Finder — or a mixed selection — and choose

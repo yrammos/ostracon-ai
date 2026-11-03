@@ -156,6 +156,7 @@ class BiblioAgent:
         # One record per API call: which call, model, and token counts.
         # dev/eval/run.py reads and resets it per source to measure cost.
         self.usage = []
+        self.inferred_fields = []
 
     def _log(self, message: str, level: str = 'info') -> None:
         """Emit a progress message to stderr (if verbose) and/or the progress window."""
@@ -201,6 +202,20 @@ class BiblioAgent:
         if stop == 'refusal':
             raise RuntimeError(f"{call} request refused by the model")
         return message
+
+    def _validate(self, entry_text):
+        """bib_validate's undocumented biber warnings for one entry, as
+        messages; [] when clean or when no verdict could be reached."""
+        try:
+            import bib_validate
+            found = bib_validate.validate(entry_text)
+        except Exception as e:      # ValidatorUnavailable, or TeX missing
+            self._log(f"   Validation skipped: {str(e).splitlines()[0]}", 'dim')
+            return []
+        messages = [m for _, m in found]
+        for m in messages:
+            self._log(f"   ⚠️  biber: {m} - flagging for review", 'warning')
+        return messages
 
     def load_config(self, config_path):
         """Load configuration from YAML file.
@@ -793,16 +808,6 @@ excerpt's text won't (e.g. an embedded Author field):
             if stripped:
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
-            # content.amber is web_source.py's plausibility check flagging a
-            # source that's genuine but thin or sparse (no Author/Doi/
-            # PublicationDate beyond Urldate, or a short body) - not wrong,
-            # just worth a glance. Folded into the same needs_color signal a
-            # recollection-audit failure uses, so it reaches BibDesk's review
-            # color by exactly the path a PDF's review state does. The
-            # "% AMBER: ..." comment save_entry writes from amber_reason
-            # carries the same flag on the other branch, where entries are
-            # appended as text and no color is possible; each survives where
-            # the other cannot.
             # Langid decides quotation marks, key terms and punctuation under
             # autolang=other, so it is normalized in code rather than trusted
             # to the prompt: English variants become `american`, and, where
@@ -815,6 +820,31 @@ excerpt's text won't (e.g. an embedded Author field):
                     self._log("   ⚠️  No Langid - flagging for review", 'warning')
                     needs_color = True
 
+            inferred = list(self.inferred_fields) if entry is not None else []
+            if inferred:
+                self._log(f"   ⚠️  Inferred, not read from the source: {', '.join(inferred)}", 'warning')
+
+            # biber's data-model check (bib_validate), with biblatex-chicago's
+            # documented usages excused. A field biber rejects for the type, or
+            # a mandatory one missing, sends the entry to review. Skipped, and
+            # said so, where TeX is not installed; validate_entries: false
+            # turns it off.
+            validation = []
+            if entry is not None and self.config.get('validate_entries', True):
+                validation = self._validate(bibtex_entry)
+                if validation:
+                    needs_color = True
+
+            # content.amber is web_source.py's plausibility check flagging a
+            # source that's genuine but thin or sparse (no Author/Doi/
+            # PublicationDate beyond Urldate, or a short body) - not wrong,
+            # just worth a glance. Folded into the same needs_color signal a
+            # recollection-audit failure uses, so it reaches BibDesk's review
+            # color by exactly the path a PDF's review state does. The
+            # "% AMBER: ..." comment save_entry writes from amber_reason
+            # carries the same flag on the other branch, where entries are
+            # appended as text and no color is possible; each survives where
+            # the other cannot.
             amber_reason = None
             if content.amber:
                 needs_color = True
@@ -830,6 +860,8 @@ excerpt's text won't (e.g. an embedded Author field):
                 needs_color=needs_color,
                 amber_reason=amber_reason,
                 field_sources=field_sources,
+                inferred_fields=inferred,
+                validation=validation,
             )
 
         except Exception as e:
@@ -1117,6 +1149,9 @@ BibLaTeX entry, with no additional commentary."""
         """
         entry_type = enrich.get_entry_type(entry_text)
         fields = enrich.parse_bibtex_fields(entry_text)
+        # Fields whose value was neither read from the source nor confirmed by
+        # a primary record: reported to the user (log and a % comment).
+        self.inferred_fields = []
 
         try:
             ungrounded = self._audit_entry_grounding(entry_text, content)
@@ -1162,6 +1197,7 @@ BibLaTeX entry, with no additional commentary."""
             reasons = []
             if still_ungrounded:
                 reasons.append(f"recollection-based field(s) ({', '.join(still_ungrounded)})")
+                self.inferred_fields = still_ungrounded
             if still_missing_container:
                 reasons.append(f"container-level field(s) ({', '.join(still_missing_container)})")
             if reasons:
