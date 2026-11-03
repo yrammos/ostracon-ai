@@ -589,7 +589,7 @@ def would_split(entry: Entry, value: str) -> bool:
 def keeps_shorttitle(entry: Entry, title_value: str) -> bool:
     r"""True where Shorttitle is earned rather than redundant.
 
-    CLAUDE.md: use Shorttitle "only when the title could not be split and the
+    extraction-rules.md: use Shorttitle "only when the title could not be split and the
     full title is more than six words long". Both halves matter, and the first is
     the one that is easy to get wrong.
 
@@ -830,7 +830,7 @@ def run_rules(entries):
         # --- Language markers --------------------------------------------
         # Two distinct populations, and the second is the larger one the rule
         # could not see: a title already wrapped in \foreignlanguage but with no
-        # Langid recorded. CLAUDE.md wants both -- the wrapper for typography,
+        # Langid recorded. extraction-rules.md wants both -- the wrapper for typography,
         # Langid for sorting and for tools that read it -- so a wrapper alone is
         # a real gap, not a pass.
         t = e.get("title")

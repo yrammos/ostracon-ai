@@ -23,7 +23,11 @@ pdf_out_folder: "./pdf-out" # Processed PDFs moved here
 main_bib_file: "~/Desktop/biblio-staging.bib"
 failed_bib_file: "~/Desktop/biblio-failed.bib"
 template_file: "./prompt-context/biblio-template.bib"
-claude_md_file: "./CLAUDE.md"
+rules_file: "./prompt-context/extraction-rules.md" # The generic extraction rules
+# Your own conventions, sent after the rules and taking precedence over them.
+# Read from ~/.config/ostracon-ai/house-style.md when present; set this to
+# use another file.
+# house_style_file: "~/.config/ostracon-ai/house-style.md"
 ref_file: "./prompt-context/biblatex-chicago-notes-ref.md"  # Optional: condensed biblatex-chicago field reference
 
 # Optional worked-example corpora, cached as part of the static prompt prefix.
@@ -57,6 +61,10 @@ model: "claude-sonnet-4-6" # Claude model to use
 # against max_tokens, so setting effort also raises every call's limit to
 # thinking_max_tokens. A reply cut off at the limit fails loudly.
 # effort: "medium"
+
+# Send an entry without Langid to review (amber), for libraries that record
+# the language of every entry.
+# require_langid: true
 # thinking_max_tokens: 16000
 # audit_max_tokens: 600   # the grounding audit's own limit
 

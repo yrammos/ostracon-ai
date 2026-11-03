@@ -109,7 +109,7 @@ def test_score_entry_extraction_failed():
 
 
 def test_score_entry_excludes_bookkeeping_fields():
-    # expected side carries a CLAUDE.md-suppressed field (keywords), BibDesk
+    # expected side carries a extraction-rules.md-suppressed field (keywords), BibDesk
     # bookkeeping (rating, bdsk-file-1), and a free-text note field carrying
     # BibDesk's line-wrap artifact (annote) - none of these four should
     # register as 'missing'.
@@ -123,7 +123,7 @@ def test_score_entry_excludes_bookkeeping_fields():
   Annote = {a curatorial note, wrapped by BibDesk},
 }
 """)
-    # produced side carries an isbn (CLAUDE.md forbids the pipeline from
+    # produced side carries an isbn (extraction-rules.md forbids the pipeline from
     # populating it) and an abstract (the pipeline never produces one) - if
     # either ever slipped through, neither must register as 'spurious'.
     produced = _entry("""

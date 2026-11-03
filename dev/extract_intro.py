@@ -175,7 +175,7 @@ header = (
     "Explains which entry TYPE to choose for a given kind of source. Names in\n"
     "[brackets] are entry keys of worked examples in `notes-test.bib`.\n"
     "NB this reflects the package's own house style, which departs from this\n"
-    "project's conventions in places; CLAUDE.md takes precedence.\n"
+    "project's conventions in places; extraction-rules.md takes precedence.\n"
 )
 # Reflow. The .tex hard-wraps at ~70 columns, which is a typesetting artifact,
 # not content: preserved verbatim it leaves every rule split across lines and so

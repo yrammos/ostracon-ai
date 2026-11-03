@@ -167,7 +167,7 @@ def _full_date(message):
     """Full publication date as YYYY-MM-DD (or as much as CrossRef gives).
 
     Deliberately not enrich.crossref_date(), which yields the year alone.
-    Here the model needs the whole date, since CLAUDE.md's year-only rule has
+    Here the model needs the whole date, since extraction-rules.md's year-only rule has
     exceptions (@Unpublished, magazine articles) it can only apply if it can
     see the month and day.
     """
@@ -744,7 +744,7 @@ def _content_from_html(html, source_url, label):
 # biblio_agent.py's existing "needs_color" mechanism) instead of discarded -
 # this library carries plenty of real @Online sources (a personal page, a
 # manufacturer's spec sheet) with a Title and nothing else, for which
-# Urldate is the normal, correct dating evidence per CLAUDE.md, not a
+# Urldate is the normal, correct dating evidence per extraction-rules.md, not a
 # consolation prize.
 
 _IDENTIFYING_FIELDS = ('Author', 'Doi', 'PublicationDate')
@@ -984,7 +984,7 @@ def _content_plausible(content, candidate_urls, soup=None):
     if not any(metadata.get(f) for f in _IDENTIFYING_FIELDS):
         # Not a hard fail: a Title with no Author/Doi/PublicationDate still
         # has Urldate to date it by (this project's own convention for an
-        # entry with no stated Date - CLAUDE.md), which is a normal, valid
+        # entry with no stated Date - extraction-rules.md), which is a normal, valid
         # @Online source, not a defective one. Flagged amber rather than
         # passed clean, though, since it's the sparsest shape that's still
         # usable at all.
