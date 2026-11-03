@@ -298,7 +298,7 @@
   "note": "@incollection — plain (control)"
  },
  {
-  "citekey": "Schenker1987",
+  "citekey": "Schenker1987b",
   "source": "Schenker1987.pdf",
   "sha256": "5542551822b3173b86f4e2eee53b6b06a9305e5cd54c273d596e8bf85068dbb7",
   "note": "@book — multi-volume, reprint/origdate, translated"
@@ -311,7 +311,7 @@
   "container_source": "146-page scan of the whole of Das Meisterwerk in der Musik I; the entry is one 8-page essay from it."
  },
  {
-  "citekey": "ScienceDirect0",
+  "citekey": "ScienceDirect2020",
   "source": "ScienceDirect0.pdf",
   "sha256": "00ada899ed415e4a5ce445f4f6e305c630c557d4f019c2047abb789b1de9ba85",
   "note": "@online — plain (control)"
