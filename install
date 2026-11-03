@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Wire this checkout into the machine (macOS). Idempotent; the dotfiles
-# installer runs it.
+# installer runs it. Prints one line per item: what it did, or why not.
 #
 #   ~/.local/bin/bib-audit   dev/bib_audit.py on PATH; dotfiles' nrch imports it through this link
 #   ~/.local/share/ostracon-ai/bib_validate.py
@@ -15,18 +15,30 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
 
-mkdir -p "$HOME/.local/bin"
-ln -sfn "$here/dev/bib_audit.py" "$HOME/.local/bin/bib-audit"
+say() { printf 'install: %s\n' "$*"; }
 
-share="${XDG_DATA_HOME:-$HOME/.local/share}/ostracon-ai"
-mkdir -p "$share"
-ln -sfn "$here/src/bib_validate.py" "$share/bib_validate.py"
+# Link $1 at $2, saying whether the link was already right.
+link() {
+    mkdir -p "$(dirname "$2")"
+    if [ -L "$2" ] && [ "$(readlink "$2")" = "$1" ]; then
+        say "ok       $2"
+    else
+        ln -sfn "$1" "$2"
+        say "linked   $2 -> $1"
+    fi
+}
+
+link "$here/dev/bib_audit.py"     "$HOME/.local/bin/bib-audit"
+link "$here/src/bib_validate.py"  "${XDG_DATA_HOME:-$HOME/.local/share}/ostracon-ai/bib_validate.py"
 
 wflow="$HOME/Library/Services/Extract BibLaTeX-Chicago Bibliography (via Claude).workflow/Contents/document.wflow"
 if [ ! -f "$here/automator/script.sh" ]; then
-    echo "install: Quick Action skipped; create automator/script.sh from its .example, then rerun" >&2
+    say "skipped  Quick Action: create automator/script.sh from its .example, then rerun" >&2
 elif [ ! -f "$wflow" ] ||
      [ "$here/automator/script.sh" -nt "$wflow" ] ||
      [ "$here/dev/install_service.py" -nt "$wflow" ]; then
+    say "building Quick Action (relaunches Finder)"
     python3 "$here/dev/install_service.py"
+else
+    say "ok       Quick Action (current; not rebuilt)"
 fi
