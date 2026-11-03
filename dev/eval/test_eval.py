@@ -77,6 +77,15 @@ def test_score_entry_normalizes_whitespace():
     return True
 
 
+def test_score_entry_treats_biber_aliases_as_one_field():
+    # The library writes `journal`, the pipeline `Journaltitle`: one field.
+    expected = _entry("@Article{X, journal = {J}, address = {P},}")
+    produced = _entry("@Article{X, Journaltitle = {J}, Location = {Q},}")
+    verdicts = {f.field: f.verdict for f in score_entry(expected, produced).fields}
+    assert verdicts == {'journaltitle': 'exact', 'location': 'different'}, verdicts
+    return True
+
+
 def test_score_entry_wrong_type():
     expected = _entry("@Incollection{X, Author = {Roe, John}, Booktitle = {An Edited Volume},}")
     produced = _entry("@Article{X, Author = {Roe, John},}")
@@ -473,6 +482,7 @@ TESTS = [
     test_consistency_flags_agree_with_the_pipeline_on_booktitle,
     test_score_entry_all_verdicts,
     test_score_entry_normalizes_whitespace,
+    test_score_entry_treats_biber_aliases_as_one_field,
     test_score_entry_wrong_type,
     test_score_entry_extraction_failed,
     test_score_entry_excludes_bookkeeping_fields,

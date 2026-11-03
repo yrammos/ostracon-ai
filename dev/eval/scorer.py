@@ -72,6 +72,16 @@ class EntryScore:
     fields: list = dc_field(default_factory=list)
 
 
+# biber's own field aliases: each pair is the same field under two names, so
+# a value written under either scores against the other. The library writes
+# `journal` (2,888 entries); CLAUDE.md asks the pipeline for `Journaltitle`.
+FIELD_ALIASES = {'journal': 'journaltitle', 'address': 'location', 'school': 'institution'}
+
+
+def _canonical(key: str) -> str:
+    return FIELD_ALIASES.get(key, key)
+
+
 def _normalize(value: str) -> str:
     """Collapse whitespace so line-wrapping or pretty-printing differences
     in the raw .bib text don't register as a content difference."""
@@ -94,22 +104,23 @@ def score_entry(expected: bib_audit.Entry, produced: "bib_audit.Entry | None") -
     expected_fields = [f for f in expected.fields if not is_excluded_field(f.key)]
     produced_fields = [f for f in produced.fields if not is_excluded_field(f.key)] if produced else []
 
-    expected_keys = {f.key for f in expected_fields}
-    produced_by_key = {f.key: f for f in produced_fields}
+    expected_keys = {_canonical(f.key) for f in expected_fields}
+    produced_by_key = {_canonical(f.key): f for f in produced_fields}
     scores = []
 
     for f in expected_fields:
-        pf = produced_by_key.get(f.key)
+        key = _canonical(f.key)
+        pf = produced_by_key.get(key)
         if pf is None:
-            scores.append(FieldScore(f.key, 'missing', expected=f.value))
+            scores.append(FieldScore(key, 'missing', expected=f.value))
         elif _normalize(pf.value) == _normalize(f.value):
-            scores.append(FieldScore(f.key, 'exact', expected=f.value, produced=pf.value))
+            scores.append(FieldScore(key, 'exact', expected=f.value, produced=pf.value))
         else:
-            scores.append(FieldScore(f.key, 'different', expected=f.value, produced=pf.value))
+            scores.append(FieldScore(key, 'different', expected=f.value, produced=pf.value))
 
     for f in produced_fields:
-        if f.key not in expected_keys:
-            scores.append(FieldScore(f.key, 'spurious', produced=f.value))
+        if _canonical(f.key) not in expected_keys:
+            scores.append(FieldScore(_canonical(f.key), 'spurious', produced=f.value))
 
     return EntryScore(
         citekey=expected.citekey,
