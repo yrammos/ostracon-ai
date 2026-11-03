@@ -282,6 +282,46 @@ def select(candidates, quota, seed):
 # The keys this script computes for every manifest item. Anything else in an
 # existing manifest.json was put there by a person and is carried across a
 # rerun unchanged - see manifest_extras() and dev/eval/sample/README.md.
+# Bookkeeping that describes one user's machine and library (file paths,
+# DEVONthink links, BibDesk's encoded attachments, personal keywords and
+# ratings). The scorer ignores all of them; date-added stays, as the stable
+# identifier for matching an entry back to its library record.
+PRIVATE_FIELD_RE = re.compile(
+    r"^(local-url(-\d+)?|devonthink\d*|keywords|bdsk-.*|reference|rating|read|annote|abstract)$")
+
+
+def strip_private_fields(entry_text):
+    """One entry's text without PRIVATE_FIELD_RE fields, in BibDesk's shape."""
+    from bib_normalize import field_removal_span
+    entry = bib_audit.scan(entry_text)[0][0]
+    spans = []
+    for f in entry.fields:
+        if PRIVATE_FIELD_RE.match(f.key):
+            span = field_removal_span(entry_text, entry, f)
+            if span is None:
+                raise ValueError(f"{entry.citekey}: cannot remove {f.key}")
+            spans.append(span)
+    # Adjacent removals share a comma (the last field reaches back over it,
+    # the one before takes it forward), so overlaps are merged before cutting.
+    merged = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    for a, b in reversed(merged):
+        entry_text = entry_text[:a] + entry_text[b:]
+    return re.sub(r",\}$", "}", entry_text)
+
+
+def _relative(path):
+    path = Path(path).resolve()
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return path.name
+
+
 GENERATED_MANIFEST_KEYS = frozenset({"citekey", "source", "sha256", "note"})
 
 
@@ -442,11 +482,12 @@ def main(argv=None):
         }
         item.update(kept.get(c["citekey"], {}))
         manifest.append(item)
-        # Verbatim source bytes: expected.bib keeps the entry exactly as it was
-        # written. Fields the pipeline never produces are excluded at scoring
-        # time by scorer.py, not stripped here.
+        # Source bytes, less the private bookkeeping fields (see
+        # strip_private_fields): expected.bib is published with the repository.
+        # Other fields the pipeline never produces are excluded at scoring time
+        # by scorer.py, not stripped here.
         start, end = c["entry"].span
-        bib_out.append(text[start:end])
+        bib_out.append(strip_private_fields(text[start:end]))
 
     (sample_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=1, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -458,7 +499,9 @@ def main(argv=None):
     (sample_dir / "selection.json").write_text(
         json.dumps(
             {
-                "source": str(bib_path),
+                # Relative to the repository: an absolute path would publish
+                # the local layout of whoever ran the selection.
+                "source": _relative(bib_path),
                 "created_before": args.created_before,
                 "seed": args.seed,
                 "n": len(manifest),
