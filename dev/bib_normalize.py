@@ -394,7 +394,7 @@ def plan_edits(text: str, entries):
                 reports["nodate-in-date-with-year-REVIEW"].append(
                     (e.citekey, e.get("year").value[:40]))
             elif online and e.has("urldate"):
-                # Takes no Year at all (CLAUDE.md); dropping a field from the
+                # Takes no Year at all (extraction-rules.md); dropping a field from the
                 # library is the maintainer's call, so report it.
                 reports["nodate-in-dated-online-REVIEW"].append((e.citekey, d.value))
             elif anchor is None or span is None:

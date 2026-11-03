@@ -9,7 +9,7 @@ rendered as plain text; no wording was otherwise changed.
 Explains which entry TYPE to choose for a given kind of source. Names in
 [brackets] are entry keys of worked examples in `notes-test.bib`.
 NB this reflects the package's own house style, which departs from this
-project's conventions in places; CLAUDE.md takes precedence.
+project's conventions in places; extraction-rules.md takes precedence.
 ## Standard entry types
 
 These should pose no particular issues to those who have used BibTeX or biblatex before, but here is an example of each of the following standard entry types: @Article [garaud:gatine], @Book [mchugh:wake], @Booklet [clark:mesopot], @InBook [ashbrook:brain], @InCollection [contrib:contrib], @InProceedings [frede:inproc], @Manual [dyna:browser], @MastersThesis [ross:thesis], @TechReport [herwign:office], and @Unpublished [nass:address].
