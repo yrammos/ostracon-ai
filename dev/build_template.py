@@ -20,17 +20,24 @@ import os
 import re
 import sys
 import textwrap
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bib_audit import scan  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import enrich  # noqa: E402
+
+# biber treats these as one field under two names. A library may write either;
+# the template shows the name the extraction rules ask for.
+CANONICAL = {"journal": "journaltitle", "address": "location", "school": "institution"}
 
 # One entry per type, chosen so that between them they exercise every
 # construct that has caused trouble in this project.
 PICKS = [
     ("Marvin2012", "Generic article",
-     "Date as an ISO 8601-2 range (solidus); Volume as an en-dash range; "
-     "Title/Subtitle split; nested \\mkbibemph, \\mkbibquote and "
-     "\\foreignlanguage; Pages with a single hyphen."),
+     "Date as an ISO 8601-2 range (solidus); Title/Subtitle split; "
+     "\\mkbibquote nested in \\foreignlanguage; Pages with a single hyphen."),
     ("Dunsby1997", "Review",
      "The reviewed work goes in Title, not in related/relatedtype: "
      "\\bibstring{reviewof}, its title in \\mkbibemph, \\bibstring{by} and its "
@@ -39,14 +46,14 @@ PICKS = [
      "title is cut at its colon and its author reduced to a surname."),
     ("Czerny1839", "Book",
      "Earned Shorttitle: the title carries TWO top-level colons, so which is "
-     "the entry's own boundary is ambiguous and the splitter declines. Url "
-     "kept because there is no Doi."),
+     "the entry's own boundary is ambiguous and the splitter declines."),
     ("Tan2023", "Chapter within a book",
      "Doi present, therefore no Url; Title/Subtitle split; Pages with a "
      "single hyphen."),
     ("Marston2001", "Article in a reference work",
-     "Online reference work: Entrysubtype, Url and Urldate are required "
-     "together. The work goes in Title, the article in Lista."),
+     "The work goes in Title, the article in Lista. Printed edition, so no "
+     "Url; an online-only reference work would add Entrysubtype = {online} "
+     "with Url and Urldate."),
     ("SchumannSchenkerBittendes", "Miscellaneous item",
      "\\foreignlanguage wrapping a whole non-name field; \\mkbibquote; "
      "Langid; Entrysubtype."),
@@ -122,13 +129,18 @@ def main():
         out.append(f"% --- {heading} ---")
         for line in textwrap.wrap(why, 74):
             out.append(f"% {line}")
-        out.append(f"@{e.etype}{{{citekey},")
+        lines = [f"@{e.etype}{{{citekey},"]
         for f in e.fields:
             if DROP.match(f.key):
                 continue
-            name = f.key[:1].upper() + f.key[1:]
-            out.append(f"\t{name} = {{{f.value}}},")
-        out.append("}")
+            key = CANONICAL.get(f.key, f.key)
+            name = key[:1].upper() + key[1:]
+            lines.append(f"\t{name} = {{{f.value}}},")
+        lines.append("}")
+        # The pipeline's own field rules (Url only where it may appear, and
+        # so on), so that no example shows what extraction would strip.
+        entry, _ = enrich.strip_forbidden_fields("\n".join(lines))
+        out.append(entry)
         out.append("")
 
     text = "\n".join(out)
