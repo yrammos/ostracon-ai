@@ -51,9 +51,9 @@ PICKS = [
      "Doi present, therefore no Url; Title/Subtitle split; Pages with a "
      "single hyphen."),
     ("Marston2001", "Article in a reference work",
-     "The work goes in Title, the article in Lista. Printed edition, so no "
-     "Url; an online-only reference work would add Entrysubtype = {online} "
-     "with Url and Urldate."),
+     "The work goes in Title, the article in Lista. Consulted online: "
+     "Entrysubtype = {online} keeps its Url, and an online reference work "
+     "also takes a Urldate."),
     ("SchumannSchenkerBittendes", "Miscellaneous item",
      "\\foreignlanguage wrapping a whole non-name field; \\mkbibquote; "
      "Langid; Entrysubtype."),
