@@ -100,12 +100,10 @@ def test_validate_integration():
     assert bib_validate.validate(DEFECTIVE) == sorted(
         bib_validate.classify(RECORDED_LOG, bib_validate.typed_entrytypes(),
                               bib_validate.entry_facts(DEFECTIVE)))
-    # The house template: two entries carry no date at all (reported to the
-    # maintainer 2026-11-03). Anything else here is a classify() gap or a
+    # The template validates clean: a warning here is a classify() gap or a
     # template defect.
     template = (ROOT / "prompt-context" / "biblio-template.bib").read_text(encoding="utf-8")
-    keys = {k for k, _ in bib_validate.validate(template)}
-    assert keys <= {"SchumannSchenkerBittendes", "Vasdekis"}, keys
+    assert bib_validate.validate(template) == [], bib_validate.validate(template)
     return True
 
 

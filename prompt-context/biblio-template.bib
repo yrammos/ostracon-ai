@@ -14,18 +14,16 @@
 % start of an entry even on a comment line.
 
 % --- Generic article ---
-% Date as an ISO 8601-2 range (solidus); Volume as an en-dash range;
-% Title/Subtitle split; nested \mkbibemph, \mkbibquote and \foreignlanguage;
-% Pages with a single hyphen.
+% Date as an ISO 8601-2 range (solidus); Title/Subtitle split; \mkbibquote
+% nested in \foreignlanguage; Pages with a single hyphen.
 @article{Marvin2012,
 	Author = {Marvin, William},
 	Date = {2012/2013},
-	Journaltitle = {Dutch Journal of Music Theory},
-	Langid = {ngerman},
+	Journaltitle = {Theory and Practice},
+	Langid = {american},
 	Pages = {221-240},
 	Subtitle = {Schenker, Sonata Theory, and the Problem of the Recapitulation},
-	Title = {\mkbibemph{\mkbibquote{\foreignlanguage{ngerman}{Und so weiter}}}},
-	Volume = {37--38},
+	Title = {\foreignlanguage{ngerman}{\mkbibquote{Und so weiter}}},
 }
 
 % --- Review ---
@@ -38,6 +36,7 @@
 	Author = {Dunsby, Jonathan},
 	Date = {1997},
 	Journaltitle = {Music \& Letters},
+	Langid = {american},
 	Number = {1},
 	Pages = {132-135},
 	Shorttitle = {\bibstring{reviewof} \mkbibemph{Authenticities}, \bibstring{by} Kivy},
@@ -47,18 +46,17 @@
 
 % --- Book ---
 % Earned Shorttitle: the title carries TWO top-level colons, so which is the
-% entry's own boundary is ambiguous and the splitter declines. Url kept
-% because there is no Doi.
+% entry's own boundary is ambiguous and the splitter declines.
 @book{Czerny1839,
 	Author = {Czerny, Carl},
 	Date = {1970},
 	Editor = {Badura-Skoda, Paul},
-	Location = {Wien},
+	Langid = {american},
+	Location = {Vienna},
 	Origdate = {1839},
 	Publisher = {Universal Edition},
-	Subtitle = {Reminiscences of Beethoven, and, Chapters II and III from Volume IV of the Complete Theoretical and Practical Piano Forte School: Op.\,500},
-	Title = {On the Proper Performance of All Beethoven's Works for the Piano},
-	Url = {http://www.koelnklavier.de/quellen/czer-op500/00-einl.html},
+	Subtitle = {Reminiscences of Beethoven, and, Chapters II and III from Volume IV of the Complete Theoretical and Practical Piano Forte School: Op.~500},
+	Title = {On the Proper Performance of All Beethoven's Works for the Piano}
 }
 
 % --- Chapter within a book ---
@@ -70,6 +68,7 @@
 	Date = {2023},
 	Doi = {10.2307/jj.285035.9},
 	Editor = {Roth, Marjorie and George, Leonard},
+	Langid = {american},
 	Location = {London},
 	Pages = {78-98},
 	Publisher = {Boydell \& Brewer},
@@ -78,16 +77,17 @@
 }
 
 % --- Article in a reference work ---
-% Online reference work: Entrysubtype, Url and Urldate are required
-% together. The work goes in Title, the article in Lista.
+% The work goes in Title, the article in Lista. Printed edition, so no Url;
+% an online-only reference work would add Entrysubtype = {online} with Url
+% and Urldate.
 @inreference{Marston2001,
 	Author = {Marston, Nicholas},
 	Date = {2001},
+	Langid = {american},
 	Lista = {Autograph},
 	Location = {New York},
 	Publisher = {Oxford University Press},
-	Title = {Grove Music Online},
-	Url = {http://www.oxfordmusiconline.com/},
+	Title = {Grove Music Online}
 }
 
 % --- Miscellaneous item ---
@@ -96,11 +96,13 @@
 @misc{SchumannSchenkerBittendes,
 	Author = {Schumann, Robert},
 	Entrysubtype = {music},
+	Institution = {New York Public Library},
 	Langid = {ngerman},
 	Note = {Ernst Oster Collection, ZB-2237 (reel 43, file 90)},
-	Organization = {New York Public Library},
+	Organization = {Music Division},
 	Title = {\foreignlanguage{ngerman}{\mkbibquote{Bittendes Kind}}},
 	Titleaddon = {printed score with annotations in Schenker's hand},
+	Year = {\bibstring{nodate}},
 }
 
 % --- Musical score ---
@@ -110,6 +112,7 @@
 @music{Johansen2018,
 	Date = {2018},
 	Editor = {Johansen, Ken},
+	Langid = {american},
 	Number = {Walkthrough and Study Editions},
 	Publisher = {Informance},
 	Series = {From the Ground Up},
@@ -139,6 +142,7 @@
 	Date = {2025},
 	Editor = {Sofer, Daniele Shlomit},
 	Issuetitle = {Colloquy Review: Philip Ewell, On Music Theory, and Making Music More Welcoming for Everyone},
+	Langid = {american},
 	Number = {2--3},
 	Title = {Journal of Musicological Research},
 	Volume = {44},
@@ -154,6 +158,7 @@
 	Publisher = {\foreignlanguage{greek}{\autocap{έ}κδοση του συγγραφέα}},
 	Subtitle = {\foreignlanguage{greek}{Το σύνολο της ελληνικής γλώσσας καταταγμένο σε 20 πρωταρχικές ρίζες}},
 	Title = {\foreignlanguage{greek}{Ετυμολογικό λεξικό της ελληνικής γλώσσας}},
+	Year = {\bibstring{nodate}},
 }
 
 % --- Introduction, preface or afterword to a book ---
@@ -161,6 +166,7 @@
 @suppbook{Gollin2011a,
 	Author = {Gollin, Edward and Rehding, Alexander},
 	Date = {2011},
+	Langid = {american},
 	Location = {Oxford},
 	Pages = {579-581},
 	Publisher = {Oxford University Press},
@@ -177,6 +183,7 @@
 	Editora = {Grady, Joseph~E.},
 	Editoratype = {collaborator},
 	Introduction = {X},
+	Langid = {american},
 	Location = {Berlin},
 	Pages = {1-12},
 	Publisher = {Mouton de Gruyter},
@@ -196,7 +203,7 @@
 	Editor = {\foreignlanguage{russian}{Людько}, \foreignlanguage{russian}{М.~Г.}},
 	Editortype = {\foreignlanguage{russian}{научный редактор}},
 	Langid = {russian},
-	Location = {\foreignlanguage{russian}{СПб.}},
+	Location = {\foreignlanguage{russian}{Санкт-Петербург}},
 	Pages = {352},
 	Publisher = {\foreignlanguage{russian}{Издательство «Лань»; Издательство «ПЛАНЕТА МУЗЫКИ»}},
 	Series = {\foreignlanguage{russian}{Учебники для вузов. Специальная литература}},
@@ -212,7 +219,7 @@
 	Editortype = {director},
 	Langid = {french},
 	Origdate = {2003},
-	Publisher = {\foreignlanguage{french}{Idéale Audience Internationale}},
+	Publisher = {Idéale Audience Internationale},
 	Title = {\foreignlanguage{french}{Conversation nocturne}},
 	Type = {DVD},
 }
