@@ -78,18 +78,20 @@
 
 % --- Article in a reference work ---
 % The work goes in Title, the article in Lista. Consulted online:
-% Entrysubtype = {online} keeps its Url, and an online reference work also
-% takes a Urldate.
+% Entrysubtype = {online} keeps its Url, and Urldate takes the place of
+% Date. Userd names the kind of date (here the year of online publication);
+% without it, Urldate prints as an access date.
 @inreference{Marston2001,
 	Author = {Marston, Nicholas},
-	Date = {2001},
-	Entrysubtype = {Online},
+	Entrysubtype = {online},
 	Langid = {american},
 	Lista = {Autograph},
 	Location = {New York},
 	Publisher = {Oxford University Press},
 	Title = {Grove Music Online},
-	Url = {http://www.oxfordmusiconline.com/},
+	Url = {https://www.oxfordmusiconline.com/grovemusic/view/10.1093/gmo/9781561592630.001.0001/omo-9781561592630-e-0000001567},
+	Urldate = {2001},
+	Userd = {\autocap{p}ublished online},
 }
 
 % --- Miscellaneous item ---

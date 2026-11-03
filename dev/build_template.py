@@ -52,8 +52,9 @@ PICKS = [
      "single hyphen."),
     ("Marston2001", "Article in a reference work",
      "The work goes in Title, the article in Lista. Consulted online: "
-     "Entrysubtype = {online} keeps its Url, and an online reference work "
-     "also takes a Urldate."),
+     "Entrysubtype = {online} keeps its Url, and Urldate takes the place of "
+     "Date. Userd names the kind of date (here the year of online "
+     "publication); without it, Urldate prints as an access date."),
     ("SchumannSchenkerBittendes", "Miscellaneous item",
      "\\foreignlanguage wrapping a whole non-name field; \\mkbibquote; "
      "Langid; Entrysubtype."),
