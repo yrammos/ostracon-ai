@@ -111,6 +111,10 @@ rather than into the library.
 the Gemini type check and questions with the network stubbed, and that nothing
 reaches Gemini when `gemini_type_check` is off.
 
+`python3 dev/test_batch.py` self-tests parallel batches (`batch_workers`) with
+extraction stubbed: every source saved, one save at a time, each source's
+messages kept together, a failing source not stopping the rest.
+
 ## Configuration
 
 Three keys need a value; the rest have defaults.
@@ -138,6 +142,7 @@ absent from disk is an error at startup, not a warning.
 | ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `model`                 | `claude-sonnet-4-6` | Price alternatives with `dev/estimate_cost.py --model <id>` first.                                                |
 | `careful_model`         | `claude-opus-5`     | Used automatically for sources in `pdf-in/careful/` during `--all`. See Usage.                                    |
+| `batch_workers`         | `3`                 | Sources processed at once in a batch; `1` processes them one at a time. Each source's messages appear together when it finishes. |
 | `max_tokens`            | `4000`              | Ceiling per response; entries run 400–500 tokens.                                                                 |
 | `cache_ttl`             | `"1h"`              | Prompt-cache lifetime. Cheaper unless runs are genuinely isolated.                                                |
 | `enrich_missing_fields` | `true`              | The CrossRef/Scholar lookups, the grounding audit and reconciliation. `false` leaves only the initial extraction. |
