@@ -538,11 +538,17 @@ excerpt's text won't (e.g. an embedded Author field):
       field a type needs that the source does not show is a reason against
       that type; never supply a field to make a type fit.
 
-   d. Name the attributes of the item that would decide between the three:
-      for example, who wrote the other chapters of the book; whether this copy
-      carries marks of publication (a running head naming a journal or book,
-      an imprint, a DOI, page numbers continuing a larger volume); whether the
-      piece reviews another work.
+   d. Name the attributes of the item that would decide between the three.
+      Always include these two:
+      - whether the item is a whole volume or one part of it, judged by the
+        text the copy contains, not by the title page or table of contents
+        that may accompany it;
+      - if it is part of a book, who wrote the other chapters of that book.
+        An editor's name on the title page does not answer this.
+      Then add any others that bear on the choice: for example, whether this
+      copy carries marks of publication (a running head naming a journal or
+      book, an imprint, a DOI, page numbers continuing a larger volume);
+      whether the piece reviews another work.
 
    e. For each attribute, quote the source where it shows it, or write "not
       in the source". Do not infer an attribute the source does not show.
