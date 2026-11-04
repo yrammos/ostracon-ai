@@ -211,9 +211,14 @@ TYPE_DEFINITIONS = """      article         A contribution to an issue of a peri
                       is the supplement, not the book, whether its author is
                       the book's author or someone else.
       suppcollection  The same, in a collection.
-      music           A musical score.
-      audio           A sound recording.
-      video           A film or video recording.
+      music           A musical recording without video (a CD, LP or
+                      streamed album or track). A recording with video is
+                      video.
+      audio           A published musical score, a podcast, or other audio
+                      material presented like a book (biblatex-chicago). An
+                      unpublished score is misc.
+      video           A film or video recording, including a recorded
+                      opera or other performance.
       misc            A work that fits no other type; the last resort.
 """
 
