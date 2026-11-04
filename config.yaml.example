@@ -81,6 +81,10 @@ validate_entries: true
 # See the operator note in CLAUDE.md.
 careful_model: "claude-opus-5"
 
+# Sources processed at once in a batch (--all, the Quick Action). 1 = one at a
+# time. The first source always runs alone, to write the prompt cache.
+batch_workers: 3
+
 # Prompt cache TTL for the shared static context. "1h" costs 2x base input to
 # write (vs 1.25x for the 5-minute default) but survives between separate
 # Quick Action invocations, which is the cheaper trade unless you always
