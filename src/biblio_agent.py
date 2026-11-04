@@ -1125,12 +1125,14 @@ commentary."""
         entry_type = enrich.get_entry_type(entry_text)
         report = {'read': [], 'skipped': [], 'filled': {}, 'rejected': {}}
         gemini['pages'] = report
+        # Pages that answer count against evidence_max_pages; a failed fetch
+        # costs no Claude call, so up to twice as many may be tried.
         max_pages = int(self.config.get('evidence_max_pages', 3))
         tried = 0
         for src in gemini.get('sources') or []:
             fields = enrich.parse_bibtex_fields(entry_text)
             want = evidence.wanted(entry_type, fields)
-            if not want or tried >= max_pages:
+            if not want or len(report['read']) >= max_pages or tried >= 2 * max_pages:
                 break
             if evidence.excluded(src.get('title')):
                 report['skipped'].append((src.get('title'), 'excluded domain'))

@@ -71,8 +71,10 @@ def test_read_page_follows_redirects_and_reports_failures():
     assert ok["domain"] == "cambridge.org" and "Ian Bent" in ok["text"], ok
     bad = page_reader.read_page("u", session=type("S", (), {"get": lambda self, u, **k: Resp(status=403)})())
     assert bad["error"] == "HTTP 403"
-    pdf = page_reader.read_page("u", session=type("S", (), {"get": lambda self, u, **k: Resp(ctype="application/pdf")})())
-    assert pdf["error"].startswith("not a web page")
+    pdf = page_reader.read_page("u", session=type("S", (), {"get": lambda self, u, **k: Resp(ctype="application/pdf", text="junk")})())
+    assert pdf["error"].startswith("unreadable PDF"), pdf
+    img = page_reader.read_page("u", session=type("S", (), {"get": lambda self, u, **k: Resp(ctype="image/png")})())
+    assert img["error"].startswith("not a web page")
 
 
 # --- 3. Evidence step ----------------------------------------------------------

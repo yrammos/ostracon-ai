@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 
 USER_AGENT = "Mozilla/5.0 (compatible; ostracon-ai bibliographic reader)"
 MAX_BYTES = 2_000_000
+MAX_PDF_BYTES = 12_000_000
+PDF_PAGES = 6          # title page, copyright page, first page of text
 MAX_CHARS = 60_000
 
 
@@ -42,19 +44,41 @@ def html_to_text(raw):
     return ("\n".join(metas) + "\n\n" + text).strip() if metas else text
 
 
+def pdf_text(data, pages=PDF_PAGES):
+    """Text of a PDF's first pages, where a title page, a copyright page's
+    catalog record or an article's first-page header sit."""
+    import io
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    return "\n".join((reader.pages[i].extract_text() or "") for i in range(min(pages, len(reader.pages))))
+
+
+def _pdf(resp, final):
+    raw = resp.raw.read(MAX_PDF_BYTES, decode_content=True) if getattr(resp, "raw", None) else resp.content[:MAX_PDF_BYTES]
+    try:
+        text = pdf_text(raw)
+    except Exception as e:  # noqa: BLE001 - a broken or truncated PDF
+        return {"error": f"unreadable PDF ({type(e).__name__})", "url": final}
+    if not text.strip():
+        return {"error": "PDF has no text layer", "url": final}
+    return {"url": final, "domain": domain(final), "text": text[:MAX_CHARS]}
+
+
 def read_page(url, timeout=20, session=None):
     """{'url', 'domain', 'text'} for the page at `url`, or {'error', 'url'}."""
     import requests
     get = (session or requests).get
     try:
         resp = get(url, timeout=timeout, allow_redirects=True, stream=True,
-                   headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"})
+                   headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml,application/pdf"})
     except Exception as e:  # noqa: BLE001 - every failure is reported the same way
         return {"error": f"{type(e).__name__}: {e}", "url": url}
     final = getattr(resp, "url", url) or url
     if resp.status_code != 200:
         return {"error": f"HTTP {resp.status_code}", "url": final}
     ctype = (resp.headers.get("Content-Type") or "").lower()
+    if "pdf" in ctype:
+        return _pdf(resp, final)
     if "html" not in ctype and "xml" not in ctype and "text/plain" not in ctype:
         return {"error": f"not a web page ({ctype or 'no content type'})", "url": final}
     raw = resp.raw.read(MAX_BYTES, decode_content=True) if hasattr(resp, "raw") and resp.raw else resp.content[:MAX_BYTES]
