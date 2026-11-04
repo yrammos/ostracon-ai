@@ -37,12 +37,23 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 
 ## Function
 
-For each source in turn: extracts text (OCR if scanned; for a `.webloc`,
-fetches the bookmarked page),
-asks Claude for a matching entry in accordance with BibLaTeX specifications,
-searches CrossRef and Google Scholar for any missing fields,
-audits the result for fields drawn from Claude's recollection rather than from the source,
-and saves.
+For each source in turn:
+
+1. Extracts text (OCR if scanned; for a `.webloc`, fetches the bookmarked page).
+2. With `gemini_type_check` on: a light Claude call reads the item's identity
+   (title, authors, container, year), and Gemini, grounded in Google Search,
+   decides the entry type from it. If Gemini finds nothing, Claude chooses.
+3. Asks Claude, once, for the entry in accordance with BibLaTeX specifications,
+   under the decided type; then Gemini answers the type's closed questions and supplies every other field the type
+   takes that a page it found shows; those values fill only fields the entry lacks.
+4. Searches CrossRef and Google Scholar for any missing fields, and audits the
+   result for fields drawn from Claude's recollection rather than from the
+   source. A recollected value is replaced when a CrossRef record confirmed to
+   be this work (by DOI, or by an author the source gives) disagrees with it.
+5. Applies the library's own cleanup rules (`src/bib_normalize.py`) and, given
+   `library_bib_file`, the library's spelling of degree strings, places and
+   publishers it already holds.
+6. Validates and saves.
 
 A malformed entry is stashed away in `failed_bib_file`; a field that could not be confirmed
 leaves the entry amber in BibDesk.
@@ -111,6 +122,10 @@ rather than into the library.
 the Gemini type check and questions with the network stubbed, and that nothing
 reaches Gemini when `gemini_type_check` is off.
 
+`python3 dev/test_recollection.py` and `python3 dev/test_house_style.py`
+self-test the CrossRef replacement of recollected values and the per-entry
+house cleanup, with constructed fixtures.
+
 `python3 dev/test_batch.py` self-tests parallel batches (`batch_workers`) with
 extraction stubbed: every source saved, one save at a time, each source's
 messages kept together, a failing source not stopping the rest.
@@ -156,7 +171,9 @@ absent from disk is an error at startup, not a warning.
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
 | `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
-| `gemini_type_check`     | `false`             | `true`: Gemini, grounded in Google Search, checks the entry type and decides it; on disagreement Claude re-encodes under Gemini's type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml`; its values only fill missing fields, marked for review. About two cents a source. |
+| `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
+| `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
+| `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |
 | `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
 | `anthropic_api_key`     | —                   | The key in plaintext, instead of `anthropic_api_key_command`. Not recommended.                                    |
 
@@ -366,7 +383,11 @@ ostracon-ai/
 │   ├── web_source.py       # .webloc page fetching
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
 │   ├── api_keys.py         # API keys from config, environment or a command
+│   ├── bib_audit.py        # Shared .bib scanner and rule predicates (dev/ links here)
+│   ├── bib_normalize.py    # The library's normalizer rules (dev/ links here)
+│   ├── house_style.py      # Those rules and the library's spellings, on each new entry
 │   ├── gemini_search.py    # Gemini type decision and closed questions
+│   ├── type_fields.py      # The fields each type takes, from the biblatex manual
 │   ├── bib_validate.py     # biber data-model check; published by ./install
 │   ├── bib_render.py       # Render check: fields that never reach the page
 │   ├── tex/previewtemplate.tex # Neutral template for the render check
@@ -384,6 +405,7 @@ ostracon-ai/
 │   ├── render_entries.py   # bib_render over a .bib or saved run outputs
 │   ├── test_bib_validate.py, test_bib_render.py # Their self-tests
 │   ├── test_gemini_search.py, test_gemini_step.py # Gemini self-tests, network stubbed
+│   ├── test_recollection.py, test_house_style.py # CrossRef replacement; house cleanup
 │   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison

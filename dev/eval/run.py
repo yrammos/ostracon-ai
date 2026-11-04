@@ -120,7 +120,7 @@ def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.
             (save_dir / f"{citekey}.type-analysis.txt").write_text(result.type_analysis, encoding='utf-8')
         gemini = getattr(result, 'gemini', None)
         if gemini:
-            keep = {k: v for k, v in gemini.items() if k not in ('questions',)}
+            keep = {k: v for k, v in gemini.items() if k not in ('questions', 'history')}
             keep['question_ids'] = [q['id'] for q in gemini.get('questions') or []]
             keep['cost_usd'] = round(gemini_cost(gemini.get('usage') or []), 5)
             (save_dir / f"{citekey}.gemini.json").write_text(

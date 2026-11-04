@@ -111,6 +111,19 @@ def test_query_names_the_item_cited():
         '"Music at the Limits" AND "How the West Was Won" AND De Groot'
 
 
+def test_type_fields_follow_the_manual_and_the_house():
+    import type_fields
+    names = lambda t: [f for f, _ in type_fields.fields_for(t)]
+    if not type_fields._manual():
+        return                                     # TeX documentation not installed
+    inc = names("incollection")
+    assert {"booktitle", "editor", "publisher", "location", "pages", "date"} <= set(inc), inc
+    assert not {"isbn", "keywords", "note", "year", "langid", "url"} & set(inc), inc
+    ref = names("inreference")
+    assert "lista" in ref and "booktitle" not in ref, ref
+    assert "url" in names("online") and "booktitle" not in names("suppbook")
+
+
 def test_listed_types_are_the_21_in_the_prompt():
     import biblio_agent
     types = gemini_search.listed_types(biblio_agent.TYPE_DEFINITIONS)

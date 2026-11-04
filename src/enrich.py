@@ -1115,6 +1115,19 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
         log("No work-level title available - skipping CrossRef")
         message = None
 
+    # A CrossRef record matched on title alone may be a different work. It
+    # may REPLACE a recollected value (below) only when its identity is
+    # confirmed beyond the title: the entry's own DOI, or an author surname
+    # the source itself gave (an author the audit flagged cannot vouch).
+    identity_confirmed = False
+    if message:
+        doi = (entry_fields.get('doi') or '').strip().lower()
+        if doi and doi == (message.get('DOI') or '').strip().lower():
+            identity_confirmed = True
+        elif 'author' not in flagged_fields and entry_fields.get('author'):
+            surname = strip_latex(entry_fields['author']).split(' and ')[0].split(',')[0].strip()
+            identity_confirmed = bool(surname) and bool(message.get('author')) and _author_matches(message, surname)
+
     if message:
         source = 'CrossRef'
         found_title = (message.get('title') or [''])[0]
@@ -1177,6 +1190,15 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
         if source == 'CrossRef' and _is_completion(field, claimed, verified_value):
             reconcile_candidates.append({
                 'field': field, 'claimed': claimed, 'verified': verified_value, 'source': source,
+                'kind': 'complete',
+            })
+        elif source == 'CrossRef' and identity_confirmed and field in flagged_fields:
+            # The claimed value was not read from the source (the audit says
+            # so) and a primary record for this very work disagrees: the
+            # record wins (the maintainer's evidence rule).
+            reconcile_candidates.append({
+                'field': field, 'claimed': claimed, 'verified': verified_value, 'source': source,
+                'kind': 'replace',
             })
         else:
             unconfirmed.append(field)
