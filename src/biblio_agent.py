@@ -152,7 +152,10 @@ def _interface_setting(config, key, default=None):
 # the extraction prompt shows it; Gemini's type check (src/gemini_search.py) too.
 TYPE_DEFINITIONS = """      article         A contribution to an issue of a periodical (journal,
                       magazine, newspaper), in print or online, including a
-                      review that has a title of its own.
+                      review that has a title of its own. A volume with its
+                      own title, an ISBN and a book publisher is a book even
+                      when numbered in a series or yearbook; its chapters are
+                      incollection or inbook.
       review          A review of another work (book, edition, recording,
                       performance) in a periodical, with no title of its own
                       beyond naming the work reviewed. A review with a title
