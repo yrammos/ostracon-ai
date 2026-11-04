@@ -22,6 +22,7 @@ from extraction_result import ExtractionResult
 import web_source
 import enrich
 import gemini_search
+import house_style
 from api_keys import resolve_api_keys
 
 # Tesseract language codes shown in the OCR language picker.
@@ -832,11 +833,22 @@ excerpt's text won't (e.g. an embedded Author field):
         self._log("   Loading context...", 'info')
         context = self.load_context_files()
 
+        model = model_override or self.config['model']
+
+        # Steps 2-3 when gemini_type_check is on: a light call reads the item's
+        # identity, Gemini decides the type from it, and the extraction below
+        # runs once, told that type. Otherwise (or when Gemini finds nothing)
+        # Claude chooses the type itself, with its type analysis.
+        gemini, decided = None, None
+        if self.config.get('gemini_type_check'):
+            decided, gemini = self._decide_type_first(content, model)
+
         # Build prompt
         prompt = self.build_prompt(content)
+        if decided:
+            prompt += self._decided_type_instruction(decided, gemini.get('reason') or '')
 
         # Call Claude API
-        model = model_override or self.config['model']
         if model_override:
             self._log(f"   Sending to Claude ({model}, careful)...", 'info')
         else:
@@ -883,17 +895,23 @@ excerpt's text won't (e.g. an embedded Author field):
             needs_color = False
             field_sources = None
 
-            # Step 3 and 3a: Gemini, grounded in Google Search, decides the
-            # type (the maintainer's ruling, 2026-11-04) and answers the
-            # question bank. Off unless config sets gemini_type_check.
-            gemini = None
-            if self.config.get('gemini_type_check') and entry is not None:
-                bibtex_entry, gemini = self._gemini_type_check(bibtex_entry, content, context, model)
-                needs_color = needs_color or gemini.get('needs_color', False)
+            # Step 3a: the question bank, for the type the entry now has.
+            if gemini is not None and entry is not None:
+                final_type = enrich.get_entry_type(bibtex_entry)
+                gemini['final_type'] = final_type
+                if decided and final_type != decided:
+                    gemini['status'] = 'not-followed'
+                    self._log(f"   ⚠️  Extraction wrote @{final_type}, not Gemini's @{decided}", 'warning')
+                if decided:
+                    self._ask_question_bank(gemini, final_type)
             if self.config.get('enrich_missing_fields', True) and entry is not None:
                 bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
                 bibtex_entry, audit_color = self.verify_and_flag_recollection(bibtex_entry, content)
                 needs_color = needs_color or audit_color
+                replaced = getattr(self._local, 'replaced', None)
+                if replaced:
+                    note = "CrossRef replaced recollection: " + ", ".join(replaced)
+                    field_sources = f"{field_sources}; {note}" if field_sources else note
 
             # Gemini's field answers go in after the grounding audit, which
             # would otherwise report them as inferred: they fill gaps only,
@@ -925,6 +943,18 @@ excerpt's text won't (e.g. an embedded Author field):
                 elif langid == 'missing' and self.config.get('require_langid'):
                     self._log("   ⚠️  No Langid - flagging for review", 'warning')
                     needs_color = True
+
+            # House cleanup: the rules the library was normalized with, then
+            # the library's own spelling for values whose house form is "as
+            # the library writes it". Fixed and logged; no review marking.
+            if entry is not None and self.config.get('house_cleanup', True):
+                bibtex_entry, rules = house_style.normalize(bibtex_entry)
+                if rules:
+                    self._log(f"   House cleanup: {', '.join(rules)}", 'info')
+                bibtex_entry, snapped = house_style.snap_to_library(
+                    bibtex_entry, self.config.get('library_bib_file'))
+                for f, old, new in snapped:
+                    self._log(f"   {f.capitalize()}: {old!r} -> the library's {new!r}", 'info')
 
             inferred = list(self.inferred_fields) if entry is not None else []
             if inferred:
@@ -1001,93 +1031,146 @@ other fields. Output ONLY the corrected BibLaTeX entry, with no additional
 commentary."""
         return prompt
 
-    def _gemini_type_check(self, entry_text, content, context, model):
-        """Steps 3 and 3a. Returns (entry_text, info); info['status'] is one of
-        agreed, overrode, not-found, invalid-type, reencode-failed,
-        skipped: <why>, or error: <message>, and is never folded into another:
-        a failure here must not read as an answer."""
-        info = {'status': None, 'draft_type': enrich.get_entry_type(entry_text),
-                'draft_entry': entry_text, 'usage': []}
+    IDENTITY_PROMPT = """Identify the bibliographic item this source is, from its opening
+pages below. Do not decide an entry type. Reply with one JSON object and nothing
+else, using null for anything the text does not show:
+
+{{"title": the item's own title, "subtitle": its subtitle,
+ "authors": ["Last, First", ...], "editors": ["Last, First", ...],
+ "container": the title of the book, journal, website or reference work the
+   item is part of,
+ "entry_heading": for an entry in a dictionary or encyclopedia, the entry's heading,
+ "supplement": for an untitled introduction, preface, foreword, afterword or
+   notes, which of these it is,
+ "reviewed_work": for a review with no title of its own, the title of the work reviewed,
+ "year": the year of publication,
+ "kind": a short phrase saying what the item looks like}}
+
+<source label="{label}">
+{text}
+</source>"""
+
+    def _identify(self, content, model):
+        """The item's identity, read by one light Claude call from the start of
+        the source: a dict, or None when the reply is not JSON."""
+        import json
+        text = (content.text or '')[:int(self.config.get('identity_source_chars', 8000))]
+        if content.metadata:
+            text = "\n".join(f"{k}: {v}" for k, v in content.metadata.items()) + "\n\n" + text
+        message = self._create('identity', int(self.config.get('identity_max_tokens', 800)), model=model,
+                               messages=[{"role": "user", "content": self.IDENTITY_PROMPT.format(
+                                   label=content.label, text=text)}])
+        m = re.search(r"\{.*\}", response_text(message), re.S)
+        try:
+            ident = json.loads(m.group(0)) if m else None
+        except ValueError:
+            return None
+        return ident if isinstance(ident, dict) else None
+
+    @staticmethod
+    def _identity_fields(ident):
+        """(fields, type_hint) for gemini_search.query_from_fields(): the item
+        named the way an entry of its kind names it (Lista for an entry in a
+        reference work, Type for a supplement, the reviewed work for a review)."""
+        def s(k):
+            v = ident.get(k)
+            return v.strip() if isinstance(v, str) else ''
+        def names(k):
+            v = ident.get(k)
+            return ' and '.join(x for x in v if isinstance(x, str)) if isinstance(v, list) else s(k)
+        fields = {'author': names('authors'), 'editor': names('editors'), 'date': s('year')}
+        if s('entry_heading'):
+            fields.update(lista=s('entry_heading'), title=s('container') or s('title'))
+            return fields, 'inreference'
+        if s('supplement'):
+            fields.update(type=s('supplement'), title=s('container') or s('title'))
+            return fields, 'suppbook'
+        if s('reviewed_work'):
+            fields.update(title=s('reviewed_work'), journaltitle=s('container'))
+            return fields, 'review'
+        fields.update(title=s('title'), subtitle=s('subtitle'), booktitle=s('container'))
+        return fields, ''
+
+    def _decide_type_first(self, content, model):
+        """Steps 2-3: (decided_type or None, info). info['status'] is decided,
+        not-found, invalid-type, skipped: <why> or error: <message>; on
+        anything but decided the extraction chooses the type itself."""
+        info = {'status': None, 'usage': []}
         key = self.config.get('gemini_api_key')
-        title, query = gemini_search.query_from_fields(enrich.parse_bibtex_fields(entry_text),
-                                                        info['draft_type'] or '')
-        info['query'] = query
         if not key:
             info['status'] = 'skipped: no gemini_api_key'
-            return entry_text, info
+            return None, info
+        self._log("   Reading the item's identity...", 'info')
+        try:
+            ident = self._identify(content, model)
+        except Exception as e:  # noqa: BLE001 - the extraction still runs
+            info['status'] = f'error: identity: {e}'
+            return None, info
+        info['identity'] = ident
+        if not ident:
+            info['status'] = 'skipped: no identity'
+            return None, info
+        fields, hint = self._identity_fields(ident)
+        title, query = gemini_search.query_from_fields(fields, hint)
+        info['query'] = query
         if not title:
             info['status'] = 'skipped: no title'
-            return entry_text, info
+            return None, info
         gm = self.config.get('gemini_model') or gemini_search.MODEL
         self._log("   Asking Gemini for the type...", 'info')
         r = gemini_search.decide_type(query, TYPE_DEFINITIONS, key, model=gm)
         info['usage'] += r.get('usage') or []
-        info.update({k: r.get(k) for k in ('type', 'found', 'reason', 'answer', 'sources', 'queries')})
+        info.update({k: r.get(k) for k in ('type', 'found', 'reason', 'answer', 'sources', 'queries', 'history')})
         if r.get('error'):
             info['status'] = f"error: {r['error']}"
-            self._log(f"   ⚠️  Gemini type check failed ({r['error']}) - type kept", 'warning')
-            return entry_text, info
+            self._log(f"   ⚠️  Gemini type check failed ({r['error']}) - Claude chooses the type", 'warning')
+            return None, info
         if not r.get('found') or not r.get('type'):
             info['status'] = 'not-found'
-            self._log("   Gemini did not identify the work - type kept", 'info')
-            return entry_text, info
+            self._log("   Gemini did not identify the work - Claude chooses the type", 'info')
+            return None, info
         if r['type'] not in gemini_search.listed_types(TYPE_DEFINITIONS):
             info['status'] = 'invalid-type'
-            self._log(f"   ⚠️  Gemini gave a type not on the list (@{r['type']}) - type kept", 'warning')
-            return entry_text, info
-        final_type = info['draft_type']
-        if r['type'] == info['draft_type']:
-            info['status'] = 'agreed'
-        else:
-            redone = self._reencode(content, context, model, r['type'], r.get('reason', ''))
-            if redone is None:
-                info['status'] = 'reencode-failed'
-                info['needs_color'] = True
-                self._log(f"   ⚠️  Could not re-encode as @{r['type']} - draft kept, flagged for review", 'warning')
-                return entry_text, info
-            info['status'] = 'overrode'
-            entry_text, final_type = redone, r['type']
-            self._log(f"   Gemini: @{info['draft_type']} -> @{r['type']} ({r.get('reason', '')})", 'warning')
-        # Step 3a: the bank's questions for the final type.
+            self._log(f"   ⚠️  Gemini gave a type not on the list (@{r['type']}) - Claude chooses the type", 'warning')
+            return None, info
+        info['status'] = 'decided'
+        self._log(f"   Gemini: @{r['type']} ({r.get('reason', '')})", 'info')
+        return r['type'], info
+
+    @staticmethod
+    def _decided_type_instruction(entry_type, reason):
+        """What the extraction is told when Gemini has decided the type."""
+        return (f"\n\nAn external check, grounded in Google Search, has decided this work's "
+                f"entry type: @{entry_type}. Its reason: {reason}\nUse @{entry_type}. In step 1, "
+                f"write the type analysis briefly and choose @{entry_type}. Encode the entry under "
+                f"@{entry_type}, putting the container's information in the fields @{entry_type} "
+                "uses. Never add a value the source does not show.")
+
+    def _ask_question_bank(self, info, final_type):
+        """Step 3a: the bank's questions for final_type, asked in Gemini's
+        conversation; answers land in info for _apply_gemini_answers()."""
+        key = self.config.get('gemini_api_key')
+        gm = self.config.get('gemini_model') or gemini_search.MODEL
         bank_path = self.config.get('gemini_questions_file') or 'prompt-context/gemini-questions.yaml'
         try:
             bank = gemini_search.load_bank(Path(bank_path).expanduser())
         except (OSError, AssertionError, yaml.YAMLError) as e:
             info['questions_status'] = f"error: question bank: {e}"
             self._log(f"   ⚠️  Question bank unreadable ({e}) - no questions asked", 'warning')
-            return entry_text, info
+            return
         questions = gemini_search.select(bank, final_type)
-        info['final_type'] = final_type
-        if questions:
-            self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
-            qa = gemini_search.ask_questions(r.get('history') or [], questions, key, model=gm)
-            info['usage'] += qa.get('usage') or []
-            if qa.get('error'):
-                info['questions_status'] = f"error: {qa['error']}"
-                self._log(f"   ⚠️  Gemini questions failed ({qa['error']})", 'warning')
-            else:
-                info['questions_status'] = 'answered'
-                info['questions'] = questions
-                info['answers'] = qa['answers']
-        return entry_text, info
-
-    def _reencode(self, content, context, model, entry_type, reason):
-        """The entry re-extracted under the type Gemini decided, or None when
-        the reply does not isolate to an entry of that type."""
-        prompt = self.build_prompt(content) + (
-            f"\n\nAn external check, grounded in Google Search, has decided this work's "
-            f"entry type: @{entry_type}. Its reason: {reason}\nUse @{entry_type}. In step 1, "
-            f"write the type analysis briefly and choose @{entry_type}. Encode the entry under "
-            f"@{entry_type}, putting the container's information in the fields @{entry_type} "
-            "uses. Never add a value the source does not show.")
-        message = self._create('reencode', self.config['max_tokens'], model=model, messages=[
-            {"role": "user", "content": self._cached_message_content(context, prompt)}])
-        raw, _ = enrich.split_type_analysis(response_text(message))
-        entry, _ = enrich.isolate_entry(raw)
-        if entry is None or enrich.get_entry_type(entry) != entry_type:
-            return None
-        entry, _ = enrich.move_nodate_to_year(entry)
-        return entry
+        if not questions:
+            return
+        self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
+        qa = gemini_search.ask_questions(info.get('history') or [], questions, key, model=gm)
+        info['usage'] += qa.get('usage') or []
+        if qa.get('error'):
+            info['questions_status'] = f"error: {qa['error']}"
+            self._log(f"   ⚠️  Gemini questions failed ({qa['error']})", 'warning')
+        else:
+            info['questions_status'] = 'answered'
+            info['questions'] = questions
+            info['answers'] = qa['answers']
 
     def _apply_gemini_answers(self, entry_text, gemini, field_sources):
         """Step 3a's answers applied: (entry_text, field_sources, needs_color)."""
@@ -1252,6 +1335,9 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
         lines = "\n".join(
             f"- {c['field']}: claimed = {c['claimed']!r} (from the initial extraction) "
             f"vs. verified = {c['verified']!r} (from {c['source']})"
+            + (" - REPLACE: the claimed value was not read from the source, and the "
+               "verified record is this work's; use the verified value"
+               if c.get('kind') == 'replace' else "")
             for c in candidates
         )
         metadata_block = ""
@@ -1289,6 +1375,10 @@ guidelines/template above (e.g. the "LastName, FirstName~Initials" name
 format, and its worked examples for how a merged author list should look) -
 do not just concatenate the two raw values as given, and do not draw on your
 own background/training knowledge of this work beyond what's given here.
+
+For a field marked REPLACE, the claimed value was the initial extraction's
+recollection, not read from the source: put the verified value in its place,
+formatted the same way, rather than merging the two.
 
 Do not add, remove, or change any field not listed in <fields_to_reconcile>,
 even one you can now see is missing or fillable from the source text/metadata
@@ -1362,6 +1452,7 @@ BibLaTeX entry, with no additional commentary."""
         # Fields whose value was neither read from the source nor confirmed by
         # a primary record: reported to the user (log and a % comment).
         self.inferred_fields = []
+        self._local.replaced = []
 
         try:
             ungrounded = self._audit_entry_grounding(entry_text, content)
@@ -1392,6 +1483,10 @@ BibLaTeX entry, with no additional commentary."""
 
         if reconcile_candidates:
             entry_text = self.reconcile_fields(entry_text, content, reconcile_candidates)
+            replaced = [c['field'] for c in reconcile_candidates if c.get('kind') == 'replace']
+            if replaced:
+                self._local.replaced = replaced
+                self._log(f"   Replaced recollected value(s) with CrossRef's: {', '.join(replaced)}", 'info')
 
         for field, value in additions.items():
             self._log(f"   Filled '{field}' from a verified work-level record", 'info')

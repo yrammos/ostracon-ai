@@ -116,6 +116,11 @@ gemini_api_key: ""
 # closed questions in gemini_questions_file (off by default; each source then
 # makes three Gemini calls, about 15-20 s each).
 gemini_type_check: false
+
+# The library's cleanup rules on each new entry, and, given library_bib_file,
+# the library's spelling of Type, Location and Publisher values it already holds.
+house_cleanup: true
+# library_bib_file: "~/Documents/Bibdesk/library.bib"
 # gemini_model: "gemini-3.8-flash"
 # gemini_questions_file: "./prompt-context/gemini-questions.yaml"
 
