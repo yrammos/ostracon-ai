@@ -138,12 +138,6 @@
   "note": "@article — plain (control)"
  },
  {
-  "citekey": "Chatelet1998",
-  "source": "Chatelet1998.pdf",
-  "sha256": "c125ef2ab324e60dcfa8c953d3ef2ee356741c379c2f4ef8f6c13ca0ab4273bb",
-  "note": "@article — subtype, translated"
- },
- {
   "citekey": "Culler2002",
   "source": "Culler2002.pdf",
   "sha256": "e848991c4742e083fc02b28026471f2c3fe4e6b19b8b97b6d6ef03e05ea31dd4",
