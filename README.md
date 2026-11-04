@@ -397,6 +397,8 @@ ostracon-ai/
 │   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison
+│       ├── edits.py              # Edit count per entry: correction effort
+│       ├── lookup_eval.py        # Measures the ISBN and cited-page lookups on saved outputs
 │       ├── gemini_type_eval.py   # Scores Gemini's type on saved outputs
 │       ├── test_eval.py          # Self-test, synthetic fixtures, no API call
 │       ├── select_sample.py      # Builds sample/ and expected.bib from biblio.bib
