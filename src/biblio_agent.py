@@ -171,27 +171,33 @@ TYPE_DEFINITIONS = """      article         A contribution to an issue of a peri
       proceedings     A whole volume publishing the papers of a conference,
                       congress or symposium.
       inproceedings   A paper published in a proceedings volume.
-      unpublished     A work not published: a manuscript, typescript, lecture
-                      or working paper; a conference paper never printed in
-                      proceedings, even if it bears the conference's name.
-                      The type is the work's: a draft of a work published
-                      since takes the published work's type.
+      unpublished     A work neither published nor available online: a
+                      manuscript, typescript, lecture, working paper, or a
+                      conference paper never printed in proceedings, obtained
+                      from its author or as a handout. If it is available
+                      online, it is online. The type is the work's: a draft
+                      of a work published since takes the published work's
+                      type.
       thesis          A thesis or dissertation submitted for a degree, unless
                       later published as a book.
       report          A report issued by an institution, usually numbered in
                       a series.
-      online          A work published only online that is not better
-                      classified as another type. Rule out the others first:
-                      an article in an online journal is article; an online
-                      encyclopedia entry is inreference; a conference paper
-                      posted online but not in proceedings is unpublished.
+      online          A work available online that has no printed
+                      counterpart and is not better classified as another
+                      type. Rule out the others first: an article in an
+                      online journal is article; an online encyclopedia
+                      entry is inreference; an online copy of a printed work
+                      takes the printed work's type. A paper, talk or
+                      manuscript available online, including a conference
+                      paper not in proceedings, is online.
       reference       A whole reference work (dictionary, encyclopedia,
                       lexicon), cited as a whole.
       inreference     An entry in a reference work, in print or online
                       (Grove Music Online, MGG).
       suppbook        Untitled supplementary matter in a book (introduction,
-                      preface, afterword, notes) by someone other than its
-                      author, cited on its own.
+                      preface, afterword, notes), cited on its own: the item
+                      is the supplement, not the book, whether its author is
+                      the book's author or someone else.
       suppcollection  The same, in a collection.
       music           A musical score.
       audio           A sound recording.
@@ -576,10 +582,10 @@ excerpt's text won't (e.g. an embedded Author field):
      is clearly one part of a larger work.
    - For untitled supplemental material (a generic
      preface, foreword, introduction, or index with no title of its own,
-     written by someone other than the book's main author) rather than a
-     titled chapter, use @Suppbook instead (or @Suppcollection for an edited
+     whether by the book's own author or someone else) rather than a titled
+     chapter, use @Suppbook instead (or @Suppcollection for an edited
      volume) - in that case Title correctly holds the BOOK's own title, with
-     Bookauthor (or Editor/Editora) distinguishing the book's real author
+     Bookauthor (or Editor/Editora) for the book's author where it differs
      from the supplement's Author. Only use @Inbook/@Incollection when the
      piece has its own distinct title.
    - Booktitle, Booktitleaddon, Eventtitle, Series and the volume's Editor
