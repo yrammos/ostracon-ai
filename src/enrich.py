@@ -77,6 +77,19 @@ ENTRY_OPENER = re.compile(r'^@([A-Za-z]+)\s*\{', re.MULTILINE)
 _FENCE_LINE = re.compile(r'^```[A-Za-z]*[ \t]*$', re.MULTILINE)
 
 
+_TYPE_ANALYSIS = re.compile(r"<type_analysis>(.*?)</type_analysis>", re.S)
+
+
+def split_type_analysis(text):
+    """(reply without its <type_analysis> block, the block's text or None).
+    The extraction prompt asks for the block before the entry; it is reasoning,
+    not commentary, and must not reach isolate_entry()."""
+    m = _TYPE_ANALYSIS.search(text or "")
+    if not m:
+        return text, None
+    return text[:m.start()] + text[m.end():], m.group(1).strip()
+
+
 def isolate_entry(text):
     """The first complete entry in a model response, and what surrounded it.
 

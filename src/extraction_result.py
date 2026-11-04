@@ -80,6 +80,10 @@ class ExtractionResult:
     # usages are excused. Written as "% VALIDATION: ...".
     validation: list = field(default_factory=list)
 
+    # The model's written reasoning for the entry type (<type_analysis>),
+    # removed from the reply before parsing. Kept for review and evaluation.
+    type_analysis: Optional[str] = None
+
     @property
     def failed(self) -> bool:
         return self.error is not None

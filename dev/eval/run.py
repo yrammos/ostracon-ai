@@ -115,6 +115,8 @@ def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
         (save_dir / f"{citekey}.bib").write_text(clean, encoding='utf-8')
+        if getattr(result, 'type_analysis', None):
+            (save_dir / f"{citekey}.type-analysis.txt").write_text(result.type_analysis, encoding='utf-8')
 
     return entry
 

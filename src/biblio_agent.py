@@ -473,46 +473,90 @@ excerpt's text won't (e.g. an embedded Author field):
 """
 
         prompt += """Please:
-1. Identify the publication type (@Book, @Article, @InCollection, etc.). Work
-   out what KIND of source this is first, consulting the <worked_examples>
-   corpora above - the entry-type guide is organised by kind of source, and
-   the test suite's `annote` fields say why each source takes the type it
-   does. Only once you have narrowed the field should you weigh the specific
-   distinctions below. Look
-   for markers showing this excerpt is only PART of a larger container work -
-   e.g. "Chapter 1"/"chapter one", a numbered/titled heading distinct from a
-   running-header book title, or a paper within a named conference
-   proceedings volume - rather than treating the whole excerpt as a
-   standalone work. When that's the case:
-   - Use @Inbook if it's one chapter of a book sharing the same author(s)
-     throughout.
-   - Use @Incollection if it's one chapter of an edited volume where
-     different chapters have different authors (an Editor field for the
-     volume, distinct from this chapter's Author).
-     An editor's name on the title page is NOT what decides this. Plenty of
-     single-author volumes are edited by someone else - a selection from one
-     writer's work, a collected-essays volume, a critical edition - and those
-     are @Inbook WITH an Editor field, not @Incollection. The question is
-     always who wrote the OTHER contributions: several hands means
-     @Incollection, one hand throughout means @Inbook however prominent the
-     editor is. A title page reading "<Author>, <Title>, edited by <Editor>",
-     or a series list on the endpapers naming only that one author's books,
-     both point to @Inbook.
-   - Use @Inproceedings if it's one paper within a conference proceedings
-     volume (Booktitle = the proceedings volume, Booktitleaddon = the
-     conference name/location if given). The discriminator against
-     @Incollection is a genuinely published proceedings volume with its own
-     title (often "Proceedings of..." or naming the conference) - not merely
-     that the piece originated as a conference talk. If the paper was
-     presented at a conference but was NEVER collected into a published
-     proceedings volume, it is @Unpublished instead, not @Inproceedings (see
-     the guidelines for the Note field convention this requires).
-   - In all these cases, set Title to the SPECIFIC piece's own title (e.g.
+1. Choose the entry type. Work through steps a-f and write them out inside
+   <type_analysis>...</type_analysis>, before the entry. Begin no line inside
+   it with "@".
+
+   a. Choose from this list. Each line defines the type as this library uses
+      it. Use a type not on the list only if none fits, and say why.
+
+      article         A contribution to an issue of a periodical (journal,
+                      magazine, newspaper), in print or online.
+      review          A review of another work (book, edition, recording,
+                      performance) in a periodical, whether or not it has a
+                      title of its own. A piece that merely discusses, cites
+                      or answers other publications is not a review.
+      periodical      A whole issue of a periodical, cited as a whole,
+                      usually a special issue under its editors.
+      book            A whole book written entirely by its author or authors.
+      collection      A whole book whose chapters are by different authors,
+                      under an editor.
+      inbook          A chapter or essay in a book written entirely by the
+                      same author or authors, even if the book has an editor
+                      (a selection, a collected-essays volume, a critical
+                      edition).
+      incollection    A chapter in a book whose chapters are by different
+                      authors, when that book is not conference proceedings.
+      proceedings     A whole volume publishing the papers of a conference,
+                      congress or symposium.
+      inproceedings   A paper published in a proceedings volume.
+      unpublished     A work not published: a manuscript, typescript, lecture
+                      or working paper; a conference paper never printed in
+                      proceedings, even if it bears the conference's name.
+      thesis          A thesis or dissertation submitted for a degree, unless
+                      later published as a book.
+      report          A report issued by an institution, usually numbered in
+                      a series.
+      online          A work published only online that is not better
+                      classified as another type. Rule out the others first:
+                      an article in an online journal is article; an online
+                      encyclopedia entry is inreference; a conference paper
+                      posted online but not in proceedings is unpublished.
+      reference       A whole reference work (dictionary, encyclopedia,
+                      lexicon), cited as a whole.
+      inreference     An entry in a reference work, in print or online
+                      (Grove Music Online, MGG).
+      suppbook        Untitled supplementary matter in a book (introduction,
+                      preface, afterword, notes) by someone other than its
+                      author, cited on its own.
+      suppcollection  The same, in a collection.
+      music           A musical score.
+      audio           A sound recording.
+      video           A film or video recording.
+      misc            A work that fits no other type; the last resort.
+
+   b. Container rule. If the item sits inside something - a periodical, a
+      book, a proceedings volume, a reference work - or belongs to an event, a
+      degree or a website, the type must have a field for that kind of
+      container: Journaltitle or Issuetitle for a periodical; Booktitle or
+      Maintitle for a book, proceedings or reference work; Eventtitle for an
+      event; Institution for a degree or a report; Url for a work published
+      only online. Rule out any type that cannot record where the item sits.
+
+   c. Name the three types from the list that best fit the item. For each,
+      give the reasons for it and the reasons against it, from the source. A
+      field a type needs that the source does not show is a reason against
+      that type; never supply a field to make a type fit.
+
+   d. Name the attributes of the item that would decide between the three:
+      for example, who wrote the other chapters of the book; whether this copy
+      carries marks of publication (a running head naming a journal or book,
+      an imprint, a DOI, page numbers continuing a larger volume); whether the
+      piece reviews another work.
+
+   e. For each attribute, quote the source where it shows it, or write "not
+      in the source". Do not infer an attribute the source does not show.
+
+   f. Choose the type. If an attribute that decides the choice is not in the
+      source, name it, and choose the type the evidence in hand favors.
+
+   Then encode the entry as follows.
+   - For a part of a larger work, set Title to the SPECIFIC piece's own title (e.g.
      "Manifesto"), and Booktitle to the overall container's title (often
      visible in a running header, distinct from the piece's own heading) -
      do NOT use the container's title as the entry's Title when the excerpt
      is clearly one part of a larger work.
-   - Exception: if the piece is UNTITLED supplemental material (a generic
+   - For untitled supplemental material (a generic
      preface, foreword, introduction, or index with no title of its own,
      written by someone other than the book's main author) rather than a
      titled chapter, use @Suppbook instead (or @Suppcollection for an edited
@@ -533,23 +577,13 @@ excerpt's text won't (e.g. an embedded Author field):
      for Location at step 5. A field left empty is a gap someone can see and
      fill; a field filled with the wrong work reads as evidence and will not
      be questioned.
-   If instead the whole source IS the complete work (not one part of a
-   larger container) and it has editor(s) but no single author of its own -
-   e.g. an edited volume's own landing page, credited "Edited by X and Y"
-   with no Author - use @Collection (or @MvCollection/@Reference as
-   appropriate), with the editor(s) in the Editor field taking the primary
-   name role. Do NOT put editor names into Author in this case. Use
-   @Proceedings instead of @Collection specifically when the volume itself
-   is a published conference proceedings (same discriminator as
-   @Inproceedings vs @Incollection above - a named conference/proceedings
-   title, not just an edited-volume structure).
-   For unpublished academic work, distinguish @Thesis (a dissertation
-   submitted to a degree-granting institution - Type = {\\bibstring{phdthesis}}
-   or {\\bibstring{mastersthesis}}, Institution = the institution), @Report (an
-   institutional/technical/research report NOT submitted for a degree - Type
-   = {\\bibstring{techreport}} or a similarly descriptive bibstring), and
-   @Unpublished (anything else unpublished, including a conference paper with
-   no proceedings volume - see the guidelines for the required Note field).
+   - A whole volume with editor(s) and no author of its own takes the editors
+     in Editor, never in Author.
+   - @Thesis takes Type = {\\bibstring{phdthesis}} or
+     {\\bibstring{mastersthesis}} and Institution = the institution; @Report
+     takes Type = {\\bibstring{techreport}} or a similarly descriptive
+     bibstring; @Unpublished conference papers take the Note field the
+     guidelines require.
    For a review of another work (rather than a standalone article), use
    @Review. The reviewed work is encoded directly into Title, and a
    compressed form of it into Shorttitle, using exactly this construction:
@@ -589,11 +623,6 @@ excerpt's text won't (e.g. an embedded Author field):
      \\bibstring{by} Lee~A. Rothfarb, never "Lee A. Rothfarb".
    The Kivy example above is short only because that title is English and that
    author has no initial; it is not a model for stripping either.
-
-   Do not use a generic @Article for a review. Conversely, an article that
-   merely discusses, cites or responds to other publications is NOT a review:
-   @Review is for a piece whose subject is one or more named works under
-   notice, normally announced as such on its own first page.
 2. Extract all relevant bibliographic fields
 3. Split a colon-separated title into Title (before the colon) and Subtitle
    (after it), omitting the colon itself - biblatex-chicago supplies it. Same
@@ -650,7 +679,8 @@ excerpt's text won't (e.g. an embedded Author field):
    and Urldate is {now.strftime('%Y-%m-%d')} (today's date).
 """
 
-        prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
+        prompt += ("\nOutput the <type_analysis> block from step 1, then the BibLaTeX entry, "
+                   "with no other commentary or explanation.")
 
         return prompt
 
@@ -771,6 +801,7 @@ excerpt's text won't (e.g. an embedded Author field):
             # the entry; commentary is discarded with a warning. A reply with
             # no entry passes through for save_entry() to reject, and skips
             # enrichment, which would spend lookups on prose.
+            raw, type_analysis = enrich.split_type_analysis(raw)
             entry, extra = enrich.isolate_entry(raw)
             if entry is None:
                 bibtex_entry = raw
@@ -862,6 +893,7 @@ excerpt's text won't (e.g. an embedded Author field):
                 field_sources=field_sources,
                 inferred_fields=inferred,
                 validation=validation,
+                type_analysis=type_analysis,
             )
 
         except Exception as e:
