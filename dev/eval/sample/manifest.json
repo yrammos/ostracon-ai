@@ -222,12 +222,6 @@
   "note": "@inbook — plain (control)"
  },
  {
-  "citekey": "Fink2018a",
-  "source": "Fink2018a.pdf",
-  "sha256": "894960464d96c91788af8db4f17af19417d161866a5a108d4acbc21e3ebdd2f4",
-  "note": "@incollection — plain (control)"
- },
- {
   "citekey": "Forte1982b",
   "source": "Forte1982b.pdf",
   "sha256": "46626dbeea08495083c2a12a7fbcffb6ee564122ced4c3bf5c81515a773af965",
@@ -880,12 +874,6 @@
   "source": "Timmers2016.pdf",
   "sha256": "bf191fdec7d3da80c2737b9664b01a466878285745a77f6ce065d7cb2f087688",
   "note": "@review — plain (control)"
- },
- {
-  "citekey": "Todd1994a",
-  "source": "Todd1994a.pdf",
-  "sha256": "add45397197e33b36238ccecf3f7500b442376cb1229d633f92469d645f5c606",
-  "note": "@incollection — plain (control)"
  },
  {
   "citekey": "Tour2019",
