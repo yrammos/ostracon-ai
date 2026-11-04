@@ -96,12 +96,6 @@
   "note": "@inreference — plain (control)"
  },
  {
-  "citekey": "Bjork2016",
-  "source": "Bjork2016.pdf",
-  "sha256": "048cd1ad729c788d7a5587a578c937aef4b5298e7a3e71f36c80cf7767a0db5e",
-  "note": "@unpublished — plain (control)"
- },
- {
   "citekey": "Blutner2020",
   "source": "Blutner2020.pdf",
   "sha256": "7803d1bad717873ed6398170ded8a29b1a6a11a8a1ffd7c96ab00a9d078a74b5",
@@ -892,12 +886,6 @@
   "source": "Urista2016.pdf",
   "sha256": "41262e95cf34d12024a596da3592a538797ad979f268eeb6437544155ddba153",
   "note": "@book — plain (control)"
- },
- {
-  "citekey": "Valle2019",
-  "source": "Valle2019.pdf",
-  "sha256": "a2c35f993c9e1cfe02d395d8fc10b0e5f082728d380c5ba57c0beffd719e65b0",
-  "note": "@unpublished — plain (control)"
  },
  {
   "citekey": "Van-Dijk1981",
