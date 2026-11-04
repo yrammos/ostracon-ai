@@ -54,6 +54,7 @@ def _agent(tmp_bib_path, autofile=False):
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config["main_bib_file"] = str(tmp_bib_path)
     agent.config["autofile_bibdesk"] = autofile
+    agent.config["gemini_type_check"] = False   # a local config may switch it on: no live calls
     return agent
 
 
