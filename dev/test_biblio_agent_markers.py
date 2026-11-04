@@ -54,6 +54,7 @@ def _agent(tmp_bib_path, autofile=False):
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config["main_bib_file"] = str(tmp_bib_path)
     agent.config["autofile_bibdesk"] = autofile
+    agent.config["gemini_type_check"] = False   # a local config may switch it on: no live calls
     return agent
 
 
@@ -820,6 +821,21 @@ def test_inferred_fields_reach_the_comments():
     return True
 
 
+def test_type_analysis_is_kept_apart_from_the_entry():
+    # The extraction prompt asks for <type_analysis> before the entry: it must be
+    # stored on the result, not parsed as the entry nor discarded as commentary.
+    reply = ("<type_analysis>\na. ... c. inbook, incollection, collection\n"
+             "f. inbook: the whole book is by this author\n</type_analysis>\n"
+             "@Inbook{Z,\n  Langid = {american},\n  Title = {T},\n}")
+    with tempfile.TemporaryDirectory() as td:
+        agent = _quiet_agent(td, enrich_missing_fields=False)
+        result, err, _ = _extract_with(agent, td, reply)
+    assert result.entry.lstrip().startswith("@Inbook{Z"), result.entry
+    assert "inbook: the whole book" in (result.type_analysis or ""), result.type_analysis
+    assert "outside the entry" not in err, err
+    return True
+
+
 def test_normalize_langid():
     import enrich
     english = "@Book{Y,\n\tLangid = {english},\n\tTitle = {Z},\n}"
@@ -941,6 +957,7 @@ TESTS = [
     test_house_style_follows_and_overrides_the_rules,
     test_validation_flags_and_comments_a_rejected_field,
     test_inferred_fields_reach_the_comments,
+    test_type_analysis_is_kept_apart_from_the_entry,
     test_normalize_langid,
     test_extract_bibtex_flags_a_missing_langid,
 ]

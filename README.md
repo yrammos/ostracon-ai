@@ -107,6 +107,10 @@ that an amber entry keeps its `% AMBER: ...` comment in the saved `.bib` and get
 its colour in BibDesk, and that a malformed model response goes to `failed_bib_file`
 rather than into the library.
 
+`python3 dev/test_gemini_search.py` and `python3 dev/test_gemini_step.py` self-test
+the Gemini type check and questions with the network stubbed, and that nothing
+reaches Gemini when `gemini_type_check` is off.
+
 `python3 dev/test_batch.py` self-tests parallel batches (`batch_workers`) with
 extraction stubbed: every source saved, one save at a time, each source's
 messages kept together, a failing source not stopping the rest.
@@ -152,6 +156,8 @@ absent from disk is an error at startup, not a warning.
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
 | `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
+| `gemini_type_check`     | `false`             | `true`: Gemini, grounded in Google Search, checks the entry type and decides it; on disagreement Claude re-encodes under Gemini's type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml`; its values only fill missing fields, marked for review. About two cents a source. |
+| `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
 | `anthropic_api_key`     | —                   | The key in plaintext, instead of `anthropic_api_key_command`. Not recommended.                                    |
 
 Presentation settings — nothing below affects extraction — live under one
@@ -360,12 +366,14 @@ ostracon-ai/
 │   ├── web_source.py       # .webloc page fetching
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
 │   ├── api_keys.py         # API keys from config, environment or a command
+│   ├── gemini_search.py    # Gemini type decision and closed questions
 │   ├── bib_validate.py     # biber data-model check; published by ./install
 │   ├── bib_render.py       # Render check: fields that never reach the page
 │   ├── tex/previewtemplate.tex # Neutral template for the render check
 │   └── progress_window.py  # The floating window
 ├── prompt-context/         # The cached prefix
 │   ├── extraction-rules.md            # The extraction rules; first in the prefix
+│   ├── gemini-questions.yaml          # Gemini's question bank; not in the prefix
 │   ├── biblio-template.bib            # One worked example per entry type
 │   ├── biblatex-chicago-notes-ref.md  # Condensed field reference
 │   ├── notes-test.bib                 # The package's annotated test suite
@@ -375,9 +383,11 @@ ostracon-ai/
 │   ├── validate_entries.py # bib_validate over a .bib or saved run outputs
 │   ├── render_entries.py   # bib_render over a .bib or saved run outputs
 │   ├── test_bib_validate.py, test_bib_render.py # Their self-tests
+│   ├── test_gemini_search.py, test_gemini_step.py # Gemini self-tests, network stubbed
 │   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison
+│       ├── gemini_type_eval.py   # Scores Gemini's type on saved outputs
 │       ├── test_eval.py          # Self-test, synthetic fixtures, no API call
 │       ├── select_sample.py      # Builds sample/ and expected.bib from biblio.bib
 │       ├── populate_sample.py    # BibDesk attachment resolver select_sample.py imports

@@ -1,0 +1,38 @@
+# Closed questions Gemini answers about a work, grounded in Google Search
+# (step 3a of extraction, src/gemini_search.py). After Gemini has decided the
+# entry type, every question whose `when` names that type (or is "any") is
+# asked, all in one call. Adding a question needs no code change.
+#
+#   id      a short name, unique in this file
+#   when    a list of entry types, or "any"
+#   ask     the question, closed: a number, a name, or one of the options
+#   use     "field <name>": the answer is a candidate value for that field. It
+#             fills the field when the entry lacks it (marked for review) and
+#             never overwrites a value; a differing value goes to review.
+#           "check": the answer is compared with `expect` for the entry's type;
+#             a mismatch goes to review. A check never changes the type.
+#   expect  for a check: {type: the answer that type implies}. Its values are
+#           also the options offered to Gemini.
+
+- id: chapter_number
+  when: [inbook, incollection]
+  ask: "What is its chapter number in the book? Give the number only."
+  use: field chapter
+
+- id: reference_or_collection
+  when: [incollection, inreference]
+  ask: "Is the book containing it a reference work (a dictionary, encyclopedia or other work of alphabetical entries) or an edited collection of chapters?"
+  use: check
+  expect: {inreference: "reference work", incollection: "edited collection"}
+
+- id: other_chapters_same_author
+  when: [inbook, incollection]
+  ask: "Are all the other chapters of the book containing it by the same author or authors?"
+  use: check
+  expect: {inbook: "yes", incollection: "no"}
+
+- id: container_is_proceedings
+  when: [incollection, inproceedings]
+  ask: "Is the volume containing it the published proceedings of a conference, congress or symposium?"
+  use: check
+  expect: {inproceedings: "yes", incollection: "no"}

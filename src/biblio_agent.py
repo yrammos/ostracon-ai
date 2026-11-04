@@ -21,6 +21,7 @@ from extract_pages import extract_pdf
 from extraction_result import ExtractionResult
 import web_source
 import enrich
+import gemini_search
 from api_keys import resolve_api_keys
 
 # Tesseract language codes shown in the OCR language picker.
@@ -147,6 +148,72 @@ def _interface_setting(config, key, default=None):
             )
         return config[key]
     return default
+
+
+# The closed list of entry types, defined as this library uses them. Step 1 of
+# the extraction prompt shows it; Gemini's type check (src/gemini_search.py) too.
+TYPE_DEFINITIONS = """      article         A contribution to an issue of a periodical (journal,
+                      magazine, newspaper), in print or online, including a
+                      review that has a title of its own. A volume with its
+                      own title, an ISBN and a book publisher is a book even
+                      when numbered in a series or yearbook; its chapters are
+                      incollection or inbook.
+      review          A review of another work (book, edition, recording,
+                      performance) in a periodical, with no title of its own
+                      beyond naming the work reviewed. A review with a title
+                      of its own is article. A piece that merely discusses,
+                      cites or answers other publications is not a review.
+      periodical      A whole issue of a periodical, cited as a whole,
+                      usually a special issue under its editors.
+      book            A whole book written entirely by its author or authors.
+      collection      A whole book whose chapters are by different authors,
+                      under an editor, including one that grew out of a
+                      conference but whose title does not call it proceedings.
+      inbook          A chapter or essay in a book written entirely by the
+                      same author or authors, even if the book has an editor
+                      (a selection, a collected-essays volume, a critical
+                      edition).
+      incollection    A chapter in a book whose chapters are by different
+                      authors, when that book is not proceedings (below).
+      proceedings     A whole volume whose title calls it the proceedings
+                      of a conference, congress or symposium (Proceedings,
+                      Actes, Kongressbericht, or a cognate). A book of
+                      conference papers whose title does not is collection,
+                      even if its series or front matter names the event.
+      inproceedings   A paper in a proceedings volume as defined above.
+      unpublished     A work neither published nor available online: a
+                      manuscript, typescript, lecture, working paper, or a
+                      conference paper never printed in proceedings, obtained
+                      from its author or as a handout. If it is available
+                      online, it is online. The type is the work's: a draft
+                      of a work published since takes the published work's
+                      type.
+      thesis          A thesis or dissertation submitted for a degree, unless
+                      later published as a book.
+      report          A report issued by an institution, usually numbered in
+                      a series.
+      online          A work available online that has no printed
+                      counterpart and is not better classified as another
+                      type. Rule out the others first: an article in an
+                      online journal is article; an online encyclopedia
+                      entry is inreference; an online copy of a printed work
+                      takes the printed work's type. A paper, talk or
+                      manuscript available online, including a conference
+                      paper not in proceedings, is online.
+      reference       A whole reference work (dictionary, encyclopedia,
+                      lexicon), cited as a whole.
+      inreference     An entry in a reference work, in print or online
+                      (Grove Music Online, MGG).
+      suppbook        Untitled supplementary matter in a book (introduction,
+                      preface, afterword, notes), cited on its own: the item
+                      is the supplement, not the book, whether its author is
+                      the book's author or someone else.
+      suppcollection  The same, in a collection.
+      music           A musical score.
+      audio           A sound recording.
+      video           A film or video recording.
+      misc            A work that fits no other type; the last resort.
+"""
 
 
 class BiblioAgent:
@@ -495,51 +562,60 @@ excerpt's text won't (e.g. an embedded Author field):
 """
 
         prompt += """Please:
-1. Identify the publication type (@Book, @Article, @InCollection, etc.). Work
-   out what KIND of source this is first, consulting the <worked_examples>
-   corpora above - the entry-type guide is organised by kind of source, and
-   the test suite's `annote` fields say why each source takes the type it
-   does. Only once you have narrowed the field should you weigh the specific
-   distinctions below. Look
-   for markers showing this excerpt is only PART of a larger container work -
-   e.g. "Chapter 1"/"chapter one", a numbered/titled heading distinct from a
-   running-header book title, or a paper within a named conference
-   proceedings volume - rather than treating the whole excerpt as a
-   standalone work. When that's the case:
-   - Use @Inbook if it's one chapter of a book sharing the same author(s)
-     throughout.
-   - Use @Incollection if it's one chapter of an edited volume where
-     different chapters have different authors (an Editor field for the
-     volume, distinct from this chapter's Author).
-     An editor's name on the title page is NOT what decides this. Plenty of
-     single-author volumes are edited by someone else - a selection from one
-     writer's work, a collected-essays volume, a critical edition - and those
-     are @Inbook WITH an Editor field, not @Incollection. The question is
-     always who wrote the OTHER contributions: several hands means
-     @Incollection, one hand throughout means @Inbook however prominent the
-     editor is. A title page reading "<Author>, <Title>, edited by <Editor>",
-     or a series list on the endpapers naming only that one author's books,
-     both point to @Inbook.
-   - Use @Inproceedings if it's one paper within a conference proceedings
-     volume (Booktitle = the proceedings volume, Booktitleaddon = the
-     conference name/location if given). The discriminator against
-     @Incollection is a genuinely published proceedings volume with its own
-     title (often "Proceedings of..." or naming the conference) - not merely
-     that the piece originated as a conference talk. If the paper was
-     presented at a conference but was NEVER collected into a published
-     proceedings volume, it is @Unpublished instead, not @Inproceedings (see
-     the guidelines for the Note field convention this requires).
-   - In all these cases, set Title to the SPECIFIC piece's own title (e.g.
+1. Choose the entry type. Work through steps a-f and write them out inside
+   <type_analysis>...</type_analysis>, before the entry. Begin no line inside
+   it with "@".
+
+   a. Choose from this list. Each line defines the type as this library uses
+      it. Use a type not on the list only if none fits, and say why.
+
+"""
+        prompt += TYPE_DEFINITIONS
+        prompt += """
+   b. Container rule. If the item sits inside something - a periodical, a
+      book, a proceedings volume, a reference work - or belongs to an event, a
+      degree or a website, the type must have a field for that kind of
+      container: Journaltitle or Issuetitle for a periodical; Booktitle or
+      Maintitle for a book, proceedings or reference work; Eventtitle for an
+      event; Institution for a degree or a report; Url for a work published
+      only online. Rule out any type that cannot record where the item sits.
+
+   c. Name the three types from the list that best fit the item. For each,
+      give the reasons for it and the reasons against it, from the source. A
+      field a type needs that the source does not show is a reason against
+      that type; never supply a field to make a type fit.
+
+   d. Name the attributes of the item that would decide between the three.
+      Always include these two:
+      - whether the item is a whole volume or one part of it, judged by the
+        text the copy contains, not by the title page or table of contents
+        that may accompany it;
+      - if it is part of a book, who wrote the other chapters of that book.
+        An editor's name on the title page does not answer this.
+      Then add any others that bear on the choice: for example, whether this
+      copy carries marks of publication (a running head naming a journal or
+      book, an imprint, a DOI, page numbers continuing a larger volume);
+      whether the piece reviews another work, and if so whether it has a
+      title of its own.
+
+   e. For each attribute, quote the source where it shows it, or write "not
+      in the source". Do not infer an attribute the source does not show.
+
+   f. Choose the type. If an attribute that decides the choice is not in the
+      source, name it, and choose the type the evidence in hand favors.
+
+   Then encode the entry as follows.
+   - For a part of a larger work, set Title to the SPECIFIC piece's own title (e.g.
      "Manifesto"), and Booktitle to the overall container's title (often
      visible in a running header, distinct from the piece's own heading) -
      do NOT use the container's title as the entry's Title when the excerpt
      is clearly one part of a larger work.
-   - Exception: if the piece is UNTITLED supplemental material (a generic
+   - For untitled supplemental material (a generic
      preface, foreword, introduction, or index with no title of its own,
-     written by someone other than the book's main author) rather than a
-     titled chapter, use @Suppbook instead (or @Suppcollection for an edited
+     whether by the book's own author or someone else) rather than a titled
+     chapter, use @Suppbook instead (or @Suppcollection for an edited
      volume) - in that case Title correctly holds the BOOK's own title, with
-     Bookauthor (or Editor/Editora) distinguishing the book's real author
+     Bookauthor (or Editor/Editora) for the book's author where it differs
      from the supplement's Author. Only use @Inbook/@Incollection when the
      piece has its own distinct title.
    - Booktitle, Booktitleaddon, Eventtitle, Series and the volume's Editor
@@ -555,26 +631,19 @@ excerpt's text won't (e.g. an embedded Author field):
      for Location at step 5. A field left empty is a gap someone can see and
      fill; a field filled with the wrong work reads as evidence and will not
      be questioned.
-   If instead the whole source IS the complete work (not one part of a
-   larger container) and it has editor(s) but no single author of its own -
-   e.g. an edited volume's own landing page, credited "Edited by X and Y"
-   with no Author - use @Collection (or @MvCollection/@Reference as
-   appropriate), with the editor(s) in the Editor field taking the primary
-   name role. Do NOT put editor names into Author in this case. Use
-   @Proceedings instead of @Collection specifically when the volume itself
-   is a published conference proceedings (same discriminator as
-   @Inproceedings vs @Incollection above - a named conference/proceedings
-   title, not just an edited-volume structure).
-   For unpublished academic work, distinguish @Thesis (a dissertation
-   submitted to a degree-granting institution - Type = {\\bibstring{phdthesis}}
-   or {\\bibstring{mastersthesis}}, Institution = the institution), @Report (an
-   institutional/technical/research report NOT submitted for a degree - Type
-   = {\\bibstring{techreport}} or a similarly descriptive bibstring), and
-   @Unpublished (anything else unpublished, including a conference paper with
-   no proceedings volume - see the guidelines for the required Note field).
-   For a review of another work (rather than a standalone article), use
-   @Review. The reviewed work is encoded directly into Title, and a
-   compressed form of it into Shorttitle, using exactly this construction:
+   - A whole volume with editor(s) and no author of its own takes the editors
+     in Editor, never in Author.
+   - @Thesis takes Type = {\\bibstring{phdthesis}} or
+     {\\bibstring{mastersthesis}} and Institution = the institution; @Report
+     takes Type = {\\bibstring{techreport}} or a similarly descriptive
+     bibstring; @Unpublished conference papers take the Note field the
+     guidelines require.
+   A review with a title of its own is @Article: Title (and Subtitle) hold
+   its own title, and Titleaddon holds the reviewed work, written as Title
+   is written below for a review with no title of its own.
+   For a review with no title of its own, use @Review. The reviewed work is
+   encoded directly into Title, and a compressed form of it into Shorttitle,
+   using exactly this construction:
 
      Title = {\\bibstring{reviewof} \\mkbibemph{Authenticities: Philosophical
        Reflections on Musical Performance}, \\bibstring{by} Peter Kivy},
@@ -611,11 +680,6 @@ excerpt's text won't (e.g. an embedded Author field):
      \\bibstring{by} Lee~A. Rothfarb, never "Lee A. Rothfarb".
    The Kivy example above is short only because that title is English and that
    author has no initial; it is not a model for stripping either.
-
-   Do not use a generic @Article for a review. Conversely, an article that
-   merely discusses, cites or responds to other publications is NOT a review:
-   @Review is for a piece whose subject is one or more named works under
-   notice, normally announced as such on its own first page.
 2. Extract all relevant bibliographic fields
 3. Split a colon-separated title into Title (before the colon) and Subtitle
    (after it), omitting the colon itself - biblatex-chicago supplies it. Same
@@ -672,7 +736,8 @@ excerpt's text won't (e.g. an embedded Author field):
    and Urldate is {now.strftime('%Y-%m-%d')} (today's date).
 """
 
-        prompt += "\nOutput ONLY the BibLaTeX entry, with no additional commentary or explanation."
+        prompt += ("\nOutput the <type_analysis> block from step 1, then the BibLaTeX entry, "
+                   "with no other commentary or explanation.")
 
         return prompt
 
@@ -794,6 +859,7 @@ excerpt's text won't (e.g. an embedded Author field):
             # the entry; commentary is discarded with a warning. A reply with
             # no entry passes through for save_entry() to reject, and skips
             # enrichment, which would spend lookups on prose.
+            raw, type_analysis = enrich.split_type_analysis(raw)
             entry, extra = enrich.isolate_entry(raw)
             if entry is None:
                 bibtex_entry = raw
@@ -816,9 +882,26 @@ excerpt's text won't (e.g. an embedded Author field):
 
             needs_color = False
             field_sources = None
+
+            # Step 3 and 3a: Gemini, grounded in Google Search, decides the
+            # type (the maintainer's ruling, 2026-11-04) and answers the
+            # question bank. Off unless config sets gemini_type_check.
+            gemini = None
+            if self.config.get('gemini_type_check') and entry is not None:
+                bibtex_entry, gemini = self._gemini_type_check(bibtex_entry, content, context, model)
+                needs_color = needs_color or gemini.get('needs_color', False)
             if self.config.get('enrich_missing_fields', True) and entry is not None:
                 bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
-                bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
+                bibtex_entry, audit_color = self.verify_and_flag_recollection(bibtex_entry, content)
+                needs_color = needs_color or audit_color
+
+            # Gemini's field answers go in after the grounding audit, which
+            # would otherwise report them as inferred: they fill gaps only,
+            # marked for review, and never overwrite.
+            if gemini and gemini.get('questions'):
+                bibtex_entry, field_sources, answers_color = self._apply_gemini_answers(
+                    bibtex_entry, gemini, field_sources)
+                needs_color = needs_color or answers_color
 
             # Structural safety net: the prompt above already asks Claude not
             # to include these, but doesn't reliably follow through (e.g. a
@@ -885,6 +968,8 @@ excerpt's text won't (e.g. an embedded Author field):
                 field_sources=field_sources,
                 inferred_fields=inferred,
                 validation=validation,
+                type_analysis=type_analysis,
+                gemini=gemini,
             )
 
         except Exception as e:
@@ -915,6 +1000,108 @@ field names/casing). Do not change any existing field value. Do not add any
 other fields. Output ONLY the corrected BibLaTeX entry, with no additional
 commentary."""
         return prompt
+
+    def _gemini_type_check(self, entry_text, content, context, model):
+        """Steps 3 and 3a. Returns (entry_text, info); info['status'] is one of
+        agreed, overrode, not-found, invalid-type, reencode-failed,
+        skipped: <why>, or error: <message>, and is never folded into another:
+        a failure here must not read as an answer."""
+        info = {'status': None, 'draft_type': enrich.get_entry_type(entry_text),
+                'draft_entry': entry_text, 'usage': []}
+        key = self.config.get('gemini_api_key')
+        title, query = gemini_search.query_from_fields(enrich.parse_bibtex_fields(entry_text),
+                                                        info['draft_type'] or '')
+        info['query'] = query
+        if not key:
+            info['status'] = 'skipped: no gemini_api_key'
+            return entry_text, info
+        if not title:
+            info['status'] = 'skipped: no title'
+            return entry_text, info
+        gm = self.config.get('gemini_model') or gemini_search.MODEL
+        self._log("   Asking Gemini for the type...", 'info')
+        r = gemini_search.decide_type(query, TYPE_DEFINITIONS, key, model=gm)
+        info['usage'] += r.get('usage') or []
+        info.update({k: r.get(k) for k in ('type', 'found', 'reason', 'answer', 'sources', 'queries')})
+        if r.get('error'):
+            info['status'] = f"error: {r['error']}"
+            self._log(f"   ⚠️  Gemini type check failed ({r['error']}) - type kept", 'warning')
+            return entry_text, info
+        if not r.get('found') or not r.get('type'):
+            info['status'] = 'not-found'
+            self._log("   Gemini did not identify the work - type kept", 'info')
+            return entry_text, info
+        if r['type'] not in gemini_search.listed_types(TYPE_DEFINITIONS):
+            info['status'] = 'invalid-type'
+            self._log(f"   ⚠️  Gemini gave a type not on the list (@{r['type']}) - type kept", 'warning')
+            return entry_text, info
+        final_type = info['draft_type']
+        if r['type'] == info['draft_type']:
+            info['status'] = 'agreed'
+        else:
+            redone = self._reencode(content, context, model, r['type'], r.get('reason', ''))
+            if redone is None:
+                info['status'] = 'reencode-failed'
+                info['needs_color'] = True
+                self._log(f"   ⚠️  Could not re-encode as @{r['type']} - draft kept, flagged for review", 'warning')
+                return entry_text, info
+            info['status'] = 'overrode'
+            entry_text, final_type = redone, r['type']
+            self._log(f"   Gemini: @{info['draft_type']} -> @{r['type']} ({r.get('reason', '')})", 'warning')
+        # Step 3a: the bank's questions for the final type.
+        bank_path = self.config.get('gemini_questions_file') or 'prompt-context/gemini-questions.yaml'
+        try:
+            bank = gemini_search.load_bank(Path(bank_path).expanduser())
+        except (OSError, AssertionError, yaml.YAMLError) as e:
+            info['questions_status'] = f"error: question bank: {e}"
+            self._log(f"   ⚠️  Question bank unreadable ({e}) - no questions asked", 'warning')
+            return entry_text, info
+        questions = gemini_search.select(bank, final_type)
+        info['final_type'] = final_type
+        if questions:
+            self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
+            qa = gemini_search.ask_questions(r.get('history') or [], questions, key, model=gm)
+            info['usage'] += qa.get('usage') or []
+            if qa.get('error'):
+                info['questions_status'] = f"error: {qa['error']}"
+                self._log(f"   ⚠️  Gemini questions failed ({qa['error']})", 'warning')
+            else:
+                info['questions_status'] = 'answered'
+                info['questions'] = questions
+                info['answers'] = qa['answers']
+        return entry_text, info
+
+    def _reencode(self, content, context, model, entry_type, reason):
+        """The entry re-extracted under the type Gemini decided, or None when
+        the reply does not isolate to an entry of that type."""
+        prompt = self.build_prompt(content) + (
+            f"\n\nAn external check, grounded in Google Search, has decided this work's "
+            f"entry type: @{entry_type}. Its reason: {reason}\nUse @{entry_type}. In step 1, "
+            f"write the type analysis briefly and choose @{entry_type}. Encode the entry under "
+            f"@{entry_type}, putting the container's information in the fields @{entry_type} "
+            "uses. Never add a value the source does not show.")
+        message = self._create('reencode', self.config['max_tokens'], model=model, messages=[
+            {"role": "user", "content": self._cached_message_content(context, prompt)}])
+        raw, _ = enrich.split_type_analysis(response_text(message))
+        entry, _ = enrich.isolate_entry(raw)
+        if entry is None or enrich.get_entry_type(entry) != entry_type:
+            return None
+        entry, _ = enrich.move_nodate_to_year(entry)
+        return entry
+
+    def _apply_gemini_answers(self, entry_text, gemini, field_sources):
+        """Step 3a's answers applied: (entry_text, field_sources, needs_color)."""
+        entry_text, report = gemini_search.apply_answers(
+            entry_text, gemini['questions'], gemini.get('answers') or {},
+            gemini.get('final_type') or enrich.get_entry_type(entry_text))
+        gemini['answer_report'] = report
+        if report['added']:
+            note = "Gemini: " + ", ".join(report['added'])
+            field_sources = f"{field_sources}; {note}" if field_sources else note
+            self._log(f"   Filled from Gemini (for review): {', '.join(report['added'])}", 'warning')
+        for c in report['conflicts']:
+            self._log(f"   ⚠️  Gemini disagrees - {c}", 'warning')
+        return entry_text, field_sources, bool(report['added'] or report['conflicts'])
 
     def enrich_entry(self, entry_text, content):
         """

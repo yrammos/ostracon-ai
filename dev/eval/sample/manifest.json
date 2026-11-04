@@ -96,12 +96,6 @@
   "note": "@inreference — plain (control)"
  },
  {
-  "citekey": "Bjork2016",
-  "source": "Bjork2016.pdf",
-  "sha256": "048cd1ad729c788d7a5587a578c937aef4b5298e7a3e71f36c80cf7767a0db5e",
-  "note": "@unpublished — plain (control)"
- },
- {
   "citekey": "Blutner2020",
   "source": "Blutner2020.pdf",
   "sha256": "7803d1bad717873ed6398170ded8a29b1a6a11a8a1ffd7c96ab00a9d078a74b5",
@@ -136,12 +130,6 @@
   "source": "Chapin2006.pdf",
   "sha256": "7973f5e94d2c86b0e089382b162febb841fa4524dea500ae69ae8b0d28f3df54",
   "note": "@article — plain (control)"
- },
- {
-  "citekey": "Chatelet1998",
-  "source": "Chatelet1998.pdf",
-  "sha256": "c125ef2ab324e60dcfa8c953d3ef2ee356741c379c2f4ef8f6c13ca0ab4273bb",
-  "note": "@article — subtype, translated"
  },
  {
   "citekey": "Culler2002",
@@ -220,12 +208,6 @@
   "source": "Fermor2003.pdf",
   "sha256": "aa85778c3a8230b581c358486bc7622d5ba743e5a44c1874edd45cc3abe7ff3d",
   "note": "@inbook — plain (control)"
- },
- {
-  "citekey": "Fink2018a",
-  "source": "Fink2018a.pdf",
-  "sha256": "894960464d96c91788af8db4f17af19417d161866a5a108d4acbc21e3ebdd2f4",
-  "note": "@incollection — plain (control)"
  },
  {
   "citekey": "Forte1982b",
@@ -540,6 +522,12 @@
   "note": "@review — plain (control)"
  },
  {
+  "citekey": "Meeus2016a",
+  "source": "Meeus2016a.pdf",
+  "sha256": "9197695e83286a63a882beff6de22de0e8f75608e8cf2f3dcee6e804e3b91ca7",
+  "note": "@unpublished — genuine (added 2026-11-04)"
+ },
+ {
   "citekey": "Menke2004",
   "source": "Menke2004.pdf",
   "sha256": "90bd659f51f935afb287bb36abe31999b15a9a00846e8d61cf854787ee3b85d5",
@@ -646,12 +634,6 @@
   "source": "Piotrowski2020.pdf",
   "sha256": "3ed1cceefcdc062a0071a51643872ba9df56d0b96845e1c1fa73e0cb3694683b",
   "note": "@inproceedings — plain (control)"
- },
- {
-  "citekey": "Plebuch2000",
-  "source": "Plebuch2000.pdf",
-  "sha256": "5116790757a329c18de56fbe4cf382c21d96f24d958750ded1c1a3447b2cb268",
-  "note": "@unpublished — plain (control)"
  },
  {
   "citekey": "Prudhomme2006",
@@ -798,12 +780,6 @@
   "note": "@review — plain (control)"
  },
  {
-  "citekey": "Sternin2015",
-  "source": "Sternin2015.pdf",
-  "sha256": "ec3f3cef7302c4cca381e7c6525a1ce313c1a3367f5dbf23b79c09f4a7d7ed66",
-  "note": "@unpublished — plain (control)"
- },
- {
   "citekey": "Sundberg1998",
   "source": "Sundberg1998.pdf",
   "sha256": "b9a8dcd340a7d92b15a8cba24aef985622f44347615bad3c7585166cba13592b",
@@ -832,12 +808,6 @@
   "source": "Tanenbaum1980.pdf",
   "sha256": "349bde26247654492795b7892bad4af270d2226ef278b2138e08a15e9a4148ad",
   "note": "@article — plain (control)"
- },
- {
-  "citekey": "Tarasti2015",
-  "source": "Tarasti2012b.pdf",
-  "sha256": "017df6fe15aa80d328a804b270a38190dde3715db119cc1f98a372712aa0ce4c",
-  "note": "@inbook — plain (control)"
  },
  {
   "citekey": "Tarasti2022",
@@ -882,12 +852,6 @@
   "note": "@review — plain (control)"
  },
  {
-  "citekey": "Todd1994a",
-  "source": "Todd1994a.pdf",
-  "sha256": "add45397197e33b36238ccecf3f7500b442376cb1229d633f92469d645f5c606",
-  "note": "@incollection — plain (control)"
- },
- {
   "citekey": "Tour2019",
   "source": "Tour2019.pdf",
   "sha256": "4f184f178239df66a1fd625a1570e3a48728b9c27066708739b87e0e277201a0",
@@ -904,12 +868,6 @@
   "source": "Urista2016.pdf",
   "sha256": "41262e95cf34d12024a596da3592a538797ad979f268eeb6437544155ddba153",
   "note": "@book — plain (control)"
- },
- {
-  "citekey": "Valle2019",
-  "source": "Valle2019.pdf",
-  "sha256": "a2c35f993c9e1cfe02d395d8fc10b0e5f082728d380c5ba57c0beffd719e65b0",
-  "note": "@unpublished — plain (control)"
  },
  {
   "citekey": "Van-Dijk1981",

@@ -56,15 +56,16 @@ def key_from_command(command, setting):
 
 
 def resolve_api_keys(config, environ=None):
-    """Settle anthropic_api_key and scrapingdog_api_key in place, once.
+    """Settle anthropic_api_key, scrapingdog_api_key and gemini_api_key in place, once.
 
     Each comes from the first of: its plaintext field; for Anthropic only,
     $ANTHROPIC_API_KEY; its *_command. An Anthropic key found nowhere is
-    left unset for the caller to report; ScrapingDog is optional anyway.
+    left unset for the caller to report; ScrapingDog and Gemini are optional.
     """
     environ = os.environ if environ is None else environ
     for name, env_var in (('anthropic_api_key', 'ANTHROPIC_API_KEY'),
-                          ('scrapingdog_api_key', None)):
+                          ('scrapingdog_api_key', None),
+                          ('gemini_api_key', None)):
         if _is_set(config.get(name)):
             continue
         command = config.get(f'{name}_command')
