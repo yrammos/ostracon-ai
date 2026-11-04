@@ -23,6 +23,7 @@ fixture pair (no sample data, no API calls) that exercises this same code.
 from __future__ import annotations
 
 import argparse
+import collections
 import hashlib
 import json
 import sys
@@ -117,6 +118,13 @@ def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.
         (save_dir / f"{citekey}.bib").write_text(clean, encoding='utf-8')
         if getattr(result, 'type_analysis', None):
             (save_dir / f"{citekey}.type-analysis.txt").write_text(result.type_analysis, encoding='utf-8')
+        gemini = getattr(result, 'gemini', None)
+        if gemini:
+            keep = {k: v for k, v in gemini.items() if k not in ('questions',)}
+            keep['question_ids'] = [q['id'] for q in gemini.get('questions') or []]
+            keep['cost_usd'] = round(gemini_cost(gemini.get('usage') or []), 5)
+            (save_dir / f"{citekey}.gemini.json").write_text(
+                json.dumps(keep, indent=1, ensure_ascii=False), encoding='utf-8')
 
     return entry
 
@@ -209,6 +217,32 @@ def write_json_report(path, entry_scores, warnings, usage=None) -> None:
     if usage is not None:
         payload["usage"] = usage
     Path(path).write_text(json.dumps(payload, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+# Gemini 3.8 Flash, paid tier, through 2026-12-31 (aistudio.google.com/docs/pricing,
+# read 2026-11-04); thinking tokens bill as output. Google Search grounding:
+# 5,000 searches a month free, then $14 per 1,000, not counted here.
+GEMINI_PRICE_IN, GEMINI_PRICE_OUT = 0.75, 3.75
+
+
+def gemini_cost(usage) -> float:
+    """USD for a list of Gemini usageMetadata records. Kept apart from
+    BiblioAgent.usage, which is priced at Claude's rates."""
+    return sum(u.get('promptTokenCount', 0) * GEMINI_PRICE_IN
+               + (u.get('candidatesTokenCount', 0) + u.get('thoughtsTokenCount', 0)) * GEMINI_PRICE_OUT
+               for u in usage) / 1e6
+
+
+def format_gemini(save_dir, keys) -> str:
+    """Gemini's statuses and cost over a run, from the saved <key>.gemini.json files."""
+    rows = [json.loads(p.read_text(encoding='utf-8')) for k in keys
+            if (p := Path(save_dir) / f"{k}.gemini.json").exists()]
+    if not rows:
+        return ""
+    status = collections.Counter(r.get('status') for r in rows)
+    return (f"\nGemini ({len(rows)} sources): " + ", ".join(f"{k} {n}" for k, n in status.most_common())
+            + f"\n  Gemini cost: ${sum(r.get('cost_usd', 0) for r in rows):.2f} "
+            f"(model tokens only; searches {sum(len(r.get('queries') or []) for r in rows)})")
 
 
 def format_usage(usage, ttl) -> str:
@@ -325,6 +359,7 @@ def main(argv=None):
     print(format_report(entry_scores, warnings))
     if usage:
         print(format_usage(usage, agent.config.get('cache_ttl') or '5m'))
+        print(format_gemini(args.last_run_dir, list(usage)))
 
     if args.json:
         write_json_report(args.json, entry_scores, warnings, usage=usage or None)

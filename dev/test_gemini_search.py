@@ -95,6 +95,46 @@ def test_type_query_uses_title_and_first_surname():
         '"Introduction" AND "Aesthetic Theory" AND Adorno'
 
 
+def test_listed_types_are_the_21_in_the_prompt():
+    import biblio_agent
+    types = gemini_search.listed_types(biblio_agent.TYPE_DEFINITIONS)
+    assert len(types) == 21 and {"article", "suppcollection", "misc"} <= types, sorted(types)
+
+
+def test_the_bank_loads_and_selects_by_type():
+    bank = gemini_search.load_bank(os.path.join(os.path.dirname(__file__), "..", "prompt-context",
+                                                "gemini-questions.yaml"))
+    assert [q["id"] for q in gemini_search.select(bank, "inbook")] == \
+        ["chapter_number", "other_chapters_same_author"]
+    assert gemini_search.select(bank, "thesis") == []
+    assert gemini_search.select([{"id": "a", "when": "any", "ask": "?", "use": "check", "expect": {}}],
+                                "thesis")[0]["id"] == "a"
+
+
+def test_answers_fill_confirm_or_go_to_review_and_never_overwrite():
+    qs = [{"id": "ch", "when": "any", "ask": "?", "use": "field chapter"},
+          {"id": "pg", "when": "any", "ask": "?", "use": "field pages"},
+          {"id": "vol", "when": "any", "ask": "?", "use": "field volume"},
+          {"id": "same", "when": "any", "ask": "?", "use": "check", "expect": {"inbook": "yes", "incollection": "no"}},
+          {"id": "none", "when": "any", "ask": "?", "use": "field note"}]
+    entry = "@inbook{X,\n  Title = {T},\n  Pages = {80--112},\n  Volume = {2},\n}"
+    out, rep = gemini_search.apply_answers(entry, qs, {"ch": 4, "pg": "80--112", "vol": "3",
+                                                       "same": "No", "none": None}, "inbook")
+    assert rep["added"] == ["chapter"] and "Chapter = {4}" in out, (rep, out)
+    assert rep["confirmed"] == ["pages"] and "Volume = {2}" in out, (rep, out)
+    assert rep["checks"] == {"same": False} and len(rep["conflicts"]) == 2, rep
+
+
+def test_ask_questions_offers_check_options_and_drops_unknown_ids():
+    q = [{"id": "same", "when": "any", "ask": "Same author?", "use": "check", "expect": {"inbook": "yes", "incollection": "no"}}]
+    reply = '<result>{"same": "yes", "bogus": 1}</result>'
+    with mock.patch.object(gemini_search.requests, "post", return_value=Reply(200, _typed(reply))) as post:
+        out = gemini_search.ask_questions([{"role": "user", "parts": [{"text": "q"}]}], q, "KEY")
+    assert out["answers"] == {"same": "yes"}, out
+    sent = post.call_args.kwargs["json"]
+    assert "Options: no; yes." in sent["contents"][-1]["parts"][0]["text"] and sent["tools"] == [{"google_search": {}}]
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

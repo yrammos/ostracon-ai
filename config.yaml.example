@@ -108,6 +108,12 @@ scrapingdog_api_key: ""
 # 5,000 free searches a month, then paid. A command is preferred to the key.
 # gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-key -w"
 gemini_api_key: ""
+# Let Gemini, grounded in Google Search, decide the entry type and answer the
+# closed questions in gemini_questions_file (off by default; each source then
+# makes three Gemini calls, about 15-20 s each).
+gemini_type_check: false
+# gemini_model: "gemini-3.8-flash"
+# gemini_questions_file: "./prompt-context/gemini-questions.yaml"
 
 # Logging
 verbose: true

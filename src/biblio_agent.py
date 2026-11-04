@@ -19,6 +19,7 @@ from extract_pages import extract_pdf
 from extraction_result import ExtractionResult
 import web_source
 import enrich
+import gemini_search
 from api_keys import resolve_api_keys
 
 # Tesseract language codes shown in the OCR language picker.
@@ -851,9 +852,26 @@ excerpt's text won't (e.g. an embedded Author field):
 
             needs_color = False
             field_sources = None
+
+            # Step 3 and 3a: Gemini, grounded in Google Search, decides the
+            # type (the maintainer's ruling, 2026-11-04) and answers the
+            # question bank. Off unless config sets gemini_type_check.
+            gemini = None
+            if self.config.get('gemini_type_check') and entry is not None:
+                bibtex_entry, gemini = self._gemini_type_check(bibtex_entry, content, context, model)
+                needs_color = needs_color or gemini.get('needs_color', False)
             if self.config.get('enrich_missing_fields', True) and entry is not None:
                 bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
-                bibtex_entry, needs_color = self.verify_and_flag_recollection(bibtex_entry, content)
+                bibtex_entry, audit_color = self.verify_and_flag_recollection(bibtex_entry, content)
+                needs_color = needs_color or audit_color
+
+            # Gemini's field answers go in after the grounding audit, which
+            # would otherwise report them as inferred: they fill gaps only,
+            # marked for review, and never overwrite.
+            if gemini and gemini.get('questions'):
+                bibtex_entry, field_sources, answers_color = self._apply_gemini_answers(
+                    bibtex_entry, gemini, field_sources)
+                needs_color = needs_color or answers_color
 
             # Structural safety net: the prompt above already asks Claude not
             # to include these, but doesn't reliably follow through (e.g. a
@@ -921,6 +939,7 @@ excerpt's text won't (e.g. an embedded Author field):
                 inferred_fields=inferred,
                 validation=validation,
                 type_analysis=type_analysis,
+                gemini=gemini,
             )
 
         except Exception as e:
@@ -951,6 +970,107 @@ field names/casing). Do not change any existing field value. Do not add any
 other fields. Output ONLY the corrected BibLaTeX entry, with no additional
 commentary."""
         return prompt
+
+    def _gemini_type_check(self, entry_text, content, context, model):
+        """Steps 3 and 3a. Returns (entry_text, info); info['status'] is one of
+        agreed, overrode, not-found, invalid-type, reencode-failed,
+        skipped: <why>, or error: <message>, and is never folded into another:
+        a failure here must not read as an answer."""
+        info = {'status': None, 'draft_type': enrich.get_entry_type(entry_text),
+                'draft_entry': entry_text, 'usage': []}
+        key = self.config.get('gemini_api_key')
+        title, query = gemini_search.query_from_fields(enrich.parse_bibtex_fields(entry_text))
+        info['query'] = query
+        if not key:
+            info['status'] = 'skipped: no gemini_api_key'
+            return entry_text, info
+        if not title:
+            info['status'] = 'skipped: no title'
+            return entry_text, info
+        gm = self.config.get('gemini_model') or gemini_search.MODEL
+        self._log("   Asking Gemini for the type...", 'info')
+        r = gemini_search.decide_type(query, TYPE_DEFINITIONS, key, model=gm)
+        info['usage'] += r.get('usage') or []
+        info.update({k: r.get(k) for k in ('type', 'found', 'reason', 'answer', 'sources', 'queries')})
+        if r.get('error'):
+            info['status'] = f"error: {r['error']}"
+            self._log(f"   ⚠️  Gemini type check failed ({r['error']}) - type kept", 'warning')
+            return entry_text, info
+        if not r.get('found') or not r.get('type'):
+            info['status'] = 'not-found'
+            self._log("   Gemini did not identify the work - type kept", 'info')
+            return entry_text, info
+        if r['type'] not in gemini_search.listed_types(TYPE_DEFINITIONS):
+            info['status'] = 'invalid-type'
+            self._log(f"   ⚠️  Gemini gave a type not on the list (@{r['type']}) - type kept", 'warning')
+            return entry_text, info
+        final_type = info['draft_type']
+        if r['type'] == info['draft_type']:
+            info['status'] = 'agreed'
+        else:
+            redone = self._reencode(content, context, model, r['type'], r.get('reason', ''))
+            if redone is None:
+                info['status'] = 'reencode-failed'
+                info['needs_color'] = True
+                self._log(f"   ⚠️  Could not re-encode as @{r['type']} - draft kept, flagged for review", 'warning')
+                return entry_text, info
+            info['status'] = 'overrode'
+            entry_text, final_type = redone, r['type']
+            self._log(f"   Gemini: @{info['draft_type']} -> @{r['type']} ({r.get('reason', '')})", 'warning')
+        # Step 3a: the bank's questions for the final type.
+        bank_path = self.config.get('gemini_questions_file') or 'prompt-context/gemini-questions.yaml'
+        try:
+            bank = gemini_search.load_bank(Path(bank_path).expanduser())
+        except (OSError, AssertionError, yaml.YAMLError) as e:
+            info['questions_status'] = f"error: question bank: {e}"
+            self._log(f"   ⚠️  Question bank unreadable ({e}) - no questions asked", 'warning')
+            return entry_text, info
+        questions = gemini_search.select(bank, final_type)
+        info['final_type'] = final_type
+        if questions:
+            self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
+            qa = gemini_search.ask_questions(r.get('history') or [], questions, key, model=gm)
+            info['usage'] += qa.get('usage') or []
+            if qa.get('error'):
+                info['questions_status'] = f"error: {qa['error']}"
+                self._log(f"   ⚠️  Gemini questions failed ({qa['error']})", 'warning')
+            else:
+                info['questions_status'] = 'answered'
+                info['questions'] = questions
+                info['answers'] = qa['answers']
+        return entry_text, info
+
+    def _reencode(self, content, context, model, entry_type, reason):
+        """The entry re-extracted under the type Gemini decided, or None when
+        the reply does not isolate to an entry of that type."""
+        prompt = self.build_prompt(content) + (
+            f"\n\nAn external check, grounded in Google Search, has decided this work's "
+            f"entry type: @{entry_type}. Its reason: {reason}\nUse @{entry_type}. In step 1, "
+            f"write the type analysis briefly and choose @{entry_type}. Encode the entry under "
+            f"@{entry_type}, putting the container's information in the fields @{entry_type} "
+            "uses. Never add a value the source does not show.")
+        message = self._create('reencode', self.config['max_tokens'], model=model, messages=[
+            {"role": "user", "content": self._cached_message_content(context, prompt)}])
+        raw, _ = enrich.split_type_analysis(response_text(message))
+        entry, _ = enrich.isolate_entry(raw)
+        if entry is None or enrich.get_entry_type(entry) != entry_type:
+            return None
+        entry, _ = enrich.move_nodate_to_year(entry)
+        return entry
+
+    def _apply_gemini_answers(self, entry_text, gemini, field_sources):
+        """Step 3a's answers applied: (entry_text, field_sources, needs_color)."""
+        entry_text, report = gemini_search.apply_answers(
+            entry_text, gemini['questions'], gemini.get('answers') or {},
+            gemini.get('final_type') or enrich.get_entry_type(entry_text))
+        gemini['answer_report'] = report
+        if report['added']:
+            note = "Gemini: " + ", ".join(report['added'])
+            field_sources = f"{field_sources}; {note}" if field_sources else note
+            self._log(f"   Filled from Gemini (for review): {', '.join(report['added'])}", 'warning')
+        for c in report['conflicts']:
+            self._log(f"   ⚠️  Gemini disagrees - {c}", 'warning')
+        return entry_text, field_sources, bool(report['added'] or report['conflicts'])
 
     def enrich_entry(self, entry_text, content):
         """

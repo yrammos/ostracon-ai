@@ -149,5 +149,123 @@ def decide_type(query, types, api_key, model=MODEL, timeout=120, retries=3, slee
         return {**out, "error": "unparsable answer", "text": text[:500]}
     t = result.get("type")
     out.update(type=(str(t).lower().lstrip("@").strip() if t else None),
-               found=bool(result.get("found")), reason=result.get("reason", ""))
+               found=bool(result.get("found")), reason=result.get("reason", ""),
+               history=[{"role": "user", "parts": [{"text": query}]},
+                        {"role": "model", "parts": [{"text": answer}]}])
     return out
+
+
+def listed_types(types):
+    """The type names in a TYPE_DEFINITIONS-style list: the first word of each
+    line indented by six spaces."""
+    import re
+    return set(re.findall(r"^ {6}([a-z]+) ", types, re.M))
+
+
+def query_from_fields(fields):
+    """The query for an extracted entry's fields (case-insensitive names):
+    full title, the container's title, the first author's or editor's surname."""
+    import enrich
+    f = {k.lower(): v for k, v in fields.items()}
+    clean = lambda k: enrich.strip_latex(f.get(k, "")).replace("~", " ").strip()
+    title = ": ".join(x for x in (clean("title"), clean("subtitle")) if x)
+    container = next((clean(k) for k in ("booktitle", "journaltitle", "journal", "maintitle") if clean(k)), "")
+    return title, type_query(title, clean("author") or clean("editor"), container)
+
+
+# --- Step 3a: a bank of closed questions, chosen by type --------------------
+
+QUESTIONS_PROMPT = """Answer these questions about the work above, from Google Search.
+Answer each briefly: a number as the number only; a choice as one of the
+options given, word for word. If you cannot find the answer, give null.
+
+{questions}
+
+Reply with exactly this and nothing else:
+<result>{{{skeleton}}}</result>"""
+
+
+def load_bank(path):
+    """The question bank: a list of {id, when, ask, use, expect?}. `when` is a
+    list of types or "any"; `use` is "field <name>" or "check"."""
+    import yaml
+    bank = yaml.safe_load(open(path, encoding="utf-8")) or []
+    for q in bank:
+        assert {"id", "when", "ask", "use"} <= set(q), f"question bank entry lacks a key: {q}"
+        assert q["use"] == "check" or str(q["use"]).startswith("field "), f"unknown use: {q}"
+        assert q["use"] != "check" or isinstance(q.get("expect"), dict), f"a check needs expect: {q}"
+    return bank
+
+
+def select(bank, entry_type):
+    """The questions whose `when` names the type (or is "any")."""
+    return [q for q in bank if q["when"] == "any" or entry_type in q["when"]]
+
+
+def ask_questions(history, questions, api_key, model=MODEL, timeout=120, retries=3, sleep=None):
+    """One grounded call continuing the search conversation: {'answers':
+    {id: value}, 'usage'} or one with 'error'."""
+    import json
+    import re
+    import time
+    sleep = sleep or time.sleep
+    if not questions:
+        return {"answers": {}, "usage": []}
+    lines = []
+    for q in questions:
+        opts = sorted(set(q.get("expect", {}).values())) if q["use"] == "check" else []
+        lines.append(f"- {q['id']}: {q['ask']}" + (f" Options: {'; '.join(opts)}." if opts else ""))
+    skeleton = ", ".join(f'"{q["id"]}": ...' for q in questions)
+    body = {"contents": history + [{"role": "user", "parts": [{"text": QUESTIONS_PROMPT.format(
+        questions="\n".join(lines), skeleton=skeleton)}]}], "tools": [{"google_search": {}}]}
+    status, data = _post(body, api_key, model, timeout, retries, sleep)
+    if status != 200:
+        return {"error": f"HTTP {status}: {str((data.get('error') or {}).get('message', ''))[:120]}"}
+    text, _ = _text(data)
+    m = re.search(r"<result>\s*(\{.*?\})\s*</result>", text, re.S)
+    try:
+        answers = json.loads(m.group(1)) if m else None
+    except ValueError:
+        answers = None
+    if not isinstance(answers, dict):
+        return {"error": "unparsable answer", "text": text[:500], "usage": [data.get("usageMetadata", {})]}
+    wanted = {q["id"] for q in questions}
+    return {"answers": {k: v for k, v in answers.items() if k in wanted},
+            "usage": [data.get("usageMetadata", {})]}
+
+
+def _plain(value):
+    import enrich
+    return " ".join(enrich.strip_latex(str(value)).replace("~", " ").lower().split()).strip(" .")
+
+
+def apply_answers(entry_text, questions, answers, entry_type):
+    """(entry_text, report) for step 3a's answers. A field answer fills a
+    missing field and is never written over a value the entry has; a differing
+    value, or a check whose answer is not what the type implies, goes to review.
+    report = {'added': [field], 'confirmed': [field], 'conflicts': [str], 'checks': {id: ok}}."""
+    import enrich
+    fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry_text).items()}
+    report = {"added": [], "confirmed": [], "conflicts": [], "checks": {}}
+    for q in questions:
+        value = answers.get(q["id"])
+        if value in (None, "", "null"):
+            continue
+        if q["use"] == "check":
+            implied = q["expect"].get(entry_type)
+            if implied is None:
+                continue
+            ok = _plain(value) == _plain(implied)
+            report["checks"][q["id"]] = ok
+            if not ok:
+                report["conflicts"].append(f"{q['id']}: Gemini says {value!r}; @{entry_type} implies {implied!r}")
+            continue
+        name = q["use"].split(None, 1)[1].strip().lower()
+        if name not in fields:
+            entry_text = enrich.add_field(entry_text, name.capitalize(), str(value))
+            report["added"].append(name)
+        elif _plain(fields[name]) == _plain(value):
+            report["confirmed"].append(name)
+        else:
+            report["conflicts"].append(f"{name}: entry has {fields[name]!r}; Gemini says {value!r}")
+    return entry_text, report
