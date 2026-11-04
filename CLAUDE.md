@@ -30,7 +30,9 @@ values truncated at an unclosed parenthesis; bibstring names written as commands
 verdicts. Three programs, split by how they act:
 
 - **`dev/bib_audit.py`** — read-only counting, and the home of the **shared
-  predicates**. `bib_normalize.py` imports them; never reimplement one in the
+  predicates**. Both it and `bib_normalize.py` live in `src/` and are linked
+  from `dev/`, because extraction runs the normalizer on every new entry
+  (`src/house_style.py`); edit them in `src/`. `bib_normalize.py` imports them; never reimplement one in the
   audit, or the two will disagree and the audit will be the wrong one.
 - **`dev/bib_normalize.py`** — edits derived from a rule that fires across the
   corpus.
