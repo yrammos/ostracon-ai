@@ -9,6 +9,8 @@ import re
 import argparse
 import shutil
 import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 import yaml
@@ -156,10 +158,30 @@ class BiblioAgent:
         # One record per API call: which call, model, and token counts.
         # dev/eval/run.py reads and resets it per source to measure cost.
         self.usage = []
-        self.inferred_fields = []
+        # Per-thread state: process_batch() runs several sources at once.
+        self._local = threading.local()
+        self._lock = threading.Lock()      # saving, moving, logging, progress
+        self._ask_lock = threading.Lock()  # one OCR-language dialog at a time
+
+    @property
+    def inferred_fields(self):
+        return getattr(self._local, 'inferred_fields', [])
+
+    @inferred_fields.setter
+    def inferred_fields(self, value):
+        self._local.inferred_fields = value
 
     def _log(self, message: str, level: str = 'info') -> None:
-        """Emit a progress message to stderr (if verbose) and/or the progress window."""
+        """Emit a progress message to stderr (if verbose) and/or the progress
+        window. In a parallel batch a source's messages are held and emitted
+        together when it finishes, so sources do not interleave."""
+        held = getattr(self._local, 'held', None)
+        if held is not None:
+            held.append((message, level))
+            return
+        self._emit(message, level)
+
+    def _emit(self, message, level):
         if self.config.get('verbose'):
             print(message, file=sys.stderr)
         if self._progress_callback:
@@ -668,7 +690,8 @@ excerpt's text won't (e.g. an embedded Author field):
 
         if self.config.get('interactive_ocr', True):
             def language_prompt_fn():
-                lang = self._ask_ocr_language(pdf_path.name)
+                with self._ask_lock:
+                    lang = self._ask_ocr_language(pdf_path.name)
                 self._log(f"   OCR language: {lang}", 'info')
                 return lang
         else:
@@ -1613,11 +1636,13 @@ end tell'''
         results = {'success': [], 'failed': [], 'skipped': []}
         careful_dir = (in_folder / 'careful').resolve()
 
-        for i, pdf_path in enumerate(files, 1):
-            if progress_window and progress_window.cancelled:
-                self._log("Cancelled by user.", 'warning')
-                break
+        workers = max(1, int(self.config.get('batch_workers', 3)))
+        done = [0]
 
+        def one(i, pdf_path):
+            """Extract, save and move one source; returns its outcome."""
+            if progress_window and progress_window.cancelled:
+                return 'skipped', pdf_path.name, None
             if progress_window:
                 progress_window.set_progress(i, pdf_path.name)
                 # Re-read the window's model popup before each file, so a
@@ -1635,28 +1660,56 @@ end tell'''
             model_for_file = self.config.get('careful_model', DEFAULT_CAREFUL_MODEL) if is_careful else None
 
             self.notify_progress(f"[{i}/{total}] {pdf_path.name}", subtitle="Extracting bibliography")
-
-            # Extract bibliography
             result = self.extract_bibtex(pdf_path, batch_info=(i, total), model_override=model_for_file)
-
             if result.failed:
                 self._log(f"   ✗ {result.error}", 'error')
-                results['failed'].append((pdf_path.name, result.error))
-                continue
-
-            # Save entry
-            saved = self.save_entry(result, pdf_path)
+                return 'failed', pdf_path.name, result.error
+            with self._lock:   # one writer to the staging file / BibDesk at a time
+                saved = self.save_entry(result, pdf_path)
+                if saved and move_files:
+                    self.move_to_processed(pdf_path)
             if not saved:
-                results['failed'].append((pdf_path.name, "save failed"))
-                continue
+                return 'failed', pdf_path.name, "save failed"
+            return 'success', pdf_path.name, None
 
-            # Move file if requested
-            if move_files:
-                self.move_to_processed(pdf_path)
+        def run(i, hold=True):
+            """one() for files[i - 1]; with `hold`, its messages are held and
+            emitted as a block when it finishes."""
+            pdf_path = files[i - 1]
+            if hold and workers > 1:
+                self._local.held = []
+            try:
+                outcome = one(i, pdf_path)
+            except Exception as e:  # noqa: BLE001 - one bad source must not stop the batch
+                outcome = 'failed', pdf_path.name, f"{type(e).__name__}: {e}"
+                self._log(f"   ✗ {outcome[2]}", 'error')
+            finally:
+                held, self._local.held = getattr(self._local, 'held', None), None
+            with self._lock:
+                for message, level in held or []:
+                    self._emit(message, level)
+                status, name, error = outcome
+                if status == 'skipped':
+                    return outcome
+                done[0] += 1
+                if status == 'success':
+                    self._emit(f"   ✓ Done ({int(done[0] / total * 100)}% complete)", 'success')
+            return outcome
 
-            results['success'].append(pdf_path.name)
-            pct_done = int(i / total * 100)
-            self._log(f"   ✓ Done ({pct_done}% complete)", 'success')
+        # The first source runs alone, so that it writes the prompt cache the
+        # others then read; the rest run `batch_workers` at a time.
+        outcomes = [run(1, hold=False)]
+        with ThreadPoolExecutor(workers) as pool:
+            outcomes += list(pool.map(run, range(2, total + 1)))
+        for status, name, error in outcomes:
+            if status == 'success':
+                results['success'].append(name)
+            elif status == 'failed':
+                results['failed'].append((name, error))
+            else:
+                results['skipped'].append(name)
+        if any(o[0] == 'skipped' for o in outcomes):
+            self._log("Cancelled by user.", 'warning')
 
         # Summary
         n_ok = len(results['success'])
