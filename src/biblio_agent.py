@@ -22,6 +22,9 @@ from extraction_result import ExtractionResult
 import web_source
 import enrich
 import gemini_search
+import evidence
+import page_reader
+import isbn_lookup
 from api_keys import resolve_api_keys
 
 # Tesseract language codes shown in the OCR language picker.
@@ -895,6 +898,31 @@ excerpt's text won't (e.g. an embedded Author field):
                 bibtex_entry, audit_color = self.verify_and_flag_recollection(bibtex_entry, content)
                 needs_color = needs_color or audit_color
 
+            # A book's ISBN, read from its copyright page, keys an exact Open
+            # Library record. Off unless config sets isbn_lookup.
+            lookups = {}
+            if self.config.get('isbn_lookup') and entry is not None:
+                values, lookups['isbn'] = isbn_lookup.fill(
+                    enrich.get_entry_type(bibtex_entry), enrich.parse_bibtex_fields(bibtex_entry),
+                    content.text)
+                for f, v in values.items():
+                    bibtex_entry = enrich.add_field(bibtex_entry, f, v)
+                if values:
+                    note = f"Open Library (ISBN {lookups['isbn'].get('isbn')}): {', '.join(values)}"
+                    field_sources = f"{field_sources}; {note}" if field_sources else note
+                    needs_color = True
+                    self._log(f"   Filled from {note} (for review)", 'warning')
+
+            # Evidence step: read the primary pages Gemini cites and fill
+            # missing fields with values quoted from them. Off unless config
+            # sets read_cited_pages; needs Gemini's sources.
+            if gemini and gemini.get('sources') and self.config.get('read_cited_pages') \
+                    and entry is not None:
+                bibtex_entry, field_sources, pages_color = self._read_cited_pages(
+                    bibtex_entry, gemini, field_sources, model)
+                needs_color = needs_color or pages_color
+                lookups['pages'] = gemini.get('pages')
+
             # Gemini's field answers go in after the grounding audit, which
             # would otherwise report them as inferred: they fill gaps only,
             # marked for review, and never overwrite.
@@ -970,6 +998,7 @@ excerpt's text won't (e.g. an embedded Author field):
                 validation=validation,
                 type_analysis=type_analysis,
                 gemini=gemini,
+                lookups=lookups or None,
             )
 
         except Exception as e:
@@ -1088,6 +1117,61 @@ commentary."""
             return None
         entry, _ = enrich.move_nodate_to_year(entry)
         return entry
+
+    def _read_cited_pages(self, entry_text, gemini, field_sources, model, read=None):
+        """The evidence step (src/evidence.py). Returns (entry_text,
+        field_sources, needs_color); its report goes in gemini['pages']."""
+        read = read or page_reader.read_page
+        entry_type = enrich.get_entry_type(entry_text)
+        report = {'read': [], 'skipped': [], 'filled': {}, 'rejected': {}}
+        gemini['pages'] = report
+        max_pages = int(self.config.get('evidence_max_pages', 3))
+        tried = 0
+        for src in gemini.get('sources') or []:
+            fields = enrich.parse_bibtex_fields(entry_text)
+            want = evidence.wanted(entry_type, fields)
+            if not want or tried >= max_pages:
+                break
+            if evidence.excluded(src.get('title')):
+                report['skipped'].append((src.get('title'), 'excluded domain'))
+                continue
+            tried += 1
+            page = read(src.get('url'))
+            if page.get('error'):
+                report['skipped'].append((src.get('title'), page['error']))
+                continue
+            if evidence.excluded(page.get('domain')):
+                report['skipped'].append((page.get('domain'), 'excluded domain'))
+                continue
+            ok, why = evidence.identity(fields, page['text'])
+            if not ok:
+                report['skipped'].append((page['domain'], f'not this work: {why}'))
+                continue
+            prompt = evidence.PROMPT.format(entry=entry_text, url=page['url'],
+                                            page=page['text'][:int(self.config.get('evidence_page_chars', 15000))],
+                                            fields=', '.join(want))
+            try:
+                message = self._create('evidence', int(self.config.get('evidence_max_tokens', 1500)),
+                                       model=model, messages=[{"role": "user", "content": prompt}])
+            except Exception as e:  # noqa: BLE001 - the entry stands as it is
+                report['skipped'].append((page['domain'], f'error: {e}'))
+                continue
+            values, rejected = evidence.accept(evidence.parse_reply(response_text(message)),
+                                               page['text'], want)
+            report['read'].append(page['domain'])
+            for f, why in rejected.items():
+                report['rejected'][f'{page["domain"]}:{f}'] = why
+            for f, v in values.items():
+                entry_text = enrich.add_field(entry_text, f, v)
+                report['filled'][f] = (v, page['domain'])
+        if report['filled']:
+            by_domain = {}
+            for f, (_, d) in report['filled'].items():
+                by_domain.setdefault(d, []).append(f)
+            note = '; '.join(f"{d}: {', '.join(fs)}" for d, fs in by_domain.items())
+            field_sources = f"{field_sources}; {note}" if field_sources else note
+            self._log(f"   Filled from cited pages (for review): {note}", 'warning')
+        return entry_text, field_sources, bool(report['filled'])
 
     def _apply_gemini_answers(self, entry_text, gemini, field_sources):
         """Step 3a's answers applied: (entry_text, field_sources, needs_color)."""

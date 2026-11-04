@@ -172,7 +172,15 @@ def _fillable(source, entry_type):
         out.add('journaltitle')
     elif source == CROSSREF_DOI:
         out |= {'booktitle', 'booksubtitle'}
+    if source == CROSSREF_DOI:
+        # Only from a DOI match: a subtitle from a title search could be
+        # another work's.
+        out.add('subtitle')
     return out
+
+
+def _words(text):
+    return set(re.findall(r'\w+', strip_latex(text or '').lower()))
 
 
 def _admit(found, source, entry_type, fields, already):
@@ -183,6 +191,10 @@ def _admit(found, source, entry_type, fields, already):
     out = {}
     for k, v in found.items():
         if k in allowed and k != 'booksubtitle' and k not in already and not _present(fields, k):
+            # A subtitle the Title already carries (an unsplit title) is not
+            # missing; adding it would print it twice.
+            if k == 'subtitle' and _words(v) <= _words(fields.get('title', '')):
+                continue
             out[k] = v
     if 'booktitle' in out and found.get('booksubtitle') and not fields.get('booksubtitle'):
         out['booksubtitle'] = found['booksubtitle']
@@ -724,6 +736,11 @@ def crossref_fields(message):
     container = message.get('container-title') or []
     if container:
         out['journaltitle'] = container[0]
+    # CrossRef parses the title itself: `subtitle` is a separate list. It
+    # attests a Title/Subtitle boundary the source's layout may only imply.
+    subtitle = message.get('subtitle') or []
+    if subtitle and subtitle[0].strip():
+        out['subtitle'] = subtitle[0].strip()
     return out
 
 

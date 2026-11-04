@@ -88,6 +88,7 @@ class ExtractionResult:
     # draft and final type, reason, query, sources, answers, token usage.
     # None when the check is off. dev/eval/run.py saves it per source.
     gemini: Optional[dict] = None
+    lookups: Optional[dict] = None   # ISBN and cited-page reports (src/isbn_lookup.py, src/evidence.py)
 
     @property
     def failed(self) -> bool:

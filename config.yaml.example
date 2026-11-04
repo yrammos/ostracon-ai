@@ -116,6 +116,15 @@ gemini_api_key: ""
 # closed questions in gemini_questions_file (off by default; each source then
 # makes three Gemini calls, about 15-20 s each).
 gemini_type_check: false
+
+# Evidence step (needs gemini_type_check): read up to 3 pages Gemini's search
+# cites (aggregators, social media and piracy sites excluded), check each names
+# this work, and fill missing fields with values quoted from the page, marked
+# for review. One Claude call per page read.
+read_cited_pages: false
+# Fill a book's missing Publisher, Location, Date (and an edited volume's
+# Editor) from Open Library, keyed by the ISBN on its copyright page. Free.
+isbn_lookup: false
 # gemini_model: "gemini-3.8-flash"
 # gemini_questions_file: "./prompt-context/gemini-questions.yaml"
 

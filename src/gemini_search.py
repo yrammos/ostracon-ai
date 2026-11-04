@@ -3,10 +3,10 @@
 with the pages it cites.
 
 The answer guides; it settles nothing. Its cited pages are the reading list:
-src/attribute_search.py settles an attribute only by a quote from a page
-actually read with read_page. Cited links are Google redirects
-(vertexaisearch.cloud.google.com/grounding-api-redirect/...), which read_page
-follows to the page itself.
+the evidence step (src/evidence.py) reads them with src/page_reader.py and
+takes a field value only with a quote from a page actually read. Cited links
+are Google redirects (vertexaisearch.cloud.google.com/grounding-api-redirect/...),
+which read_page() follows to the page itself.
 
 Grounding needs a billed Google AI Studio project; on the free tier the API
 answers HTTP 429 (checked 2026-11-04). Google bills each search query the

@@ -115,6 +115,10 @@ reaches Gemini when `gemini_type_check` is off.
 extraction stubbed: every source saved, one save at a time, each source's
 messages kept together, a failing source not stopping the rest.
 
+`python3 dev/test_evidence.py` self-tests the lookups with network and Claude
+stubbed: CrossRef's subtitle, the page reader, the evidence step's domain,
+identity and quote gates, and the ISBN lookup.
+
 ## Configuration
 
 Three keys need a value; the rest have defaults.
@@ -158,6 +162,8 @@ absent from disk is an error at startup, not a warning.
 | `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
 | `gemini_type_check`     | `false`             | `true`: Gemini, grounded in Google Search, checks the entry type and decides it; on disagreement Claude re-encodes under Gemini's type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml`; its values only fill missing fields, marked for review. About two cents a source. |
 | `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
+| `read_cited_pages`      | `false`             | `true`: read up to 3 pages Gemini's search cites and fill missing fields with values quoted from them, after checking the page names this work. Marked for review. Needs `gemini_type_check`. |
+| `isbn_lookup`           | `false`             | `true`: fill a book's missing imprint (and an edited volume's editor) from Open Library by the ISBN printed in the source. Free. Marked for review. |
 | `anthropic_api_key`     | —                   | The key in plaintext, instead of `anthropic_api_key_command`. Not recommended.                                    |
 
 Presentation settings — nothing below affects extraction — live under one
@@ -367,6 +373,9 @@ ostracon-ai/
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
 │   ├── api_keys.py         # API keys from config, environment or a command
 │   ├── gemini_search.py    # Gemini type decision and closed questions
+│   ├── evidence.py         # Fields quoted from the pages Gemini cites
+│   ├── page_reader.py      # Web page to text
+│   ├── isbn_lookup.py      # Book imprint by ISBN (Open Library)
 │   ├── bib_validate.py     # biber data-model check; published by ./install
 │   ├── bib_render.py       # Render check: fields that never reach the page
 │   ├── tex/previewtemplate.tex # Neutral template for the render check
@@ -384,6 +393,7 @@ ostracon-ai/
 │   ├── render_entries.py   # bib_render over a .bib or saved run outputs
 │   ├── test_bib_validate.py, test_bib_render.py # Their self-tests
 │   ├── test_gemini_search.py, test_gemini_step.py # Gemini self-tests, network stubbed
+│   ├── test_evidence.py    # Lookup self-tests: pages, ISBN, CrossRef subtitle
 │   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison
