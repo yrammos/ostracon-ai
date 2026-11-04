@@ -36,11 +36,11 @@ ref_file: "./prompt-context/biblatex-chicago-notes-ref.md"  # Optional: condense
 # biblatex-chicago package's own documentation; notes-test.bib carries an
 # `annote` on nearly every entry explaining the choice of type and fields.
 # Comment out to reduce the cached prefix size.
-example_files:
-  - path: "./prompt-context/notes-test.bib"
-    label: "biblatex-chicago annotated test suite"
-  - path: "./prompt-context/cms-notes-intro-guide.md"
-    label: "biblatex-chicago entry-type guide"
+# example_files:   # dropped 2026-11-04: the closed type list replaces them
+#   - path: "./prompt-context/notes-test.bib"
+#     label: "biblatex-chicago annotated test suite"
+#   - path: "./prompt-context/cms-notes-intro-guide.md"
+#     label: "biblatex-chicago entry-type guide"
 
 # Processing options
 ocr_threshold: 100 # Minimum words extracted before OCR is attempted on key pages
