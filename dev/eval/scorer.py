@@ -83,9 +83,30 @@ def _canonical(key: str) -> str:
 
 
 def _normalize(value: str) -> str:
-    """Collapse whitespace so line-wrapping or pretty-printing differences
-    in the raw .bib text don't register as a content difference."""
-    return ' '.join((value or '').split())
+    """The value with differences that do not change the printed citation
+    removed, so they don't register as a content difference: whitespace
+    (line-wrapping, pretty-printing), a tie `~` for a space, braces around the
+    whole value, and a `\\foreignlanguage{lang}{...}` wrapper around the whole
+    value (it changes hyphenation, not the text). Name splits, case and markup
+    such as `\\mkbibquote` are not normalized: they change what prints."""
+    v = re.sub(r'(?<!\\)~', ' ', value or '')
+    v = ' '.join(v.split())
+    for _ in range(2):
+        m = re.fullmatch(r'\\foreignlanguage\{[^{}]*\}\{(.*)\}', v)
+        if m and _balanced(m.group(1)):
+            v = m.group(1)
+        if v.startswith('{') and v.endswith('}') and _balanced(v[1:-1]):
+            v = v[1:-1]
+    return v
+
+
+def _balanced(s: str) -> bool:
+    depth = 0
+    for ch in s:
+        depth += (ch == '{') - (ch == '}')
+        if depth < 0:
+            return False
+    return depth == 0
 
 
 def score_entry(expected: bib_audit.Entry, produced: "bib_audit.Entry | None") -> EntryScore:

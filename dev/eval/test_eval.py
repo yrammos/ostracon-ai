@@ -77,6 +77,14 @@ def test_score_entry_normalizes_whitespace():
     return True
 
 
+def test_score_entry_ignores_ties_braces_and_language_wrappers():
+    expected = _entry(r"@Book{X, Author = {Sapp, Craig Stuart}, Title = {Théories}, Institution = {Klezmer Institute}, Note = {Nach},}")
+    produced = _entry(r"@Book{X, Author = {Sapp, Craig~Stuart}, Title = {\foreignlanguage{french}{Théories}}, Institution = {{Klezmer Institute}}, Note = {\mkbibquote{nach}},}")
+    v = {f.field: f.verdict for f in score_entry(expected, produced).fields}
+    assert v == {'author': 'exact', 'title': 'exact', 'institution': 'exact', 'note': 'different'}, v
+    return True
+
+
 def test_score_entry_treats_biber_aliases_as_one_field():
     # The library writes `journal`, the pipeline `Journaltitle`: one field.
     expected = _entry("@Article{X, journal = {J}, address = {P},}")
@@ -508,6 +516,7 @@ TESTS = [
     test_consistency_flags_agree_with_the_pipeline_on_booktitle,
     test_score_entry_all_verdicts,
     test_score_entry_normalizes_whitespace,
+    test_score_entry_ignores_ties_braces_and_language_wrappers,
     test_score_entry_treats_biber_aliases_as_one_field,
     test_score_entry_wrong_type,
     test_score_entry_extraction_failed,
