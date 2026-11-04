@@ -899,6 +899,11 @@ excerpt's text won't (e.g. an embedded Author field):
             if moved:
                 self._log("   Moved \\bibstring{nodate} out of Date, which discards it", 'warning')
 
+            # needs_color: the entry is coloured in BibDesk only for a real
+            # failure - biber rejects it, its source is thin or not the work,
+            # or (require_langid) it has no Langid. A doubt the pipeline could
+            # not settle (an unconfirmed value, a disagreeing record) is
+            # logged, not coloured: colour that marks most entries marks none.
             needs_color = False
             field_sources = None
 
@@ -913,20 +918,18 @@ excerpt's text won't (e.g. an embedded Author field):
                     self._ask_question_bank(gemini, final_type)
             if self.config.get('enrich_missing_fields', True) and entry is not None:
                 bibtex_entry, field_sources = self.enrich_entry(bibtex_entry, content)
-                bibtex_entry, audit_color = self.verify_and_flag_recollection(bibtex_entry, content)
-                needs_color = needs_color or audit_color
+                bibtex_entry, _unsettled = self.verify_and_flag_recollection(bibtex_entry, content)
                 replaced = getattr(self._local, 'replaced', None)
                 if replaced:
                     note = "CrossRef replaced recollection: " + ", ".join(replaced)
                     field_sources = f"{field_sources}; {note}" if field_sources else note
 
             # Gemini's field answers go in after the grounding audit, which
-            # would otherwise report them as inferred: they fill gaps only,
-            # marked for review, and never overwrite.
+            # would otherwise report them as inferred: they fill gaps only and
+            # never overwrite; disagreements are logged.
             if gemini and gemini.get('questions'):
-                bibtex_entry, field_sources, answers_color = self._apply_gemini_answers(
+                bibtex_entry, field_sources, _unsettled = self._apply_gemini_answers(
                     bibtex_entry, gemini, field_sources)
-                needs_color = needs_color or answers_color
 
             # Structural safety net: the prompt above already asks Claude not
             # to include these, but doesn't reliably follow through (e.g. a
@@ -981,8 +984,7 @@ excerpt's text won't (e.g. an embedded Author field):
             # content.amber is web_source.py's plausibility check flagging a
             # source that's genuine but thin or sparse (no Author/Doi/
             # PublicationDate beyond Urldate, or a short body) - not wrong,
-            # just worth a glance. Folded into the same needs_color signal a
-            # recollection-audit failure uses, so it reaches BibDesk's review
+            # just worth a glance. Folded into needs_color, so it reaches BibDesk's review
             # color by exactly the path a PDF's review state does. The
             # "% AMBER: ..." comment save_entry writes from amber_reason
             # carries the same flag on the other branch, where entries are
@@ -1337,7 +1339,7 @@ UNGROUNDED_FIELDS: <comma-separated field names not grounded in the given text/m
             # every field is grounded. Failing open here silently disarms the
             # one check standing between a recalled value and a saved entry,
             # so treat it as "could not verify" and let the caller flag it.
-            self._log("   ⚠️  Grounding audit returned no verdict - flagging for review", 'warning')
+            self._log("   ⚠️  Grounding audit returned no verdict - entry kept as extracted", 'warning')
             raise ValueError("grounding audit returned no parseable verdict")
 
         raw = m.group(1).strip()
@@ -1480,7 +1482,7 @@ BibLaTeX entry, with no additional commentary."""
             # Flag rather than pass. An audit that didn't run leaves the entry
             # unverified, which is precisely what the amber marker is for -
             # returning False here would present an unchecked entry as clean.
-            self._log(f"   ⚠️  Grounding audit failed ({e}) - flagging for review", 'warning')
+            self._log(f"   ⚠️  Grounding audit failed ({e}) - entry kept as extracted", 'warning')
             return entry_text, True
 
         missing_container = enrich.container_fields_missing(fields, entry_type)
@@ -1527,7 +1529,7 @@ BibLaTeX entry, with no additional commentary."""
                 reasons.append(f"container-level field(s) ({', '.join(still_missing_container)})")
             if reasons:
                 self._log(
-                    f"   ⚠️  Could not verify {' and '.join(reasons)} via CrossRef/Scholar - flagging for review",
+                    f"   ⚠️  Could not verify {' and '.join(reasons)} via CrossRef/Scholar - left as extracted",
                     'warning'
                 )
 

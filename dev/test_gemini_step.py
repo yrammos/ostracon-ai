@@ -44,10 +44,11 @@ class _Messages:
         return _reply(self.texts.pop(0))
 
 
-def _run(replies, decided=None, answers=None, check=True, key="KEY"):
+def _run(replies, decided=None, answers=None, check=True, key="KEY", extra=None):
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config.update(enrich_missing_fields=False, validate_entries=False,
-                        gemini_type_check=check, gemini_api_key=key)
+                        gemini_type_check=check, gemini_api_key=key, require_langid=False)
+    agent.config.update(extra or {})
     agent.client = type("C", (), {"messages": _Messages(replies)})()
     biblio_agent.EXTRACTORS[".fake"] = lambda path, **kw: extract_pages.SourceContent(
         text="Rokus de Groot, Music at the Limits", label="PDF")
@@ -114,6 +115,19 @@ def test_a_filled_subtitle_leaves_its_title():
     result, _, _, _ = _run([IDENT, redone], decided, answers={"field_booksubtitle": "Essays on the Canon"})
     assert "Booktitle = {How the West Was Won}" in result.entry, result.entry
     assert "Booksubtitle = {Essays on the Canon}" in result.entry, result.entry
+
+
+def test_unsettled_doubts_do_not_colour_the_entry():
+    # A grounding audit that could not confirm a value, and a Gemini bank
+    # answer that contradicts the type, are logged; neither colours.
+    decided = {"type": "incollection", "found": True, "reason": "r", "history": [], "usage": []}
+    with mock.patch.object(biblio_agent.BiblioAgent, "enrich_entry", lambda self, e, c: (e, None)), \
+         mock.patch.object(biblio_agent.BiblioAgent, "verify_and_flag_recollection",
+                           lambda self, e, c: (e, True)):
+        agent_cfg = {"enrich_missing_fields": True}
+        result, _, _, _ = _run([IDENT, REDONE], decided,
+                               answers={"other_chapters_same_author": "yes"}, extra=agent_cfg)
+    assert result.needs_color is False, result
 
 
 def test_not_found_and_failures_let_claude_choose():

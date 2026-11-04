@@ -338,9 +338,12 @@ your own library with `dev/eval/select_sample.py`. Details are in
 **Entry saved to `failed_bib_file`.** Unbalanced braces. Repair it by hand and move
 it across.
 
-**Entry amber in BibDesk.** A field could not be confirmed: the grounding audit
-suspected recollection and no catalogue resolved it, or a match introduced a
-conflict left deliberately unresolved.
+**Entry amber in BibDesk.** Something failed, not merely went unconfirmed:
+biber rejected a field or found a mandatory one missing, the source was thin or
+not the work (a login wall, a near-empty page), or, with `require_langid`, the
+entry has no `Langid`. The log and the entry's `% AMBER` comment say which.
+Doubts the pipeline could not settle (a value no record confirmed, a record
+that disagrees) are logged, not coloured.
 
 **`bdsk-file-1` bookmark inert after import.** `pyobjc-framework-Cocoa` is missing
 from the environment the quick action uses. Check `PYTHON` in
