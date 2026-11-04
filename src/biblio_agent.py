@@ -147,6 +147,59 @@ def _interface_setting(config, key, default=None):
     return default
 
 
+# The closed list of entry types, defined as this library uses them. Step 1 of
+# the extraction prompt shows it; Gemini's type check (src/gemini_search.py) too.
+TYPE_DEFINITIONS = """      article         A contribution to an issue of a periodical (journal,
+                      magazine, newspaper), in print or online, including a
+                      review that has a title of its own.
+      review          A review of another work (book, edition, recording,
+                      performance) in a periodical, with no title of its own
+                      beyond naming the work reviewed. A review with a title
+                      of its own is article. A piece that merely discusses,
+                      cites or answers other publications is not a review.
+      periodical      A whole issue of a periodical, cited as a whole,
+                      usually a special issue under its editors.
+      book            A whole book written entirely by its author or authors.
+      collection      A whole book whose chapters are by different authors,
+                      under an editor.
+      inbook          A chapter or essay in a book written entirely by the
+                      same author or authors, even if the book has an editor
+                      (a selection, a collected-essays volume, a critical
+                      edition).
+      incollection    A chapter in a book whose chapters are by different
+                      authors, when that book is not conference proceedings.
+      proceedings     A whole volume publishing the papers of a conference,
+                      congress or symposium.
+      inproceedings   A paper published in a proceedings volume.
+      unpublished     A work not published: a manuscript, typescript, lecture
+                      or working paper; a conference paper never printed in
+                      proceedings, even if it bears the conference's name.
+                      The type is the work's: a draft of a work published
+                      since takes the published work's type.
+      thesis          A thesis or dissertation submitted for a degree, unless
+                      later published as a book.
+      report          A report issued by an institution, usually numbered in
+                      a series.
+      online          A work published only online that is not better
+                      classified as another type. Rule out the others first:
+                      an article in an online journal is article; an online
+                      encyclopedia entry is inreference; a conference paper
+                      posted online but not in proceedings is unpublished.
+      reference       A whole reference work (dictionary, encyclopedia,
+                      lexicon), cited as a whole.
+      inreference     An entry in a reference work, in print or online
+                      (Grove Music Online, MGG).
+      suppbook        Untitled supplementary matter in a book (introduction,
+                      preface, afterword, notes) by someone other than its
+                      author, cited on its own.
+      suppcollection  The same, in a collection.
+      music           A musical score.
+      audio           A sound recording.
+      video           A film or video recording.
+      misc            A work that fits no other type; the last resort.
+"""
+
+
 class BiblioAgent:
     def __init__(self, config_path="config.yaml"):
         """Initialize the agent with configuration."""
@@ -480,55 +533,9 @@ excerpt's text won't (e.g. an embedded Author field):
    a. Choose from this list. Each line defines the type as this library uses
       it. Use a type not on the list only if none fits, and say why.
 
-      article         A contribution to an issue of a periodical (journal,
-                      magazine, newspaper), in print or online, including a
-                      review that has a title of its own.
-      review          A review of another work (book, edition, recording,
-                      performance) in a periodical, with no title of its own
-                      beyond naming the work reviewed. A review with a title
-                      of its own is article. A piece that merely discusses,
-                      cites or answers other publications is not a review.
-      periodical      A whole issue of a periodical, cited as a whole,
-                      usually a special issue under its editors.
-      book            A whole book written entirely by its author or authors.
-      collection      A whole book whose chapters are by different authors,
-                      under an editor.
-      inbook          A chapter or essay in a book written entirely by the
-                      same author or authors, even if the book has an editor
-                      (a selection, a collected-essays volume, a critical
-                      edition).
-      incollection    A chapter in a book whose chapters are by different
-                      authors, when that book is not conference proceedings.
-      proceedings     A whole volume publishing the papers of a conference,
-                      congress or symposium.
-      inproceedings   A paper published in a proceedings volume.
-      unpublished     A work not published: a manuscript, typescript, lecture
-                      or working paper; a conference paper never printed in
-                      proceedings, even if it bears the conference's name.
-                      The type is the work's: a draft of a work published
-                      since takes the published work's type.
-      thesis          A thesis or dissertation submitted for a degree, unless
-                      later published as a book.
-      report          A report issued by an institution, usually numbered in
-                      a series.
-      online          A work published only online that is not better
-                      classified as another type. Rule out the others first:
-                      an article in an online journal is article; an online
-                      encyclopedia entry is inreference; a conference paper
-                      posted online but not in proceedings is unpublished.
-      reference       A whole reference work (dictionary, encyclopedia,
-                      lexicon), cited as a whole.
-      inreference     An entry in a reference work, in print or online
-                      (Grove Music Online, MGG).
-      suppbook        Untitled supplementary matter in a book (introduction,
-                      preface, afterword, notes) by someone other than its
-                      author, cited on its own.
-      suppcollection  The same, in a collection.
-      music           A musical score.
-      audio           A sound recording.
-      video           A film or video recording.
-      misc            A work that fits no other type; the last resort.
-
+"""
+        prompt += TYPE_DEFINITIONS
+        prompt += """
    b. Container rule. If the item sits inside something - a periodical, a
       book, a proceedings volume, a reference work - or belongs to an event, a
       degree or a website, the type must have a field for that kind of

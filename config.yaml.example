@@ -103,6 +103,11 @@ crossref_email: "" # Optional: your email, for CrossRef's "polite pool" (faster,
 # https://scrapingdog.com). As above, a command is preferred to the key itself.
 # scrapingdog_api_key_command: "security find-generic-password -s ostracon-scrapingdog-api-key -w"
 scrapingdog_api_key: ""
+# Optional: Gemini API key for Google-grounded answers in attribute search
+# (src/attribute_search.py). Grounding needs a billed Google AI Studio project:
+# 5,000 free searches a month, then paid. A command is preferred to the key.
+# gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-key -w"
+gemini_api_key: ""
 
 # Logging
 verbose: true
