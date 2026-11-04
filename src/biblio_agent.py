@@ -481,11 +481,13 @@ excerpt's text won't (e.g. an embedded Author field):
       it. Use a type not on the list only if none fits, and say why.
 
       article         A contribution to an issue of a periodical (journal,
-                      magazine, newspaper), in print or online.
+                      magazine, newspaper), in print or online, including a
+                      review that has a title of its own.
       review          A review of another work (book, edition, recording,
-                      performance) in a periodical, whether or not it has a
-                      title of its own. A piece that merely discusses, cites
-                      or answers other publications is not a review.
+                      performance) in a periodical, with no title of its own
+                      beyond naming the work reviewed. A review with a title
+                      of its own is article. A piece that merely discusses,
+                      cites or answers other publications is not a review.
       periodical      A whole issue of a periodical, cited as a whole,
                       usually a special issue under its editors.
       book            A whole book written entirely by its author or authors.
@@ -502,7 +504,9 @@ excerpt's text won't (e.g. an embedded Author field):
       inproceedings   A paper published in a proceedings volume.
       unpublished     A work not published: a manuscript, typescript, lecture
                       or working paper; a conference paper never printed in
-                      proceedings, even if it bears the conference's name.
+                      proceedings, even if it bears the conference's name;
+                      a draft of a work published later, since the copy in
+                      hand, not the later publication, decides the type.
       thesis          A thesis or dissertation submitted for a degree, unless
                       later published as a book.
       report          A report issued by an institution, usually numbered in
@@ -548,7 +552,8 @@ excerpt's text won't (e.g. an embedded Author field):
       Then add any others that bear on the choice: for example, whether this
       copy carries marks of publication (a running head naming a journal or
       book, an imprint, a DOI, page numbers continuing a larger volume);
-      whether the piece reviews another work.
+      whether the piece reviews another work, and if so whether it has a
+      title of its own.
 
    e. For each attribute, quote the source where it shows it, or write "not
       in the source". Do not infer an attribute the source does not show.
@@ -590,9 +595,12 @@ excerpt's text won't (e.g. an embedded Author field):
      takes Type = {\\bibstring{techreport}} or a similarly descriptive
      bibstring; @Unpublished conference papers take the Note field the
      guidelines require.
-   For a review of another work (rather than a standalone article), use
-   @Review. The reviewed work is encoded directly into Title, and a
-   compressed form of it into Shorttitle, using exactly this construction:
+   A review with a title of its own is @Article: Title (and Subtitle) hold
+   its own title, and Titleaddon holds the reviewed work, written as Title
+   is written below for a review with no title of its own.
+   For a review with no title of its own, use @Review. The reviewed work is
+   encoded directly into Title, and a compressed form of it into Shorttitle,
+   using exactly this construction:
 
      Title = {\\bibstring{reviewof} \\mkbibemph{Authenticities: Philosophical
        Reflections on Musical Performance}, \\bibstring{by} Peter Kivy},
