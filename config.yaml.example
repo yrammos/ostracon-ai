@@ -116,6 +116,11 @@ gemini_api_key: ""
 # closed questions in gemini_questions_file (off by default; each source then
 # makes three Gemini calls, about 15-20 s each).
 gemini_type_check: false
+
+# A .webloc page a plain fetch cannot read (a bot wall) and no open tab holds:
+# open it in a new Google Chrome tab, read it, close the tab. Uses your Chrome
+# session; needs View > Developer > Allow JavaScript from Apple Events.
+open_blocked_in_browser: false
 # gemini_model: "gemini-3.8-flash"
 # gemini_questions_file: "./prompt-context/gemini-questions.yaml"
 

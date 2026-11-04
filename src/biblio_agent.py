@@ -820,6 +820,7 @@ excerpt's text won't (e.g. an embedded Author field):
             kwargs = {
                 'crossref_email': self.config.get('crossref_email'),
                 'log': lambda msg: self._log(f"   {msg}", 'info'),
+                'open_in_browser': bool(self.config.get('open_blocked_in_browser')),
             }
         else:
             kwargs = {}

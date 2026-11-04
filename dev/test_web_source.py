@@ -184,6 +184,54 @@ def _ucpress_html(canonical):
     )
 
 
+def _run_opted_in(url=BOOKMARK_URL):
+    with _patched(Path, "exists", lambda self: True):
+        err = io.StringIO()
+        with redirect_stderr(err):
+            result = web_source.extract_webloc("dummy.webloc", open_in_browser=True)
+        return result, err.getvalue()
+
+
+def test_opt_in_opens_the_page_in_chrome_and_reads_it():
+    # open_blocked_in_browser: no tab held the page, so Chrome opens it, the
+    # same matching and checks read it, and the tab is closed afterwards.
+    answers = [(None, None, "Safari: no matching tab (3 tab(s) examined)"),
+               (_article_html(), "Google Chrome", "Google Chrome: match")]
+    closed = []
+    with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), \
+         _patched(web_source, "browser_tab_dom", lambda url, log=None: answers.pop(0)), \
+         _patched(web_source, "open_in_chrome", lambda url, log=None: ("42", "loaded: A Study")), \
+         _patched(web_source, "close_chrome_tab", closed.append), _crossref_raises():
+        result, log = _run_opted_in()
+    assert not isinstance(result, str), result
+    assert "Google Chrome" in result.label and result.metadata.get("Title") == "A Study of Musical Form"
+    assert closed == ["42"], closed
+    return True
+
+
+def test_without_opt_in_chrome_is_never_opened():
+    def _boom(url, log=None):
+        raise AssertionError("open_in_chrome() should not have been called")
+    with _fake_webloc(), _fetch_returns(CLOUDFLARE_403()), _no_browser_tab(), _no_crossref(), \
+         _patched(web_source, "open_in_chrome", _boom):
+        result, _ = _run()
+    assert isinstance(result, str) and result.startswith("Error:"), result
+    return True
+
+
+def test_open_in_chrome_waits_out_a_challenge_title():
+    replies = iter([(web_source.OSA_OK, "42"), (web_source.OSA_OK, "true|Loading"),
+                    (web_source.OSA_OK, "false|Just a moment..."),
+                    (web_source.OSA_OK, "false|A Study of Musical Form")])
+    t = [0.0]
+    with _patched(web_source, "_osascript", lambda script, timeout=15: next(replies)):
+        tab, detail = web_source.open_in_chrome(BOOKMARK_URL, wait=10, poll=1,
+                                                sleep=lambda s: t.__setitem__(0, t[0] + s),
+                                                clock=lambda: t[0])
+    assert tab == "42" and detail.startswith("loaded: A Study"), (tab, detail)
+    return True
+
+
 class FakeResponse:
     def __init__(self, status_code=200, text="", headers=None, url=None):
         self.status_code = status_code
@@ -1209,6 +1257,9 @@ TESTS = [
     test_browser_wrong_doi_falls_through,
     test_no_tab_falls_back_to_crossref,
     test_no_tab_no_doi_failure_names_the_browser_outcome,
+    test_opt_in_opens_the_page_in_chrome_and_reads_it,
+    test_without_opt_in_chrome_is_never_opened,
+    test_open_in_chrome_waits_out_a_challenge_title,
     test_failure_text_distinguishes_refusal_from_absent_tab,
     test_non_challenge_failure_skips_crossref,
     test_browser_tried_on_non_challenge_status,
