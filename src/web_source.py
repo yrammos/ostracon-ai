@@ -620,6 +620,71 @@ def browser_tab_dom(url, log=None):
     return None, None, '; '.join(outcomes)
 
 
+_CHALLENGE_TITLES = ('just a moment', 'attention required', 'checking your browser',
+                     'access denied', 'please wait', 'verifying you are human')
+
+
+def open_in_chrome(url, log=None, wait=25, poll=1.0, sleep=None, clock=None):
+    """Open `url` in a new Google Chrome tab and wait for it to load: (tab_id,
+    detail), tab_id None when Chrome could not be asked or the page never
+    settled. Used, when the user has opted in (`open_blocked_in_browser`),
+    for a page a plain fetch could not read and no open tab holds: Chrome
+    brings the user's own session and a real browser's fingerprint, which
+    usually passes a bot challenge the HTTP client cannot. The tab is the
+    caller's to close (close_chrome_tab). Launches Chrome if it is not running.
+
+    "Settled" means Chrome reports the tab as not loading and its title is not
+    a challenge interstitial ("Just a moment..."), which some walls show for a
+    few seconds before redirecting to the page itself."""
+    import time
+    log = log or (lambda msg: None)
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    target = url.replace('\\', '\\\\').replace('"', '%22')
+    status, text = _osascript(
+        'tell application "Google Chrome"\n'
+        '  if (count of windows) = 0 then make new window\n'
+        f'  set t to make new tab at end of tabs of front window with properties {{URL:"{target}"}}\n'
+        '  return id of t\n'
+        'end tell', timeout=30)
+    if status != OSA_OK:
+        log(f"  Google Chrome: could not open the page ({status}: {text})")
+        return None, f"{status}: {text}"
+    tab_id = text.strip()
+    log(f"  Google Chrome: opened {url} in a new tab; waiting for it to load")
+    deadline = clock() + wait
+    while clock() < deadline:
+        sleep(poll)
+        status, text = _osascript(
+            'tell application "Google Chrome"\n'
+            '  repeat with w in windows\n'
+            '    repeat with t in tabs of w\n'
+            f'      if (id of t as text) is "{tab_id}" then return (loading of t as text) & "|" & (title of t)\n'
+            '    end repeat\n'
+            '  end repeat\n'
+            '  return "gone|"\n'
+            'end tell', timeout=10)
+        if status != OSA_OK:
+            continue
+        loading, _, title = text.partition('|')
+        if loading.strip() == 'gone':
+            return None, "the tab was closed"
+        if loading.strip() == 'false' and not any(c in title.lower() for c in _CHALLENGE_TITLES):
+            return tab_id, f"loaded: {title.strip()[:80]}"
+    log(f"  Google Chrome: the page did not settle within {wait}s")
+    return tab_id, f"did not settle within {wait}s"
+
+
+def close_chrome_tab(tab_id):
+    """Close the tab open_in_chrome() opened; silent when it is already gone."""
+    if tab_id and str(tab_id).isdigit():
+        _osascript('tell application "Google Chrome"\n'
+                   '  repeat with w in windows\n'
+                   f'    close (every tab of w whose id is {int(tab_id)})\n'
+                   '  end repeat\n'
+                   'end tell', timeout=10)
+
+
 def resolve_webloc(path):
     """Parse a .webloc plist and return its bookmarked URL, or None."""
     with open(path, 'rb') as f:
@@ -1003,7 +1068,8 @@ def _stderr_log(msg):
     print(f"   {msg}", file=sys.stderr)
 
 
-def extract_webloc(webloc_path, timeout=20, crossref_email=None, log=None):
+def extract_webloc(webloc_path, timeout=20, crossref_email=None, log=None,
+                   open_in_browser=False):
     """
     Extract a .webloc bookmark's target page as a SourceContent.
 
@@ -1080,6 +1146,18 @@ def extract_webloc(webloc_path, timeout=20, crossref_email=None, log=None):
     # whatever the plain HTTP client got back, and DataDome/Kasada/consent-
     # wall interstitials never trip is_bot_challenge at all.
     html, browser_app, browser_summary = browser_tab_dom(url, log=log)
+    opened = None
+    if not html and open_in_browser:
+        # Opt-in (config open_blocked_in_browser): no open tab holds the page,
+        # so open one in Chrome and read it through the same matching and
+        # checks as a tab the user opened.
+        opened, detail = open_in_chrome(url, log=log)
+        if opened:
+            html, browser_app, summary2 = browser_tab_dom(url, log=log)
+            browser_summary = f"{browser_summary}; opened in Chrome ({detail}): {summary2}"
+        else:
+            browser_summary = f"{browser_summary}; could not open in Chrome ({detail})"
+    close_chrome_tab(opened)
     if html:
         label = f"browser tab ({browser_app})"
         content, soup = _content_from_html(html, url, f"webpage (via {browser_app} tab)")

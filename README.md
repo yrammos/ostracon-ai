@@ -66,6 +66,8 @@ ordinary page. So each `.webloc` is tried in turn:
 1. **Fetched** directly.
 2. **Read from an open Safari or Chrome tab** showing the same URL, if the fetch
    fails. The browser already holds your session (see Troubleshooting).
+   With `open_blocked_in_browser: true`, a page no open tab holds is opened in a
+   new Chrome tab, read the same way, and the tab closed again.
 3. **Built from CrossRef**, if the fetch hit a bot challenge and the URL contains a DOI.
 
 Each result is checked before use. A page that is not the one requested (a login
@@ -171,6 +173,7 @@ absent from disk is an error at startup, not a warning.
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
 | `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
+| `open_blocked_in_browser` | `false`         | `true`: a `.webloc` page behind a bot wall that no open tab holds is opened in a new Chrome tab, read, and the tab closed. Needs Chrome's "Allow JavaScript from Apple Events". |
 | `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
 | `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
 | `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |

@@ -117,6 +117,11 @@ gemini_api_key: ""
 # makes three Gemini calls, about 15-20 s each).
 gemini_type_check: false
 
+# A .webloc page a plain fetch cannot read (a bot wall) and no open tab holds:
+# open it in a new Google Chrome tab, read it, close the tab. Uses your Chrome
+# session; needs View > Developer > Allow JavaScript from Apple Events.
+open_blocked_in_browser: false
+
 # The library's cleanup rules on each new entry, and, given library_bib_file,
 # the library's spelling of Type, Location and Publisher values it already holds.
 house_cleanup: true
