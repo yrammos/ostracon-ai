@@ -163,18 +163,18 @@ TYPE_DEFINITIONS = """      article         A contribution to an issue of a peri
       book            A whole book written entirely by its author or authors.
       collection      A whole book whose chapters are by different authors,
                       under an editor, including one that grew out of a
-                      conference but does not present itself as proceedings.
+                      conference but whose title does not call it proceedings.
       inbook          A chapter or essay in a book written entirely by the
                       same author or authors, even if the book has an editor
                       (a selection, a collected-essays volume, a critical
                       edition).
       incollection    A chapter in a book whose chapters are by different
                       authors, when that book is not proceedings (below).
-      proceedings     A whole volume that presents itself as the proceedings
-                      of a conference, congress or symposium: its title,
-                      series or front matter says so (Proceedings, Actes,
-                      Kongressbericht) or names the event. The volume's
-                      presentation decides, not its origin.
+      proceedings     A whole volume whose title calls it the proceedings
+                      of a conference, congress or symposium (Proceedings,
+                      Actes, Kongressbericht, or a cognate). A book of
+                      conference papers whose title does not is collection,
+                      even if its series or front matter names the event.
       inproceedings   A paper in a proceedings volume as defined above.
       unpublished     A work neither published nor available online: a
                       manuscript, typescript, lecture, working paper, or a
