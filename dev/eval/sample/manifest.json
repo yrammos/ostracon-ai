@@ -102,6 +102,12 @@
   "note": "@article — plain (control)"
  },
  {
+  "citekey": "Bokiau2012",
+  "source": "Bokiau2012.pdf",
+  "sha256": "c3999e81ab7e430b38ddecef19e27bc977ebd8d66493800a864bc8d225f9de6a",
+  "note": "@unpublished — genuine (added 2026-11-04)"
+ },
+ {
   "citekey": "Braunstein2003",
   "source": "Braunstein2003.pdf",
   "sha256": "c0ee4792afaa21403dd50b3b75e8790821547578158e37c022f082996d3ee211",
@@ -528,6 +534,12 @@
   "note": "@review — plain (control)"
  },
  {
+  "citekey": "Meeus2016a",
+  "source": "Meeus2016a.pdf",
+  "sha256": "9197695e83286a63a882beff6de22de0e8f75608e8cf2f3dcee6e804e3b91ca7",
+  "note": "@unpublished — genuine (added 2026-11-04)"
+ },
+ {
   "citekey": "Menke2004",
   "source": "Menke2004.pdf",
   "sha256": "90bd659f51f935afb287bb36abe31999b15a9a00846e8d61cf854787ee3b85d5",
@@ -820,12 +832,6 @@
   "source": "Tanenbaum1980.pdf",
   "sha256": "349bde26247654492795b7892bad4af270d2226ef278b2138e08a15e9a4148ad",
   "note": "@article — plain (control)"
- },
- {
-  "citekey": "Tarasti2015",
-  "source": "Tarasti2012b.pdf",
-  "sha256": "017df6fe15aa80d328a804b270a38190dde3715db119cc1f98a372712aa0ce4c",
-  "note": "@unpublished — undated draft of a chapter published later"
  },
  {
   "citekey": "Tarasti2022",
