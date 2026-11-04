@@ -504,9 +504,9 @@ excerpt's text won't (e.g. an embedded Author field):
       inproceedings   A paper published in a proceedings volume.
       unpublished     A work not published: a manuscript, typescript, lecture
                       or working paper; a conference paper never printed in
-                      proceedings, even if it bears the conference's name;
-                      a draft of a work published later, since the copy in
-                      hand, not the later publication, decides the type.
+                      proceedings, even if it bears the conference's name.
+                      The type is the work's: a draft of a work published
+                      since takes the published work's type.
       thesis          A thesis or dissertation submitted for a degree, unless
                       later published as a book.
       report          A report issued by an institution, usually numbered in
