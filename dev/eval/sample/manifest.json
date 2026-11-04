@@ -102,12 +102,6 @@
   "note": "@article — plain (control)"
  },
  {
-  "citekey": "Bokiau2012",
-  "source": "Bokiau2012.pdf",
-  "sha256": "c3999e81ab7e430b38ddecef19e27bc977ebd8d66493800a864bc8d225f9de6a",
-  "note": "@unpublished — genuine (added 2026-11-04)"
- },
- {
   "citekey": "Braunstein2003",
   "source": "Braunstein2003.pdf",
   "sha256": "c0ee4792afaa21403dd50b3b75e8790821547578158e37c022f082996d3ee211",
@@ -642,12 +636,6 @@
   "note": "@inproceedings — plain (control)"
  },
  {
-  "citekey": "Plebuch2000",
-  "source": "Plebuch2000.pdf",
-  "sha256": "5116790757a329c18de56fbe4cf382c21d96f24d958750ded1c1a3447b2cb268",
-  "note": "@unpublished — plain (control)"
- },
- {
   "citekey": "Prudhomme2006",
   "source": "Prudhomme2006.pdf",
   "sha256": "583b995d380bbefb0252e9c39bbfe7417f8c7bd8a6588f40b1993e33d631d2da",
@@ -790,12 +778,6 @@
   "source": "Spitzer2012a.pdf",
   "sha256": "a2e83594dadac960024f092d6641f938bd452abd1e63460a11854dd2efa16d35",
   "note": "@review — plain (control)"
- },
- {
-  "citekey": "Sternin2015",
-  "source": "Sternin2015.pdf",
-  "sha256": "ec3f3cef7302c4cca381e7c6525a1ce313c1a3367f5dbf23b79c09f4a7d7ed66",
-  "note": "@unpublished — plain (control)"
  },
  {
   "citekey": "Sundberg1998",
