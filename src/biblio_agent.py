@@ -162,16 +162,20 @@ TYPE_DEFINITIONS = """      article         A contribution to an issue of a peri
                       usually a special issue under its editors.
       book            A whole book written entirely by its author or authors.
       collection      A whole book whose chapters are by different authors,
-                      under an editor.
+                      under an editor, including one that grew out of a
+                      conference but does not present itself as proceedings.
       inbook          A chapter or essay in a book written entirely by the
                       same author or authors, even if the book has an editor
                       (a selection, a collected-essays volume, a critical
                       edition).
       incollection    A chapter in a book whose chapters are by different
-                      authors, when that book is not conference proceedings.
-      proceedings     A whole volume publishing the papers of a conference,
-                      congress or symposium.
-      inproceedings   A paper published in a proceedings volume.
+                      authors, when that book is not proceedings (below).
+      proceedings     A whole volume that presents itself as the proceedings
+                      of a conference, congress or symposium: its title,
+                      series or front matter says so (Proceedings, Actes,
+                      Kongressbericht) or names the event. The volume's
+                      presentation decides, not its origin.
+      inproceedings   A paper in a proceedings volume as defined above.
       unpublished     A work neither published nor available online: a
                       manuscript, typescript, lecture, working paper, or a
                       conference paper never printed in proceedings, obtained
@@ -979,7 +983,8 @@ commentary."""
         info = {'status': None, 'draft_type': enrich.get_entry_type(entry_text),
                 'draft_entry': entry_text, 'usage': []}
         key = self.config.get('gemini_api_key')
-        title, query = gemini_search.query_from_fields(enrich.parse_bibtex_fields(entry_text))
+        title, query = gemini_search.query_from_fields(enrich.parse_bibtex_fields(entry_text),
+                                                        info['draft_type'] or '')
         info['query'] = query
         if not key:
             info['status'] = 'skipped: no gemini_api_key'

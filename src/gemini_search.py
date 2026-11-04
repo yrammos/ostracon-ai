@@ -12,6 +12,8 @@ Grounding needs a billed Google AI Studio project; on the free tier the API
 answers HTTP 429 (checked 2026-11-04). Google bills each search query the
 model runs, after 5,000 free a month shared across Gemini 3 models.
 """
+import re
+
 import requests
 
 MODEL = "gemini-3.8-flash"
@@ -59,8 +61,10 @@ def ask_google(query, api_key, model=MODEL, timeout=90):
 
 TYPE_PROMPT = """Above is what a Google-grounded search found for: {query}
 
-Decide the entry type of that work, choosing from the list below, where each line
-defines the type as this library uses it. The type is the work's: a draft or
+Decide the entry type of the item the search names, choosing from the list below,
+where each line defines the type as this library uses it. The item is what the
+first quoted phrase names (or, for a review or a supplement, the review or
+supplement itself), not the work containing it or the work it discusses. The type is the work's: a draft or
 manuscript of a work published since takes the published work's type. If the
 search did not identify the work, say so rather than guess.
 
@@ -131,6 +135,16 @@ def decide_type(query, types, api_key, model=MODEL, timeout=120, retries=3, slee
            "sources": [{"title": c["web"].get("title", ""), "url": c["web"].get("uri", "")}
                        for c in meta.get("groundingChunks", []) if c.get("web")],
            "queries": meta.get("webSearchQueries", []), "usage": [data.get("usageMetadata", {})]}
+    return choose_type(query, answer, types, api_key, model, timeout, retries, sleep, out)
+
+
+def choose_type(query, answer, types, api_key, model=MODEL, timeout=120, retries=3, sleep=None, out=None):
+    """The second call of decide_type(), alone: the type, from what the search
+    answered. Also reruns the choice on a saved answer without searching again."""
+    import json
+    import time
+    sleep = sleep or time.sleep
+    out = out if out is not None else {"answer": answer, "usage": []}
     status, data = _post({"contents": [
         {"role": "user", "parts": [{"text": query}]},
         {"role": "model", "parts": [{"text": answer}]},
@@ -162,15 +176,35 @@ def listed_types(types):
     return set(re.findall(r"^ {6}([a-z]+) ", types, re.M))
 
 
-def query_from_fields(fields):
-    """The query for an extracted entry's fields (case-insensitive names):
-    full title, the container's title, the first author's or editor's surname."""
+SUPP_TYPES = {"suppbook", "suppcollection", "suppperiodical"}
+
+
+def query_from_fields(fields, entry_type=""):
+    """(name, query) for an extracted entry: the query names the item cited,
+    which is not always what Title holds.
+
+    - Lista present (an entry in a reference work): the entry's heading, then
+      the work's title.
+    - A supplement: its kind (from Type, e.g. "introduction"), then the book.
+    - An untitled review: "review", then the work reviewed and the journal.
+    - Otherwise: the title, then the container's title.
+    Then the first author's (or editor's) surname. `name` is empty when
+    nothing names the item."""
     import enrich
     f = {k.lower(): v for k, v in fields.items()}
     clean = lambda k: enrich.strip_latex(f.get(k, "")).replace("~", " ").strip()
     title = ": ".join(x for x in (clean("title"), clean("subtitle")) if x)
     container = next((clean(k) for k in ("booktitle", "journaltitle", "journal", "maintitle") if clean(k)), "")
-    return title, type_query(title, clean("author") or clean("editor"), container)
+    author = clean("author") or clean("editor")
+    t = (entry_type or "").lower()
+    if clean("lista"):
+        return clean("lista"), type_query(clean("lista"), author, title)
+    if t in SUPP_TYPES:
+        kind = re.sub(r"\s+(to|of)$", "", clean("type").lower()) or "introduction"
+        return title, f"{kind} AND {type_query(title, author, container)}"
+    if t == "review":
+        return title, f"review AND {type_query(title, author, container)}"
+    return title, type_query(title, author, container)
 
 
 # --- Step 3a: a bank of closed questions, chosen by type --------------------

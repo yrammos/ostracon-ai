@@ -95,6 +95,22 @@ def test_type_query_uses_title_and_first_surname():
         '"Introduction" AND "Aesthetic Theory" AND Adorno'
 
 
+def test_query_names_the_item_cited():
+    q = lambda fields, t: gemini_search.query_from_fields(fields, t)[1]
+    assert q({"Author": "Abrams, M.~H.", "Lista": "Realism and Naturalism",
+              "Title": "A Glossary of Literary Terms"}, "inreference") == \
+        '"Realism and Naturalism" AND "A Glossary of Literary Terms" AND Abrams'
+    assert q({"Author": "Adorno, Theodor~W.", "Type": "introduction to",
+              "Title": "Philosophy of New Music"}, "suppbook") == \
+        'introduction AND "Philosophy of New Music" AND Adorno'
+    assert q({"Author": "Carlson, Mark", "Journal": "Music Theory Online",
+              "Title": r"\bibstring{reviewof} \mkbibemph{Deepening Musical Performance}, \bibstring{by} Alexandra Pierce"},
+             "review").startswith("review AND ")
+    assert q({"Author": "De Groot, Rokus", "Title": "Music at the Limits",
+              "Booktitle": "How the West Was Won"}, "incollection") == \
+        '"Music at the Limits" AND "How the West Was Won" AND De Groot'
+
+
 def test_listed_types_are_the_21_in_the_prompt():
     import biblio_agent
     types = gemini_search.listed_types(biblio_agent.TYPE_DEFINITIONS)
