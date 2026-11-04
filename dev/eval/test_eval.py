@@ -77,6 +77,19 @@ def test_score_entry_normalizes_whitespace():
     return True
 
 
+def test_edit_count_weighs_form_and_unmarked_errors():
+    import edits
+    e = {"citekey": "X", "fields": [
+        {"verdict": "exact", "expected": "a", "produced": "a"},
+        {"verdict": "different", "expected": "Fermor, Patrick Leigh", "produced": "Leigh Fermor, Patrick"},
+        {"verdict": "different", "expected": "1981", "produced": "1982"},
+        {"verdict": "missing", "expected": "Laaber", "produced": None},
+        {"verdict": "spurious", "expected": None, "produced": "x"}]}
+    assert edits.entry_edits(e) == 3.5
+    assert edits.entry_edits(e, colored=False) == 4.0 and edits.entry_edits(e, colored=True) == 3.5
+    return True
+
+
 def test_score_entry_treats_biber_aliases_as_one_field():
     # The library writes `journal`, the pipeline `Journaltitle`: one field.
     expected = _entry("@Article{X, journal = {J}, address = {P},}")
@@ -508,6 +521,7 @@ TESTS = [
     test_consistency_flags_agree_with_the_pipeline_on_booktitle,
     test_score_entry_all_verdicts,
     test_score_entry_normalizes_whitespace,
+    test_edit_count_weighs_form_and_unmarked_errors,
     test_score_entry_treats_biber_aliases_as_one_field,
     test_score_entry_wrong_type,
     test_score_entry_extraction_failed,

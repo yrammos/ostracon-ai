@@ -118,6 +118,14 @@ def run_pipeline(agent, source_path, citekey=None, save_dir=None) -> "bib_audit.
         (save_dir / f"{citekey}.bib").write_text(clean, encoding='utf-8')
         if getattr(result, 'type_analysis', None):
             (save_dir / f"{citekey}.type-analysis.txt").write_text(result.type_analysis, encoding='utf-8')
+        # Whether the entry was marked for review, and why fields were filled:
+        # what edits.py needs to weigh an unmarked wrong value.
+        if not result.failed:
+            meta = {'needs_color': bool(getattr(result, 'needs_color', False)),
+                    'field_sources': getattr(result, 'field_sources', None),
+                    'lookups': getattr(result, 'lookups', None)}
+            (save_dir / f"{citekey}.meta.json").write_text(
+                json.dumps(meta, indent=1, ensure_ascii=False, default=str), encoding='utf-8')
         gemini = getattr(result, 'gemini', None)
         if gemini:
             keep = {k: v for k, v in gemini.items() if k not in ('questions',)}
@@ -357,6 +365,11 @@ def main(argv=None):
     entry_scores, warnings = evaluate(manifest, sample_dir, expected_entries, run_one=run_one)
 
     print(format_report(entry_scores, warnings))
+    import edits
+    print(edits.format_summary(edits.summarize(
+        [{"citekey": es.citekey, "fields": [{"verdict": fs.verdict, "expected": fs.expected,
+                                             "produced": fs.produced} for fs in es.fields]}
+         for es in entry_scores], args.last_run_dir)))
     if usage:
         print(format_usage(usage, agent.config.get('cache_ttl') or '5m'))
         print(format_gemini(args.last_run_dir, list(usage)))
