@@ -108,6 +108,14 @@ def test_gemini_is_asked_for_the_types_fields_and_fills_only_gaps():
     assert "Gemini: " in (result.field_sources or ""), result.field_sources
 
 
+def test_a_filled_subtitle_leaves_its_title():
+    decided = {"type": "incollection", "found": True, "reason": "r", "history": [], "usage": []}
+    redone = REDONE.replace("{How the West Was Won}", "{How the West Was Won: Essays on the Canon}")
+    result, _, _, _ = _run([IDENT, redone], decided, answers={"field_booksubtitle": "Essays on the Canon"})
+    assert "Booktitle = {How the West Was Won}" in result.entry, result.entry
+    assert "Booksubtitle = {Essays on the Canon}" in result.entry, result.entry
+
+
 def test_not_found_and_failures_let_claude_choose():
     for decided, status in (({"type": None, "found": False, "reason": "", "usage": []}, "not-found"),
                             ({"type": "letter", "found": True, "reason": "", "usage": []}, "invalid-type"),

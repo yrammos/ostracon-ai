@@ -313,4 +313,16 @@ def apply_answers(entry_text, questions, answers, entry_type):
             report["differs"].append(f"{name}: entry has {fields[name]!r}; Gemini says {value!r}")
         else:
             report["conflicts"].append(f"{name}: entry has {fields[name]!r}; Gemini says {value!r}")
+    # A subtitle just filled may still sit at the end of its title, written
+    # "Title: Subtitle" by the extraction: one value in two fields, so the
+    # title gives it up. Only an exact ": <subtitle>" tail is removed.
+    fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry_text).items()}
+    for parent, sub in (("title", "subtitle"), ("booktitle", "booksubtitle"),
+                        ("maintitle", "mainsubtitle"), ("journaltitle", "journalsubtitle"),
+                        ("issuetitle", "issuesubtitle")):
+        if sub in report["added"] and parent in fields:
+            tail = ": " + fields[sub]
+            if fields[parent].endswith(tail) and len(fields[parent]) > len(tail):
+                entry_text = enrich.set_field(entry_text, parent, fields[parent][:-len(tail)].rstrip())
+                report.setdefault("trimmed", []).append(parent)
     return entry_text, report
