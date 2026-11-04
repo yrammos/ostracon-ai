@@ -22,6 +22,7 @@ from extraction_result import ExtractionResult
 import web_source
 import enrich
 import gemini_search
+import type_fields
 import house_style
 from api_keys import resolve_api_keys
 
@@ -1159,6 +1160,15 @@ else, using null for anything the text does not show:
             self._log(f"   ⚠️  Question bank unreadable ({e}) - no questions asked", 'warning')
             return
         questions = gemini_search.select(bank, final_type)
+        # Every other field the type takes, asked the same way: Gemini gives
+        # a value only where a page it found shows one. Bank questions about
+        # the same field win (they carry wording tuned for it).
+        asked = {q['use'].split(None, 1)[1].strip().lower() for q in questions
+                 if q['use'].startswith('field ')}
+        questions = questions + [
+            {'id': f'field_{f}', 'when': [final_type], 'use': f'field {f}', 'auto': True,
+             'ask': f"{f}: {d}".strip().rstrip(':')}
+            for f, d in type_fields.fields_for(final_type) if f not in asked]
         if not questions:
             return
         self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
@@ -1173,7 +1183,9 @@ else, using null for anything the text does not show:
             info['answers'] = qa['answers']
 
     def _apply_gemini_answers(self, entry_text, gemini, field_sources):
-        """Step 3a's answers applied: (entry_text, field_sources, needs_color)."""
+        """Step 3a's answers applied: (entry_text, field_sources, needs_color).
+        A field Gemini fills is recorded in field_sources, not coloured; only a
+        bank check or bank field that contradicts the entry colours it."""
         entry_text, report = gemini_search.apply_answers(
             entry_text, gemini['questions'], gemini.get('answers') or {},
             gemini.get('final_type') or enrich.get_entry_type(entry_text))
@@ -1181,10 +1193,12 @@ else, using null for anything the text does not show:
         if report['added']:
             note = "Gemini: " + ", ".join(report['added'])
             field_sources = f"{field_sources}; {note}" if field_sources else note
-            self._log(f"   Filled from Gemini (for review): {', '.join(report['added'])}", 'warning')
+            self._log(f"   Filled from Gemini: {', '.join(report['added'])}", 'info')
         for c in report['conflicts']:
             self._log(f"   ⚠️  Gemini disagrees - {c}", 'warning')
-        return entry_text, field_sources, bool(report['added'] or report['conflicts'])
+        for c in report.get('differs', []):
+            self._log(f"   Gemini differs (entry kept) - {c}", 'info')
+        return entry_text, field_sources, bool(report['conflicts'])
 
     def enrich_entry(self, entry_text, content):
         """

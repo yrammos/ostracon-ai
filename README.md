@@ -44,7 +44,8 @@ For each source in turn:
    (title, authors, container, year), and Gemini, grounded in Google Search,
    decides the entry type from it. If Gemini finds nothing, Claude chooses.
 3. Asks Claude, once, for the entry in accordance with BibLaTeX specifications,
-   under the decided type; then Gemini answers the type's closed questions.
+   under the decided type; then Gemini answers the type's closed questions and supplies every other field the type
+   takes that a page it found shows; those values fill only fields the entry lacks.
 4. Searches CrossRef and Google Scholar for any missing fields, and audits the
    result for fields drawn from Claude's recollection rather than from the
    source. A recollected value is replaced when a CrossRef record confirmed to
@@ -170,7 +171,7 @@ absent from disk is an error at startup, not a warning.
 | `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
 | `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
 | `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
-| `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml`; its values only fill missing fields, marked for review. About two cents a source. |
+| `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
 | `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
 | `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |
 | `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
@@ -386,6 +387,7 @@ ostracon-ai/
 │   ├── bib_normalize.py    # The library's normalizer rules (dev/ links here)
 │   ├── house_style.py      # Those rules and the library's spellings, on each new entry
 │   ├── gemini_search.py    # Gemini type decision and closed questions
+│   ├── type_fields.py      # The fields each type takes, from the biblatex manual
 │   ├── bib_validate.py     # biber data-model check; published by ./install
 │   ├── bib_render.py       # Render check: fields that never reach the page
 │   ├── tex/previewtemplate.tex # Neutral template for the render check

@@ -211,7 +211,12 @@ def query_from_fields(fields, entry_type=""):
 
 QUESTIONS_PROMPT = """Answer these questions about the work above, from Google Search.
 Answer each briefly: a number as the number only; a choice as one of the
-options given, word for word. If you cannot find the answer, give null.
+options given, word for word. A line naming a BibLaTeX field asks for that
+field's value for this work: give it only where a page you found shows it,
+written as BibLaTeX expects (names as "Family, Given", several joined by
+" and "; a date as YYYY, YYYY-MM or YYYY-MM-DD; a page range as first-last; a
+title without its subtitle, which has its own field). If you cannot find the
+answer, give null; never guess.
 
 {questions}
 
@@ -277,10 +282,12 @@ def apply_answers(entry_text, questions, answers, entry_type):
     """(entry_text, report) for step 3a's answers. A field answer fills a
     missing field and is never written over a value the entry has; a differing
     value, or a check whose answer is not what the type implies, goes to review.
-    report = {'added': [field], 'confirmed': [field], 'conflicts': [str], 'checks': {id: ok}}."""
+    report = {'added': [field], 'confirmed': [field], 'conflicts': [str],
+    'differs': [str], 'checks': {id: ok}}; 'differs' holds a field asked for
+    automatically (q['auto']) whose value differs: logged, the entry's kept."""
     import enrich
     fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry_text).items()}
-    report = {"added": [], "confirmed": [], "conflicts": [], "checks": {}}
+    report = {"added": [], "confirmed": [], "conflicts": [], "differs": [], "checks": {}}
     for q in questions:
         value = answers.get(q["id"])
         if value in (None, "", "null"):
@@ -300,6 +307,10 @@ def apply_answers(entry_text, questions, answers, entry_type):
             report["added"].append(name)
         elif _plain(fields[name]) == _plain(value):
             report["confirmed"].append(name)
+        elif q.get("auto"):
+            # A field asked for because the type takes it: the entry's value
+            # came from the source or a primary record, so it stands.
+            report["differs"].append(f"{name}: entry has {fields[name]!r}; Gemini says {value!r}")
         else:
             report["conflicts"].append(f"{name}: entry has {fields[name]!r}; Gemini says {value!r}")
     return entry_text, report

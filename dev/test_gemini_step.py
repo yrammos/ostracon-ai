@@ -93,6 +93,21 @@ def test_decided_type_reaches_the_one_extraction_and_its_questions():
     assert "chapter_number" in asked, asked
 
 
+def test_gemini_is_asked_for_the_types_fields_and_fills_only_gaps():
+    # REDONE has Booktitle; Gemini also offers Editor and Publisher (gaps) and
+    # a different Booktitle (kept, only logged). Filled fields do not colour.
+    decided = {"type": "incollection", "found": True, "reason": "r", "history": [], "usage": []}
+    answers = {"field_editor": "Otten, Willemien", "field_publisher": "Brill",
+               "field_booktitle": "Another Book", "field_volume": None}
+    result, _, ask, _ = _run([IDENT, REDONE], decided, answers=answers)
+    asked = [q["id"] for q in ask.call_args.args[1]]
+    assert {"field_editor", "field_publisher", "field_booktitle", "field_pages"} <= set(asked), asked
+    assert "field_chapter" not in asked          # the bank's chapter question covers it
+    assert "Editor = {Otten, Willemien}" in result.entry and "Publisher = {Brill}" in result.entry, result.entry
+    assert "Booktitle = {How the West Was Won}" in result.entry and "Another Book" not in result.entry
+    assert "Gemini: " in (result.field_sources or ""), result.field_sources
+
+
 def test_not_found_and_failures_let_claude_choose():
     for decided, status in (({"type": None, "found": False, "reason": "", "usage": []}, "not-found"),
                             ({"type": "letter", "found": True, "reason": "", "usage": []}, "invalid-type"),
