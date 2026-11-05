@@ -12,64 +12,47 @@ to use the agent; see [`README.md`](README.md) for that.
 
 ## The cached prefix
 
-Five files are assembled into a static prefix and cached with the provider, so that
-a run pays for them once and reads them back thereafter.
+The extraction rules, the house style, the template and the field reference form a
+static prefix, cached with the provider: a run pays to write it once and reads it
+back thereafter.
 
 | component | tokens |
 | --- | ---: |
-| `biblatex-chicago-notes-ref.md` — condensed field reference | 4,959 |
-| `biblio-template.bib` — one worked example per type | 2,242 |
-| `CLAUDE.md` — house style | 11,508 |
-| `cms-notes-intro-guide.md` — entry types by kind of source | 3,208 |
-| `notes-test.bib` — the package's annotated test suite | 46,302 |
+| `biblatex-chicago-notes-ref.md`: condensed field reference | 4,966 |
+| `biblio-template.bib`: one worked example per type | 2,590 |
+| `extraction-rules.md`: the extraction rules | 11,796 |
+| house-style file (`house_style_file`; private, optional) | varies (1,070 when measured) |
 
-**68,928 tokens in total** (232,976 characters) on 2026-08-07, measured by
-`dev/estimate_cost.py --no-api`, which applies the project's own ratio of 3.38
-characters per token. Dropping `--no-api` counts exactly through the API's
-`count_tokens`, which requires credit.
+**20,540 tokens in total** (69,426 characters) on 2026-11-05, measured by
+`dev/estimate_cost.py --no-api` at the project's ratio of 3.38 characters per
+token. Without `--no-api` it counts exactly through the API's `count_tokens`,
+which requires credit. `extraction-rules.md` and the house-style file are the ones
+that change in ordinary use.
 
-Only `CLAUDE.md` moves in ordinary use — the other four are vendored or generated —
-so it is the file to suspect when the figure shifts.
+Not loaded, but kept for consultation or for `example_files`:
 
-The two corpora loaded by `example_files` do different work from the field
-reference. Where the reference teaches *vocabulary* — which fields a given type
-takes — they teach *classification*: what kind of thing a source is, and which of
-the forty types therefore fits. `notes-test.bib` carries an `annote` on nearly every
-entry explaining why that type and that field set follow from the source;
-`cms-notes-intro-guide.md` is organised by kind of source rather than by type, which
-is what makes it usable before the type is known.
+- `notes-test.bib` (the package's annotated test suite, about 46,000 tokens) and
+  `cms-notes-intro-guide.md` (entry types by kind of source, about 3,200). They
+  taught classification; the closed type list in the extraction prompt replaced
+  them on 2026-11-04.
+- `biblatex-chicago-fields.md`, §4.2 of the manual: an A/B run found no benefit
+  for some 45,000 tokens.
 
-**Precedence divides by question, not by file.** The package's own files are
-authoritative on what biblatex-chicago supports — which types exist, what each
-field does, what reaches the printed page. `CLAUDE.md` and `biblio-template.bib` are
-authoritative on this project's presentation choices, where the package permits more
-than one form. Neither local file can overrule the package on a question of
-capability, and the operational test when the two are confused is to encode both
-alternatives and compare the rendered output. `CLAUDE.md` sets this out at length.
-
-To shorten the prefix, `notes-test.bib` is the obvious candidate at 46,302 of the
-68,928 tokens: dropping it from `example_files` while retaining
-`cms-notes-intro-guide.md` leaves roughly 22,600 and a much cheaper first file,
-preserving the taxonomy while shedding the annotated examples. Weigh that against
-what the suite is for — it is the authority on what each type and field actually
-does.
-
-`biblatex-chicago-fields.md` reproduces §4.2 of the manual and is deliberately *not*
-loaded: an A/B run found no benefit for some 45,000 additional tokens. It remains
-for consultation.
+Precedence divides by question, not by file: the package's files decide what
+biblatex-chicago supports, while `extraction-rules.md`, the house-style file and
+`biblio-template.bib` decide this project's presentation where the package allows
+more than one form. `extraction-rules.md` sets out the tiers.
 
 ## How the cost arises
 
-The figures are in [`README.md`](README.md); this is the mechanism behind them. A
-cache write costs 1.25× the input rate at the five-minute TTL and 2× at one hour; a
-read costs 0.1×. Since the prefix is written once per run and read by every
-subsequent call, the dominant variable is not the number of files but the number of
-*cold starts* — which is why ten single-file invocations across an hour cost four
-times what one batch of ten costs at the same TTL.
+The figures are in [`README.md`](README.md#cost). A cache write costs 1.25× the
+input rate at the five-minute TTL and 2× at one hour; a read costs 0.1×. The prefix
+is written once per run and read by every later call, so cost turns on the number
+of cold starts rather than of files: by the 2026-11-05 estimate (best case), ten single-file
+runs across an hour cost $1.08 at the five-minute TTL and $0.49 at one hour.
 
-`dev/estimate_cost.py` holds the per-model rate table, and it is the one thing in
-this repository that has to be maintained by hand: there is no pricing API to read
-it from.
+`dev/estimate_cost.py` holds the per-model rate table, the one thing here
+maintained by hand: no pricing API exists to read it from.
 
 ## The orchestration
 
