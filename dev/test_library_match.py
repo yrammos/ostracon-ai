@@ -344,6 +344,24 @@ def test_a_container_does_not_inherit_a_parts_volume():
     assert "Volume" not in out and "Publisher" in out, out
 
 
+def test_volumes_of_one_set_and_books_by_other_authors_stay_apart():
+    lib_text = LIBRARY.replace("\tpages = {1-20},", "\tpages = {1-20},\n\tvolume = {2},")
+    lib_text = lib_text.replace("title = {On Echoes}}", "title = {On Echoes},\n\tvolume = {2}}")
+    p = Path(tempfile.mkdtemp()) / "lib.bib"
+    p.write_text(lib_text, encoding="utf-8")
+    vol1 = "@collection{N,\n\tTitle = {Essays on Listening},\n\tDate = {2010},\n\tVolume = {1}\n}"
+    assert lm.container_fill(vol1, lm.load(p), exclude={"Editor2010"})[1]["siblings"] == []
+    # A book of essays by one author, chapters by another of the same title.
+    lib = _lib_with("@inbook{Ch,\n\tauthor = {Adorno, Theodor},\n\tbooktitle = {Collected Essays},\n"
+                    "\tdate = {1990},\n\tpublisher = {Suhrkamp},\n\ttitle = {Essay}}\n")
+    book = "@book{N,\n\tAuthor = {Benjamin, Walter},\n\tTitle = {Collected Essays},\n\tDate = {1990}\n}"
+    assert lm.container_fill(book, lib)[1]["siblings"] == []
+    assert lm.container_fill(book.replace("Benjamin, Walter", "Adorno, Theodor"), lib)[1]["siblings"] == ["Ch"]
+    chapter = ("@inbook{M,\n\tAuthor = {Benjamin, Walter},\n\tTitle = {Other},\n"
+               "\tBooktitle = {Collected Essays},\n\tDate = {1990}\n}")
+    assert lm.container_fill(chapter, lib)[1]["siblings"] == []
+
+
 def test_a_reference_work_inherits_from_its_entries():
     lib = _lib_with(REFERENCE_LIB)
     work = ("@reference{N,\n\tTitle = {Music Online},\n\tEntrysubtype = {online},\n"
