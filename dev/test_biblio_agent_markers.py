@@ -806,7 +806,10 @@ def test_validation_flags_and_comments_a_rejected_field():
     entry = ("@Article{V,\n  Author = {Doe, Jane},\n  Title = {T},\n  Journaltitle = {J},\n"
              "  Publisher = {P},\n  Date = {2001},\n  Langid = {american},\n}")
     with tempfile.TemporaryDirectory() as td:
-        agent = _quiet_agent(td, enrich_missing_fields=False, validate_entries=True)
+        # House cleanup would remove the Publisher (repairs.py), and the repair
+        # call would try to fix the rest: both off, to see validation alone.
+        agent = _quiet_agent(td, enrich_missing_fields=False, validate_entries=True,
+                             house_cleanup=False, repair_entries=False)
         result, err, _ = _extract_with(agent, td, entry)
     assert result.needs_color is True, result
     assert result.validation == ["@article: Invalid field 'publisher' for entrytype 'article'"], result.validation

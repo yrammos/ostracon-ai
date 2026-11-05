@@ -112,6 +112,8 @@ def fields_for(entry_type):
             if f in CHICAGO.get(t, {}).get("drop", ()) or f in (x for x, _ in out):
                 continue
             out.append((f, defs.get(f, "")))
+    # [house] journal, not journaltitle (maintainer's ruling, 2026-11-05).
+    out = [("journal", d) if f == "journaltitle" else (f, d) for f, d in out]
     for f in CHICAGO.get(t, {}).get("add", []):
         out.append((f, LISTA if f == "lista" else defs.get(f, "")))
     return out

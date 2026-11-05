@@ -318,7 +318,7 @@ def apply_answers(entry_text, questions, answers, entry_type):
     # title gives it up. Only an exact ": <subtitle>" tail is removed.
     fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry_text).items()}
     for parent, sub in (("title", "subtitle"), ("booktitle", "booksubtitle"),
-                        ("maintitle", "mainsubtitle"), ("journaltitle", "journalsubtitle"),
+                        ("maintitle", "mainsubtitle"), ("journaltitle", "journalsubtitle"), ("journal", "journalsubtitle"),
                         ("issuetitle", "issuesubtitle")):
         if sub in report["added"] and parent in fields:
             tail = ": " + fields[sub]

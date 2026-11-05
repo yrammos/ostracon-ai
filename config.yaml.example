@@ -125,6 +125,13 @@ open_blocked_in_browser: false
 # The library's cleanup rules on each new entry, and, given library_bib_file,
 # the library's spelling of Type, Location and Publisher values it already holds.
 house_cleanup: true
+# One Claude call to repair an entry biber still rejects after cleanup (only
+# when it does); what it cannot fix colours the entry.
+repair_entries: true
+# Compile each entry and check what prints (fields that never reach the page,
+# wrongly nested quotes); about 3 seconds a source. A field that never prints
+# is moved into Note and the entry coloured.
+render_check: false
 # library_bib_file: "~/Documents/Bibdesk/library.bib"
 # gemini_model: "gemini-3.8-flash"
 # gemini_questions_file: "./prompt-context/gemini-questions.yaml"

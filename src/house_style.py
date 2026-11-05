@@ -86,6 +86,16 @@ def library_forms(path):
     return forms
 
 
+def repair(entry_text, library_path=None):
+    """(text, applied): repairs.repair(), told which values the library already
+    writes as they stand (its house forms), when a library is configured."""
+    import repairs
+    forms = library_forms(library_path) if library_path else {}
+    def is_house(field, value):
+        return forms.get(field, {}).get(_key(value)) == value.strip()
+    return repairs.repair(entry_text, is_house)
+
+
 def snap_to_library(entry_text, library_path):
     """(text, changes): each SNAP_FIELDS value given the library's spelling
     when the library holds an equivalent one; changes is [(field, old, new)]."""

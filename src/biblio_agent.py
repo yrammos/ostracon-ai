@@ -24,6 +24,7 @@ import enrich
 import gemini_search
 import type_fields
 import house_style
+import repairs
 from api_keys import resolve_api_keys
 
 # Tesseract language codes shown in the OCR language picker.
@@ -221,6 +222,51 @@ TYPE_DEFINITIONS = """      article         A contribution to an issue of a peri
                       opera or other performance.
       misc            A work that fits no other type; the last resort.
 """
+
+
+_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+           'september', 'october', 'november', 'december']
+
+
+def _tokens(text):
+    """The words of a value or a source, case, accents and markup aside."""
+    import unicodedata
+    t = unicodedata.normalize('NFKD', enrich.strip_latex(text or '').lower())
+    return set(re.findall(r'\w+', ''.join(c for c in t if not unicodedata.combining(c))))
+
+
+def _sourced(value, known):
+    """Whether every word of `value` occurs in `known` (the source's words and
+    the entry's), in any order; an initial counts when some word begins with
+    it, and an ISO date when its year, month (name or abbreviation) and day
+    occur. A full name for an initial, or a word the source lacks, is not
+    sourced."""
+    m = re.fullmatch(r'\s*(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?\s*', value or '')
+    if m:
+        year, month, day = m.groups()
+        ok = year in known
+        if month:
+            name = _MONTHS[int(month) - 1] if 1 <= int(month) <= 12 else ''
+            ok = ok and (name in known or name[:3] in known or month in known or str(int(month)) in known)
+        if day:
+            ok = ok and (day in known or str(int(day)) in known)
+        return ok
+    initials = {w[0] for w in known}
+    return all(w in known or (len(w) == 1 and w in initials) for w in _tokens(value))
+
+
+def render_problems(rendered, fields):
+    """Printing faults the render check looks for besides dropped fields
+    (cleanup spec §2): a closing double quote before a closing single one
+    (a \\mkbibquote nested wrongly, printed '.”’'), and a name printed as
+    both author and publisher where the author is not corporate."""
+    out = []
+    if re.search("\u201d\u2019", rendered):
+        out.append("nested quotation marks close in the wrong order")
+    au, pub = (fields.get('author') or '').strip(), (fields.get('publisher') or '').strip()
+    if au and pub and not au.startswith('{') and au.lower() == pub.lower():
+        out.append(f"{au!r} printed as both author and publisher")
+    return out
 
 
 class BiblioAgent:
@@ -582,7 +628,7 @@ excerpt's text won't (e.g. an embedded Author field):
    b. Container rule. If the item sits inside something - a periodical, a
       book, a proceedings volume, a reference work - or belongs to an event, a
       degree or a website, the type must have a field for that kind of
-      container: Journaltitle or Issuetitle for a periodical; Booktitle or
+      container: Journal or Issuetitle for a periodical; Booktitle or
       Maintitle for a book, proceedings or reference work; Eventtitle for an
       event; Institution for a degree or a report; Url for a work published
       only online. Rule out any type that cannot record where the item sits.
@@ -961,6 +1007,13 @@ excerpt's text won't (e.g. an embedded Author field):
                 bibtex_entry, rules = house_style.normalize(bibtex_entry)
                 if rules:
                     self._log(f"   House cleanup: {', '.join(rules)}", 'info')
+                # The cleanup spec's mechanical repairs (src/repairs.py).
+                bibtex_entry, applied = house_style.repair(
+                    bibtex_entry, self.config.get('library_bib_file'))
+                for a in applied:
+                    self._log(f"   Repaired - {a}", 'info')
+                for d in repairs.date_problems(bibtex_entry):
+                    self._log(f"   ⚠️  {d}", 'warning')
                 bibtex_entry, snapped = house_style.snap_to_library(
                     bibtex_entry, self.config.get('library_bib_file'))
                 for f, old, new in snapped:
@@ -976,10 +1029,27 @@ excerpt's text won't (e.g. an embedded Author field):
             # said so, where TeX is not installed; validate_entries: false
             # turns it off.
             validation = []
+            repaired_once = False
             if entry is not None and self.config.get('validate_entries', True):
                 validation = self._validate(bibtex_entry)
+                # One repair attempt (cleanup spec §1): Claude gets biber's
+                # warnings, the source and the repair rules, then the entry is
+                # validated again. What remains is a real failure: coloured.
+                if validation and self.config.get('repair_entries', True):
+                    bibtex_entry, repaired = self._repair_entry(
+                        bibtex_entry, validation, content, model, retype=not decided)
+                    repaired_once = True
+                    if repaired:
+                        validation = self._validate(bibtex_entry)
                 if validation:
                     needs_color = True
+
+            # Render check (cleanup spec §2), opt-in: compile the entry and
+            # look at what prints. See _render_check for what colours.
+            if entry is not None and self.config.get('render_check', False):
+                bibtex_entry, render_color = self._render_check(
+                    bibtex_entry, content, model, retype=not decided, may_repair=not repaired_once)
+                needs_color = needs_color or render_color
 
             # content.amber is web_source.py's plausibility check flagging a
             # source that's genuine but thin or sparse (no Author/Doi/
@@ -1207,6 +1277,124 @@ else, using null for anything the text does not show:
         for c in report.get('differs', []):
             self._log(f"   Gemini differs (entry kept) - {c}", 'info')
         return entry_text, field_sources, bool(report['conflicts'])
+
+    # The repair prompt: the cleanup spec's §3.1 type table and §3.11 order.
+    REPAIR_RULES = """Repair, in this order (biblatex-chicago, notes and bibliography):
+1. If the type is wrong, re-type the entry{retype_note}. Guidance:
+   - chapter in a book by the same author(s): @inbook; in an edited multi-author volume:
+     @incollection with Editor and Booktitle; in an exhibition catalog: @incollection,
+     Note = {exhibition catalog}; a paper in published proceedings: @inproceedings;
+   - an untitled introduction, preface, foreword or afterword by another author: @suppbook,
+     Title = the book, Type marking the part;
+   - a journal piece with only a generic title (interview by ..., review of ...): @review;
+     with a title of its own: @article, the genre in Titleaddon; a colloquy with many
+     participants: @article, Editor = the convener, Titleaddon = {colloquy};
+   - a blog post: @article, Entrysubtype = {magazine}, Location = {blog}, Journal = the blog;
+   - a podcast episode: @audio, Title = the episode, Booktitle = the podcast, Note = {podcast};
+   - a single-author dictionary: @book (@reference prints no Author);
+   - a published dissertation: @book, Note = {\\bibstring{phdthesis}, University};
+   - a report, working paper or manual from an organization: @report, Institution, Type,
+     Number; a manuscript, handout or talk with no publisher: @unpublished, Note describing it;
+   - an annotated score or archival item: @misc, Entrysubtype, Institution = the archive.
+2. If a field's value repeats another field, delete it.
+3. Otherwise move the value into a field the type prints, usually Note or Titleaddon.
+Never add a value the source does not show; never delete information. Keep Journal (not
+Journaltitle), Langid, and the bookkeeping fields as they are."""
+
+    def _repair_entry(self, entry_text, warnings, content, model, retype=False):
+        """One Claude call to repair what biber or the render check found.
+        (entry_text, changed). A value neither the source nor the entry held is
+        reverted; protected and bookkeeping fields are restored."""
+        rules = self.REPAIR_RULES.replace(
+            "{retype_note}", "" if retype else " - not here: the type was decided upstream; keep it")
+        source = (content.text or '')[:12000]
+        prompt = (f"This BibLaTeX entry has problems:\n" + "\n".join(f"- {w}" for w in warnings)
+                  + f"\n\n{rules}\n\n<source>\n{source}\n</source>\n\n<entry>\n{entry_text}\n</entry>\n\n"
+                  "Reply with the repaired entry only.")
+        self._log(f"   Repairing {len(warnings)} problem(s)...", 'info')
+        try:
+            message = self._create('repair', int(self.config.get('max_tokens', 4000)), model=model,
+                                   messages=[{"role": "user", "content": prompt}])
+        except Exception as e:  # noqa: BLE001 - the entry stands
+            self._log(f"   ⚠️  Repair call failed ({e})", 'warning')
+            return entry_text, False
+        fixed, _ = enrich.isolate_entry(response_text(message))
+        if fixed is None:
+            self._log("   ⚠️  Repair reply was not an entry - kept as it was", 'warning')
+            return entry_text, False
+        if not retype and enrich.get_entry_type(fixed) != enrich.get_entry_type(entry_text):
+            self._log("   ⚠️  Repair changed a decided type - kept as it was", 'warning')
+            return entry_text, False
+        old, new = enrich.parse_bibtex_fields(entry_text), enrich.parse_bibtex_fields(fixed)
+        known = _tokens(content.text or '') | set().union(*(_tokens(v) for v in old.values()))
+        for f, v in new.items():
+            if v != old.get(f) and not _sourced(v, known):
+                fixed = enrich.set_field(fixed, f, old[f]) if f in old else enrich.remove_field(fixed, f)
+                self._log(f"   Repair added {f} the source does not show - reverted", 'info')
+        # Bookkeeping and protected fields come back as written.
+        for line in entry_text.splitlines():
+            m = re.match(r'\s*([A-Za-z][\w-]*)\s*=', line)
+            if m and ('-' in m.group(1) or m.group(1).lower() in ('langid', 'keywords')) \
+                    and not re.search(rf'(?im)^\s*{re.escape(m.group(1))}\s*=', fixed):
+                body = fixed.rstrip()
+                if body.endswith('}'):
+                    head = body[:-1].rstrip()
+                    fixed = (head if head.endswith(',') else head + ',') + '\n' \
+                        + line.rstrip().rstrip(',') + ',\n}'
+        changed = fixed != entry_text
+        if changed:
+            self._log("   Repaired the entry", 'info')
+        return fixed, changed
+
+    def _render_check(self, entry_text, content, model, retype=False, may_repair=True):
+        """Compile the entry and read what prints (cleanup spec §2).
+        (entry_text, needs_color). Coloured: a compile failure; a filled field
+        that never reaches the page (moved into Note, and coloured even so:
+        the maintainer's ruling); wrongly nested quotes or a string printed
+        twice that survive one repair. Not coloured: the check could not run."""
+        import bib_render
+        from bib_validate import ValidatorUnavailable
+        key = (re.search(r'@\w+\{([^,\s]+),', entry_text) or [None, 'x'])[1]
+        try:
+            text = bib_render.render(entry_text, key)
+        except ValidatorUnavailable as e:
+            self._log(f"   Render check skipped: {str(e).splitlines()[0]}", 'dim')
+            return entry_text, False
+        except bib_render.RenderFailed as e:
+            self._log(f"   ⚠️  The entry does not compile: {str(e).splitlines()[0]}", 'warning')
+            return entry_text, True
+        except Exception as e:  # noqa: BLE001
+            self._log(f"   Render check skipped: {e}", 'dim')
+            return entry_text, False
+        colour = False
+        fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry_text).items()}
+        dropped = bib_render.dropped_fields(fields, text)
+        if dropped:
+            colour = True
+            moved = [f"{fields[f]}" for f in dropped if f != 'note']
+            for f in dropped:
+                if f != 'note':
+                    entry_text = enrich.remove_field(entry_text, f)
+            if moved:
+                old = enrich.parse_bibtex_fields(entry_text)
+                note = next((v for k, v in old.items() if k.lower() == 'note'), '')
+                value = ", ".join(([note] if note else []) + moved)
+                entry_text = (enrich.set_field(entry_text, 'note', value) if note
+                              else enrich.add_field(entry_text, 'note', value))
+            self._log(f"   ⚠️  Never printed: {', '.join(dropped)} - moved into Note", 'warning')
+        problems = render_problems(text, fields)
+        if problems and may_repair:
+            entry_text, changed = self._repair_entry(entry_text, problems, content, model, retype)
+            if changed:
+                try:
+                    problems = render_problems(bib_render.render(entry_text, key), fields)
+                except Exception:  # noqa: BLE001
+                    pass
+        if problems:
+            colour = True
+            for p in problems:
+                self._log(f"   ⚠️  {p}", 'warning')
+        return entry_text, colour
 
     def enrich_entry(self, entry_text, content):
         """
