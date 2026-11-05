@@ -48,8 +48,9 @@ more than one form. `extraction-rules.md` sets out the tiers.
 The figures are in [`README.md`](README.md#cost). A cache write costs 1.25× the
 input rate at the five-minute TTL and 2× at one hour; a read costs 0.1×. The prefix
 is written once per run and read by every later call, so cost turns on the number
-of cold starts rather than of files: by the 2026-11-05 estimate (best case), ten single-file
-runs across an hour cost $1.08 at the five-minute TTL and $0.49 at one hour.
+of cold starts rather than of files: by the 2026-11-05 estimate (best case), ten
+single-file runs across an hour cost $1.08 at the five-minute TTL and $0.49 at one
+hour.
 
 `dev/estimate_cost.py` holds the per-model rate table, the one thing here
 maintained by hand: no pricing API exists to read it from.
