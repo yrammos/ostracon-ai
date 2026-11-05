@@ -17,11 +17,11 @@ a run pays for them once and reads them back thereafter.
 
 | component | tokens |
 | --- | ---: |
-| `notes-test.bib` — the package's annotated test suite | 46,302 |
-| `CLAUDE.md` — house style | 11,508 |
 | `biblatex-chicago-notes-ref.md` — condensed field reference | 4,959 |
-| `cms-notes-intro-guide.md` — entry types by kind of source | 3,208 |
 | `biblio-template.bib` — one worked example per type | 2,242 |
+| `CLAUDE.md` — house style | 11,508 |
+| `cms-notes-intro-guide.md` — entry types by kind of source | 3,208 |
+| `notes-test.bib` — the package's annotated test suite | 46,302 |
 
 **68,928 tokens in total** (232,976 characters) on 2026-08-07, measured by
 `dev/estimate_cost.py --no-api`, which applies the project's own ratio of 3.38
@@ -90,9 +90,9 @@ the two shapes a Chicago library uses constantly.
 
 | in the entry | filed as | |
 | --- | --- | --- |
-| `\mkbibemph{X}` | `X` | correct |
 | `\bibstring{reviewof}` | `reviewof` | the argument is a keyword |
 | `\foreignlanguage{russian}{X}` | `russianX` | the first argument is a parameter |
+| `\mkbibemph{X}` | `X` | correct |
 
 `~`, `\,`, `---` and `--` are not `\word`-shaped, so nothing touches them at all. In
 one library roughly one attachment in seven arrived damaged.
@@ -110,62 +110,62 @@ Nothing in `dev/` runs during extraction.
 
 | | |
 | --- | --- |
-| `test_setup.py` | Dependencies, configuration, context files, OCR, and documentation drift. `--preflight` is the fast subset the quick action runs. |
-| `install_service.py` | Builds the Automator workflow from `automator/script.sh` and installs it. |
-| `estimate_cost.py` | Measures the current prefix and prices it, per model. |
 | `ab_compare.py` | Scores two extraction runs against curated ground truth. |
-| `validate_entries.py` | `bib_validate` over a `.bib` or saved run outputs. |
-| `render_entries.py` | `bib_render` over a `.bib` or saved run outputs. |
+| `estimate_cost.py` | Measures the current prefix and prices it, per model. |
+| `install_service.py` | Builds the Automator workflow from `automator/script.sh` and installs it. |
 | `library_match_coverage.py` | Read-only: how often the library holds a chapter's book, and how often its fields are right, on a `.bib` of known entries. |
+| `render_entries.py` | `bib_render` over a `.bib` or saved run outputs. |
+| `test_setup.py` | Dependencies, configuration, context files, OCR, and documentation drift. `--preflight` is the fast subset the quick action runs. |
+| `validate_entries.py` | `bib_validate` over a `.bib` or saved run outputs. |
 
 Self-tests, each run as `python3 dev/<name>`; fixtures are canned or constructed,
 and Claude, Gemini and the network are stubbed:
 
 | | |
 | --- | --- |
-| `test_web_source.py` | The `.webloc` routes and the plausibility check, against canned pages. |
-| `test_extract_pages.py` | The thin-yield marking of a PDF that yields almost no text. |
 | `test_api_keys.py` | Key resolution: plaintext, environment, command; a failing command's output never leaks. |
+| `test_batch.py` | Parallel batches: every source saved, one save at a time, a failure not stopping the rest. |
 | `test_biblio_agent_markers.py` | What `save_entry()` writes: `% AMBER` comments, colour, `failed_bib_file`. |
+| `test_bib_validate.py`, `test_bib_render.py` | The biber check and the render check, with TeX. |
+| `test_extract_pages.py` | The thin-yield marking of a PDF that yields almost no text. |
 | `test_gemini_search.py`, `test_gemini_step.py` | Gemini's type and questions; nothing reaches Gemini when it is off. |
-| `test_recollection.py` | CrossRef replacing a recollected value. |
 | `test_house_style.py` | The per-entry house cleanup. |
 | `test_library_match.py` | Library matching, and its place in the pipeline. |
+| `test_recollection.py` | CrossRef replacing a recollected value. |
 | `test_repairs.py` | The cleanup spec's repairs, the repair call and the render check. |
-| `test_bib_validate.py`, `test_bib_render.py` | The biber check and the render check, with TeX. |
-| `test_batch.py` | Parallel batches: every source saved, one save at a time, a failure not stopping the rest. |
+| `test_web_source.py` | The `.webloc` routes and the plausibility check, against canned pages. |
 
 The accuracy harness, `dev/eval/` (see its `README.md`):
 
 | | |
 | --- | --- |
-| `run.py` | Scores `sample/` against `expected.bib`; `--rescore` re-scores saved output. |
-| `scorer.py` | Field-level comparison. |
-| `test_eval.py` | The harness's self-test; synthetic fixtures, no API call. |
-| `gemini_type_eval.py` | Scores Gemini's type on saved outputs. |
-| `select_sample.py` | Builds `sample/` and `expected.bib` from a library. |
-| `populate_sample.py` | The BibDesk attachment resolver `select_sample.py` imports. |
-| `expected.bib` | Ground-truth entries; empty until populated. |
-| `sample/manifest.json`, `sample/selection.json` | The sample's citekeys, sources and hashes; provenance of the last selection. |
 | `baselines/` | One dated report per full run; the comparison point. |
+| `expected.bib` | Ground-truth entries; empty until populated. |
+| `gemini_type_eval.py` | Scores Gemini's type on saved outputs. |
+| `populate_sample.py` | The BibDesk attachment resolver `select_sample.py` imports. |
+| `run.py` | Scores `sample/` against `expected.bib`; `--rescore` re-scores saved output. |
+| `sample/manifest.json`, `sample/selection.json` | The sample's citekeys, sources and hashes; provenance of the last selection. |
+| `scorer.py` | Field-level comparison. |
+| `select_sample.py` | Builds `sample/` and `expected.bib` from a library. |
+| `test_eval.py` | The harness's self-test; synthetic fixtures, no API call. |
 
 Context generators, to be re-run after a package update and then diffed:
 
 | | |
 | --- | --- |
+| `build_template.py` | Regenerates `biblio-template.bib` from real entries, stripping BibDesk bookkeeping. |
 | `extract_intro.py` | Regenerates `cms-notes-intro-guide.md` from the package's `cms-notes-intro.tex`. |
 | `extract_manual.py` | Regenerates `biblatex-chicago-fields.md` from `biblatex-chicago.tex`. |
-| `build_template.py` | Regenerates `biblio-template.bib` from real entries, stripping BibDesk bookkeeping. |
 
 Normalization of an existing library, documented in
 [`dev/normalization-plan.md`](dev/normalization-plan.md):
 
 | tool | acts by | for |
 | --- | --- | --- |
-| `bib_audit.py` | — (read-only) | Counting. Parses by byte span and proves round-trip equality before reporting anything. Also holds the predicates the other two import. |
-| `bib_normalize.py` | rule | Edits derived from a predicate that fires across the corpus. |
 | `bib_apply.py` | name | A JSON list of “in entry X, set field Y to Z”, for what judgement rather than rule must settle. |
+| `bib_audit.py` | — (read-only) | Counting. Parses by byte span and proves round-trip equality before reporting anything. Also holds the predicates the other two import. |
 | `bib_bisect.py` | subsetting | Isolates the entry that breaks a build or crashes BibDesk. |
+| `bib_normalize.py` | rule | Edits derived from a predicate that fires across the corpus. |
 
 Three properties make these safe against an irreplaceable file. **Nothing is
 re-serialized**: every change is a byte-span rewrite, so tab indentation,
@@ -186,9 +186,9 @@ merely odd records.
 
 | File | Origin | Modified |
 | --- | --- | --- |
-| `notes-test.bib` | the package's `doc/` directory | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges to single hyphens; no bibliographic content altered |
-| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged |
 | `biblatex-chicago-fields.md` | derived from §4.2 of `biblatex-chicago.tex` by `dev/extract_manual.py` | yes — markup stripped, paragraphs reflowed, one heading added per field; wording unchanged |
+| `cms-notes-intro-guide.md` | derived from `cms-notes-intro.tex` by `dev/extract_intro.py` | yes — LaTeX scaffolding stripped, cross-references rendered as plain text; wording unchanged |
+| `notes-test.bib` | the package's `doc/` directory | yes — LaTeX accent macros converted to Unicode, double-hyphen ranges to single hyphens; no bibliographic content altered |
 
 The two `.tex` sources are not vendored: they ship with the package, and what this
 project consumes is the generated file. Upstream drift therefore surfaces as a diff
