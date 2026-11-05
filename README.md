@@ -39,38 +39,33 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 
 For each source:
 
-1. **Text.** Reads the PDF, with OCR for scanned pages, or the bookmarked web page.
-2. **Type.** Identifies the work and decides its entry type with Gemini, grounded
-   in Google Search [`gemini_type_check`]. Otherwise Claude chooses the type during
-   extraction.
-3. **Entry.** Claude writes the entry under that type, following the extraction
-   rules and your house style.
-4. **Completion.** CrossRef and Google Scholar supply missing fields; fields not
-   found in the source are checked against CrossRef, and those left unconfirmed
-   are reported as inferred [`enrich_missing_fields`].
-5. **Library.** A work already in your library is reported; a chapter whose book
-   the library holds takes that book's fields [`library_match`].
-6. **Gemini.** Fills the fields the type takes that are still missing
-   [`gemini_type_check`].
-7. **House style.** The library's normalization rules and spellings
+1. **Text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
+2. **Entry type**: decided by Gemini, grounded in Google Search
+   [`gemini_type_check`]; otherwise by Claude, in step 3.
+3. **Entry**: written by Claude under that type, per the extraction rules and your
+   house style.
+4. **Missing fields**: from CrossRef and Google Scholar. Fields absent from the
+   source are checked against CrossRef; unconfirmed ones are reported
+   [`enrich_missing_fields`].
+5. **Library**: duplicates reported; a chapter takes its book's fields from the
+   library [`library_match`].
+6. **Remaining fields**: from Gemini [`gemini_type_check`].
+7. **House style**: the library's normalization rules and spellings
    [`house_cleanup`].
-8. **Validation.** biber checks the entry against biblatex-chicago's data model,
-   and Claude repairs what it rejects [`validate_entries`, `repair_entries`]; a
-   test compile confirms that every field prints [`render_check`].
-9. **Saving.** To the staging file, or into BibDesk [`autofile_bibdesk`].
+8. **Validation**: by biber against biblatex-chicago's data model, with one repair
+   by Claude [`validate_entries`, `repair_entries`]; a test compile shows that
+   every field prints [`render_check`].
+9. **Output**: the staging file, or BibDesk [`autofile_bibdesk`].
 
-Where sources disagree, a value read from the source or from a CrossRef record of
-the same work prevails; then the library's, Gemini's, and last Google Scholar's or
-Claude's recollection. Each value taken from elsewhere is named in the entry's
-`% Sources` comment.
+**Precedence**: the source and a matching CrossRef record; the library; Gemini;
+Google Scholar and unconfirmed recollection. Borrowed values are listed in the
+entry's `% Sources` comment.
 
-An entry is coloured for review (amber in BibDesk) only on failure: biber rejects
-it, a field does not print, the source is thin or not the work, or, with
-`require_langid`, it lacks `Langid`.
+**Review colour** (amber in BibDesk): a biber rejection, a field that does not
+print, a thin or wrong source, or, with `require_langid`, a missing `Langid`.
 
-A bookmarked page behind a bot wall or login is read from an open Safari or Chrome
-tab, from a Chrome tab opened for the purpose [`open_blocked_in_browser`], or, when
-its URL contains a DOI, from CrossRef.
+**Blocked pages**: read from an open Safari or Chrome tab, from a new Chrome tab
+[`open_blocked_in_browser`], or from CrossRef when the URL contains a DOI.
 
 ![Progress window](screenshot.png)
 
@@ -202,10 +197,10 @@ current prompt per model.
 | Service                       | First source in a run | Each later source |
 | ----------------------------- | --------------------- | ----------------- |
 | Claude                        | $0.162                | $0.057            |
-| Gemini (`gemini_type_check`)  | $0.01                 | $0.01             |
-| Google Search, through Gemini | free, 5,000 a month   | free              |
 | CrossRef                      | free                  | free              |
+| Gemini (`gemini_type_check`)  | $0.01                 | $0.01             |
 | Google Scholar (ScrapingDog)  | about $0.001 a lookup | the same          |
+| Google Search, through Gemini | free, 5,000 a month   | free              |
 
 The first source pays to write the cached prompt; later ones read it back. At the
 default `cache_ttl: "1h"` the cache survives between runs within the hour.
