@@ -44,18 +44,20 @@ For each source, sequentially:
    [`gemini_type_check`]; otherwise by Claude in step 3.
 3. **Entry field estimation**: by Claude under the estimated type, per the extraction rules and your
    house style.
-4. **Missing-field retrieval #1**: from CrossRef, with Google Scholar as a fallback.
-   Fields absent from the source are checked the same way; CrossRef may correct
-   them, and unconfirmed ones are reported [`enrich_missing_fields`].
-5. **Library reconciliation**: duplicates reported; a chapter takes its book's fields from the
+4. **Missing-field retrieval #1**: from CrossRef, with Google Scholar as a fallback
+   [`enrich_missing_fields`].
+5. **Recollection verification**: fields not read from the source are checked against the same
+   records; CrossRef corrects them where it can, and the rest are reported as
+   inferred [`enrich_missing_fields`].
+6. **Library reconciliation**: duplicates reported; a chapter takes its book's fields from the
    library [`library_match`].
-6. **Missing-field retrieval #2**: from Gemini [`gemini_type_check`].
-7. **House style compliance**: with the library's normalization rules and spellings
+7. **Missing-field retrieval #2**: from Gemini [`gemini_type_check`].
+8. **House style compliance**: with the library's normalization rules and spellings
    [`house_cleanup`].
-8. **Validation**: by biber against biblatex-chicago's data model, with one repair
+9. **Validation**: by biber against biblatex-chicago's data model, with one repair
    by Claude [`validate_entries`, `repair_entries`]; a test compile shows that
    every field prints [`render_check`].
-9. **Output**: to the staging file, or in BibDesk [`autofile_bibdesk`].
+10. **Output**: to the staging file, or in BibDesk [`autofile_bibdesk`].
 
 **Precedence**: the source and a matching CrossRef record; the library; Gemini;
 Google Scholar and unconfirmed recollection. Borrowed values are listed in the
