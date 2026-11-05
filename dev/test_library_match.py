@@ -164,6 +164,99 @@ def test_duplicates_by_doi_and_by_title_author_year():
     assert "Alpha2010" not in r["siblings"], r
 
 
+REFERENCE_LIB = r"""@inreference{Ah2001,
+	author = {Ah, Al},
+	entrysubtype = {online},
+	lista = {Cadence},
+	location = {New York},
+	publisher = {Oxford University Press},
+	title = {Music Online},
+	urldate = {2001}}
+
+@inreference{Be2001,
+	author = {Be, Bea},
+	entrysubtype = {online},
+	lista = {Mode},
+	location = {New York},
+	publisher = {Oxford University Press},
+	title = {Music Online},
+	urldate = {2001}}
+
+@inreference{Ce1980,
+	author = {Ce, Cy},
+	date = {1980},
+	lista = {Mode},
+	location = {London},
+	publisher = {Macmillan},
+	title = {Dictionary of Music}}
+
+@reference{Dict2001,
+	date = {2001},
+	edition = {2},
+	editor = {Sadie, Stanley},
+	location = {London},
+	publisher = {Macmillan},
+	title = {Dictionary of Music}}
+
+@proceedings{Conf2010,
+	date = {2010},
+	editor = {Chair, Cat},
+	publisher = {Conference Press},
+	title = {Essays on Listening}}
+"""
+
+
+def _lib_with(extra):
+    p = Path(tempfile.mkdtemp()) / "lib.bib"
+    p.write_text(LIBRARY + "\n" + extra, encoding="utf-8")
+    return lm.load(p)
+
+
+def test_an_online_reference_entry_inherits_from_other_online_entries():
+    lib = _lib_with(REFERENCE_LIB)
+    new = ("@inreference{N,\n\tAuthor = {Ne, Ned},\n\tTitle = {Music Online},\n"
+           "\tLista = {Tonality},\n\tEntrysubtype = {online},\n\tUrldate = {2024-01-01}\n}")
+    out, r = lm.container_fill(new, lib)
+    assert sorted(r["siblings"]) == ["Ah2001", "Be2001"], r
+    assert "Publisher = {Oxford University Press}" in out and "Location = {New York}" in out, out
+    # A print entry of the same title is another work: no year, not online.
+    print_entry = new.replace("\tEntrysubtype = {online},\n", "")
+    assert lm.container_fill(print_entry, lib)[1]["siblings"] == []
+
+
+def test_a_print_reference_entry_inherits_from_its_works_entry_of_that_year():
+    lib = _lib_with(REFERENCE_LIB)
+    new = ("@inreference{N,\n\tAuthor = {Ne, Ned},\n\tTitle = {Dictionary of Music},\n"
+           "\tLista = {Tonality},\n\tDate = {2001}\n}")
+    out, r = lm.container_fill(new, lib)
+    assert r["siblings"] == ["Dict2001"], r      # Ce1980 is the first edition
+    assert "Editor = {Sadie, Stanley}" in out and "Edition = {2}" in out, out
+    assert "Macmillan" in out
+
+
+def test_a_part_inherits_only_from_its_paired_container_type():
+    # A @proceedings of the same title and year is not a collection's own entry.
+    lib = _lib_with(REFERENCE_LIB)
+    _, r = lm.container_fill(NEW, lib)
+    assert "Conf2010" not in r["siblings"] and "Editor2010" in r["siblings"], r
+    paper = NEW.replace("@incollection", "@inproceedings")
+    _, r = lm.container_fill(paper, lib)
+    assert r["siblings"] == ["Conf2010"], r
+
+
+def test_reference_entries_and_shared_dois_are_not_mistaken_for_duplicates():
+    lib = _lib_with(REFERENCE_LIB)
+    # Same work, author and year, another heading: not a duplicate.
+    other = ("@inreference{N,\n\tAuthor = {Ah, Al},\n\tTitle = {Music Online},\n"
+             "\tLista = {Rhythm},\n\tUrldate = {2001}\n}")
+    assert lm.duplicates(other, lib) == []
+    assert lm.duplicates(other.replace("{Rhythm}", "{Cadence}"), lib) == ["Ah2001"]
+    # A chapter carrying its book's DOI is not the book.
+    lib2 = _lib_with("@collection{Book,\n\ttitle = {A Book},\n\tdoi = {10.1/b},\n\tdate = {2019}}\n")
+    chapter = "@incollection{C,\n\tTitle = {A Chapter},\n\tDoi = {10.1/b}\n}"
+    assert lm.duplicates(chapter, lib2) == []
+
+
 def test_excluded_keys_are_never_matched():
     _, r = lm.container_fill(NEW, lm.load(_lib()), exclude={"Alpha2010", "Beta2010", "Editor2010"})
     assert r["siblings"] == [] and r["added"] == []

@@ -4,13 +4,16 @@ Three uses, all deterministic and offline:
 
 - duplicates(): the same work already in the library (DOI, or title + first
   author's surname + year). Logged, never coloured.
-- container_fill(): a chapter or paper whose book is already in the library -
-  as a sibling chapter with the same Booktitle, or as the book's own entry -
-  takes the book's fields in the library's form: gaps filled, a value from a
-  search (Scholar, Gemini) replaced, a value from the source kept. An article
-  takes only its journal's spelling. Gated: same container title, same year,
-  and no disagreement on volume or editor; a field the siblings disagree on is
-  left alone.
+- container_fill(): a part whose container is already in the library - as
+  another part of the same type with the same container title, or as the
+  container's own entry of its paired type (PAIRS: incollection/collection,
+  inproceedings/proceedings, inbook/book, inreference/reference) - inherits
+  the container's fields in the library's form: gaps filled, a value from a
+  search or unconfirmed recollection replaced, a value from the source kept.
+  An article takes only its journal's spelling. Gated: same container title,
+  same year (an online reference work: both online), and no disagreement on
+  volume, editor, maintitle or edition; a field the parts disagree on, or most
+  of them lack, is left alone.
 - exemplars(): two or three library entries of the item's container or decided
   type, cleaned of bookkeeping fields, for the extraction prompt (opt-in:
   library_exemplars).
@@ -41,10 +44,20 @@ PARENT_MAP = {'title': 'booktitle', 'subtitle': 'booksubtitle', 'titleaddon': 'b
               'series': 'series', 'number': 'number', 'volume': 'volume', 'volumes': 'volumes',
               'maintitle': 'maintitle', 'mainsubtitle': 'mainsubtitle',
               'maintitleaddon': 'maintitleaddon', 'edition': 'edition'}
-PARENT_TYPES = {'book', 'collection', 'mvbook', 'mvcollection', 'proceedings', 'mvproceedings',
-                'reference', 'mvreference'}
+# Each part type and the container types whose own entry it may inherit from.
+PAIRS = {'incollection': {'collection', 'mvcollection'},
+         'inproceedings': {'proceedings', 'mvproceedings'},
+         'inbook': {'book', 'mvbook'},
+         'bookinbook': {'book', 'mvbook'},
+         'inreference': {'reference', 'mvreference'}}
 ROLE_NAMES = {'editor', 'editora', 'editorb'}
-CHILD_TYPES = {'incollection', 'inproceedings', 'inbook', 'bookinbook', 'inreference'}
+CHILD_TYPES = set(PAIRS)
+# An entry in a reference work keeps the work in Title (biblatex-chicago,
+# with its own heading in Lista), so it inherits the work's fields under their
+# own names; its Volume is the article's, not the work's.
+REFERENCE_FIELDS = ('editor', 'editora', 'editorb', 'editortype', 'editoratype',
+                    'editorbtype', 'publisher', 'location', 'series', 'number',
+                    'volumes', 'maintitle', 'mainsubtitle', 'maintitleaddon', 'edition')
 # Never shown to the extraction: BibDesk bookkeeping, paths, private notes.
 PRIVATE = re.compile(r'^(bdsk-|date-added$|date-modified$|annote$|keywords$|file$|abstract$|'
                      r'read$|rating$|devonthink$)')
@@ -116,7 +129,10 @@ def _fields(entry_text):
 
 
 def _title_key(f):
-    return _key(f.get('title', '') + ' ' + f.get('subtitle', ''))
+    """The work's identity by title: for an entry in a reference work, its
+    heading (Lista) too; for a supplement, its kind (Type) too, since both
+    keep the containing work in Title."""
+    return _key(' '.join(f.get(x, '') for x in ('title', 'subtitle', 'lista', 'type')))
 
 
 def duplicates(entry_text, lib, exclude=()):
@@ -125,16 +141,19 @@ def duplicates(entry_text, lib, exclude=()):
         return []
     f = _fields(entry_text)
     hits = []
+    # A chapter often carries its book's DOI, so a shared DOI makes a
+    # duplicate only where the titles agree too.
     doi = f.get('doi', '').lower()
     if doi:
-        hits += [lib.entries[i][0] for i in lib.by_doi.get(doi, [])]
-    t, y = f.get('title'), _year(f)
+        hits += [lib.entries[i][0] for i in lib.by_doi.get(doi, [])
+                 if not _title_key(f) or _title_key(lib.entries[i][2]) == _title_key(f)]
+    t, y = f.get('title'), _year(f) or (f.get('urldate') or '')[:4] or None
     first = (_surnames(f.get('author') or f.get('editor')) or [None])[0]
     if t and y and first:
         tk = _title_key(f)
         for i in lib.by_title.get(_key(t), []):
             k, _ty, g = lib.entries[i]
-            if (_title_key(g) == tk and _year(g) == y
+            if (_title_key(g) == tk and (_year(g) or (g.get('urldate') or '')[:4]) == y
                     and first in _surnames(g.get('author') or g.get('editor'))):
                 hits.append(k)
     seen = set(exclude)
@@ -147,32 +166,66 @@ def _agree(f, g, field):
     return not a or not b or _key(a) == _key(b)
 
 
+def _online(f):
+    return (f.get('entrysubtype') or '').strip().lower() == 'online'
+
+
+def container(entry_text):
+    """(etype, the container's title) for a part type, else (etype, None):
+    Booktitle, or Title for an entry in a reference work."""
+    f = _fields(entry_text)
+    etype = _etype(entry_text)
+    if etype not in CHILD_TYPES:
+        return etype, None
+    return etype, f.get('title' if etype == 'inreference' else 'booktitle')
+
+
 def siblings(entry_text, lib, exclude=(), year_gate=True):
-    """[(citekey, {chapter field: value})]: the library's other chapters in the
-    same book, and the book itself, that pass the gates."""
+    """[(citekey, {field: value})]: the library's other parts of the same
+    container, of the same type, and the container's own entry, of its paired
+    type (PAIRS), that pass the gates. An online reference work, which carries
+    no publication year, is gated on being online instead."""
     if lib is None:
         return []
     f = _fields(entry_text)
-    etype = _etype(entry_text)
-    book = f.get('booktitle')
-    if etype not in CHILD_TYPES or not book or (year_gate and not _year(f)):
+    etype, name = container(entry_text)
+    if not name:
+        return []
+    reference = etype == 'inreference'
+    dated = year_gate and not (reference and _online(f))
+    if dated and not _year(f):
         return []
     skip = set(exclude) | set(duplicates(entry_text, lib))
-    ck = _key(book)
+    ck = _key(name)
+    keys = {ck, _key(name + ' ' + f.get('subtitle' if reference else 'booksubtitle', ''))}
     found = []
-    for i in lib.by_container.get(ck, []):
-        k, _t, g = lib.entries[i]
-        if k not in skip:
-            found.append((k, {x: g[x] for x in SIBLING_FIELDS if x in g}, g))
-    for i in lib.by_title.get(ck, []) + lib.by_title.get(_key(book + ' ' + f.get('booksubtitle', '')), []):
-        k, t, g = lib.entries[i]
-        if t in PARENT_TYPES and k not in skip and k not in (x[0] for x in found):
-            found.append((k, {PARENT_MAP[x]: g[x] for x in PARENT_MAP if x in g}, g))
+    if reference:
+        for i in lib.by_title.get(ck, []):
+            k, t, g = lib.entries[i]
+            if t == etype and k not in skip:
+                found.append((k, {x: g[x] for x in REFERENCE_FIELDS if x in g}, g))
+    else:
+        for i in lib.by_container.get(ck, []):
+            k, t, g = lib.entries[i]
+            if t == etype and k not in skip:
+                found.append((k, {x: g[x] for x in SIBLING_FIELDS if x in g}, g))
+    seen = {k for k, _, _ in found}
+    for key in keys:
+        for i in lib.by_title.get(key, []):
+            k, t, g = lib.entries[i]
+            if t in PAIRS[etype] and k not in skip and k not in seen:
+                seen.add(k)
+                mapped = ({x: g[x] for x in REFERENCE_FIELDS if x in g} if reference
+                          else {PARENT_MAP[x]: g[x] for x in PARENT_MAP if x in g})
+                found.append((k, mapped, g))
+    gates = ('editor', 'maintitle', 'edition') if reference else ('volume', 'editor', 'maintitle', 'edition')
     out = []
     for k, mapped, g in found:
-        if year_gate and _year(g) != _year(f):
+        if reference and _online(f) != _online(g):
             continue
-        if not all(_agree(f, mapped, x) for x in ('volume', 'editor', 'maintitle', 'edition')):
+        if dated and _year(g) != _year(f):
+            continue
+        if not all(_agree(f, mapped, x) for x in gates):
             continue
         out.append((k, mapped))
     return out
@@ -291,7 +344,8 @@ def exemplars(lib, entry_type=None, container=None, exclude=(), n=3):
     picked = []
     if container:
         ck = _key(container)
-        for i in lib.by_container.get(ck, []) + lib.by_journal.get(ck, []):
+        refs = [i for i in lib.by_title.get(ck, []) if lib.entries[i][1] == 'inreference']
+        for i in lib.by_container.get(ck, []) + lib.by_journal.get(ck, []) + refs:
             if lib.entries[i][0] not in skip and i not in picked:
                 picked.append(i)
     if entry_type and len(picked) < n:

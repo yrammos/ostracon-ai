@@ -2,7 +2,8 @@
 """Read-only measurement of src/library_match.py against a set of known entries.
 
 For each entry in EXPECTED (each a library entry itself, excluded from its own
-matching): strip its container fields but Booktitle and Date, as a thin
+matching): strip its container fields but Booktitle (an entry in a reference work: Title)
+and Date, as a thin
 extraction would leave them, let container_fill() refill them from the rest of
 the library, and compare with the entry as it stands. Prints coverage (entries
 with a sibling) and precision (filled values equal to the expected ones, by
@@ -68,13 +69,15 @@ def main():
                 stats['articles journal respelled'] += 1
                 print(f"snap {e.citekey}: journal {lm._fields(entry).get('journal')!r} -> {lm._fields(_t).get('journal')!r}")
             continue
-        if e.etype not in lm.CHILD_TYPES or not e.has('booktitle'):
+        if not lm.container(entry)[1]:
             continue
-        stats['chapters'] += 1
+        part = 'reference entries' if e.etype == 'inreference' else 'chapters'
+        stats[part] += 1
+        inherited = lm.REFERENCE_FIELDS if e.etype == 'inreference' else lm.SIBLING_FIELDS
         full = lm._fields(entry)
         thin = entry
         for f in e.fields:
-            if f.key in lm.SIBLING_FIELDS and f.key not in KEEP:
+            if f.key in inherited and f.key not in KEEP:
                 thin = enrich.remove_field(thin, f.name)
         # Exclude only the entry itself: siblings elsewhere in the sample are
         # library entries a new item could meet.
@@ -83,7 +86,7 @@ def main():
                                    year_gate=YEAR_GATE)
         if not r['siblings']:
             continue
-        stats['chapters with sibling'] += 1
+        stats[f'{part} with sibling'] += 1
         got = lm._fields(out)
         for x in r['added']:
             stats['fields filled'] += 1
@@ -93,7 +96,7 @@ def main():
                 wrong.append(f"{e.citekey}.{x}: filled {got[x]!r}; expected {full.get(x)!r}")
         stats['fields left (siblings disagree)'] += len(r['disagree'])
         stats['fields left (most siblings lack it)'] += len(r['minority'])
-        missed = [x for x in full if x in lm.SIBLING_FIELDS and x not in KEEP and x not in got]
+        missed = [x for x in full if x in inherited and x not in KEEP and x not in got]
         stats['fields not recovered'] += len(missed)
     for k, v in stats.items():
         print(f"{k}: {v}")
