@@ -1039,7 +1039,8 @@ def container_fields_missing(fields, entry_type=None):
 
 
 def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
-                         crossref_email=None, scrapingdog_api_key=None, log=None):
+                         crossref_email=None, scrapingdog_api_key=None, log=None,
+                         provenance=None):
     """
     Attempt to confirm or refute entry fields Claude flagged as sourced from
     its own background knowledge of the work rather than the PDF text/metadata,
@@ -1241,5 +1242,9 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
             value = verified.get(field)
             if value:
                 additions[field] = value
+    # `provenance`, if given, learns which record each addition came from, so
+    # a later, stronger source can outrank a Google Scholar fill.
+    if provenance is not None:
+        provenance.update({f: source for f in additions})
 
     return reconcile_candidates, additions, bool(unconfirmed)

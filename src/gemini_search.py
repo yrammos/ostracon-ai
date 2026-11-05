@@ -278,7 +278,7 @@ def _plain(value):
     return " ".join(enrich.strip_latex(str(value)).replace("~", " ").lower().split()).strip(" .")
 
 
-def apply_answers(entry_text, questions, answers, entry_type):
+def apply_answers(entry_text, questions, answers, entry_type, outranks=()):
     """(entry_text, report) for step 3a's answers. A field answer fills a
     missing field and is never written over a value the entry has; a differing
     value, or a check whose answer is not what the type implies, goes to review.
@@ -307,6 +307,11 @@ def apply_answers(entry_text, questions, answers, entry_type):
             report["added"].append(name)
         elif _plain(fields[name]) == _plain(value):
             report["confirmed"].append(name)
+        elif name in outranks:
+            # The entry's value came only from Google Scholar, a search
+            # snippet; Gemini's grounded answer outranks it.
+            entry_text = enrich.set_field(entry_text, name, str(value))
+            report.setdefault("replaced", []).append(name)
         elif q.get("auto"):
             # A field asked for because the type takes it: the entry's value
             # came from the source or a primary record, so it stands.
@@ -318,7 +323,7 @@ def apply_answers(entry_text, questions, answers, entry_type):
     # title gives it up. Only an exact ": <subtitle>" tail is removed.
     fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry_text).items()}
     for parent, sub in (("title", "subtitle"), ("booktitle", "booksubtitle"),
-                        ("maintitle", "mainsubtitle"), ("journaltitle", "journalsubtitle"),
+                        ("maintitle", "mainsubtitle"), ("journaltitle", "journalsubtitle"), ("journal", "journalsubtitle"),
                         ("issuetitle", "issuesubtitle")):
         if sub in report["added"] and parent in fields:
             tail = ": " + fields[sub]

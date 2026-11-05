@@ -34,7 +34,7 @@ SHIPPED_TEMPLATE = Path(__file__).resolve().parent / "tex" / "previewtemplate.te
 # dates by year, numeric fields by their digits; the rest as text.
 NAME_FIELDS = ("author", "editor", "translator", "bookauthor", "editora", "editorb")
 TEXT_FIELDS = ("title", "subtitle", "titleaddon", "booktitle", "booksubtitle",
-               "maintitle", "journaltitle", "journalsubtitle", "issuetitle",
+               "maintitle", "journal", "journaltitle", "journalsubtitle", "issuetitle",
                "publisher", "location", "institution", "organization", "series",
                "note", "eventtitle", "chapter")
 NUMBER_FIELDS = ("volume", "number", "pages", "edition", "volumes", "issue")

@@ -128,6 +128,9 @@ reaches Gemini when `gemini_type_check` is off.
 self-test the CrossRef replacement of recollected values and the per-entry
 house cleanup, with constructed fixtures.
 
+`python3 dev/test_repairs.py` self-tests the cleanup spec's repairs: the mechanical rules
+(`src/repairs.py`), the one repair call and the render check, with Claude and TeX stubbed.
+
 `python3 dev/test_batch.py` self-tests parallel batches (`batch_workers`) with
 extraction stubbed: every source saved, one save at a time, each source's
 messages kept together, a failing source not stopping the rest.
@@ -177,6 +180,8 @@ absent from disk is an error at startup, not a warning.
 | `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
 | `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
 | `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |
+| `repair_entries`        | `true`              | When biber still rejects an entry after cleanup, one Claude call repairs it (re-type only if Gemini did not decide the type; never a value the source lacks). What remains colours the entry. |
+| `render_check`          | `false`             | `true`: compile each entry and check what prints. A compile failure, a field that never reaches the page (moved into `Note`), or quotes nested wrongly colours the entry. About 3 s a source. |
 | `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
 | `anthropic_api_key`     | —                   | The key in plaintext, instead of `anthropic_api_key_command`. Not recommended.                                    |
 
@@ -394,6 +399,7 @@ ostracon-ai/
 │   ├── house_style.py      # Those rules and the library's spellings, on each new entry
 │   ├── gemini_search.py    # Gemini type decision and closed questions
 │   ├── type_fields.py      # The fields each type takes, from the biblatex manual
+│   ├── repairs.py          # Mechanical repairs from the library cleanup spec
 │   ├── bib_validate.py     # biber data-model check; published by ./install
 │   ├── bib_render.py       # Render check: fields that never reach the page
 │   ├── tex/previewtemplate.tex # Neutral template for the render check
