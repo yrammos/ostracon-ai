@@ -52,7 +52,7 @@ For each source in turn:
    be this work (by DOI, or by an author the source gives) disagrees with it.
    Given `library_bib_file`, a work the library already holds is reported, and a
    chapter whose book the library holds takes that book's fields in the
-   library's form (outranking Gemini and Scholar; never a value from the source).
+   library's form (outranking Gemini, Scholar and unconfirmed recollection; never a value from the source).
 5. Applies the library's own cleanup rules (`src/bib_normalize.py`) and, given
    `library_bib_file`, the library's spelling of degree strings, places and
    publishers it already holds.
@@ -185,7 +185,7 @@ absent from disk is an error at startup, not a warning.
 | `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
 | `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
 | `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |
-| `library_match`         | `true`              | Given `library_bib_file`: log a work already in the library; fill a chapter's book fields (Booktitle, Editor, Publisher, Location, Series…) from the library's other chapters of the same book, or the book's own entry, when title and year match. Fills gaps and replaces values found only by a search; a value read from the source stands. |
+| `library_match`         | `true`              | Given `library_bib_file`: log a work already in the library; fill a chapter's book fields (Booktitle, Editor, Publisher, Location, Series…) from the library's other chapters of the same book, or the book's own entry, when title and year match. Fills gaps and replaces values found only by a search or recollected without confirmation; a value read from the source stands. |
 | `library_exemplars`     | `false`             | Show the extraction up to three library entries (same container, else the type Gemini decided) as house-form examples. |
 | `repair_entries`        | `true`              | When biber still rejects an entry after cleanup, one Claude call repairs it (re-type only if Gemini did not decide the type; never a value the source lacks). What remains colours the entry. |
 | `render_check`          | `false`             | `true`: compile each entry and check what prints. A compile failure, a field that never reaches the page (moved into `Note`), or quotes nested wrongly colours the entry. About 3 s a source. |

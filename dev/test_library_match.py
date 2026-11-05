@@ -184,12 +184,13 @@ def test_no_library_changes_nothing():
 
 def test_pipeline_fills_from_the_library_before_gemini():
     """extract_bibtex(): the library's Editor fills the gap Gemini would
-    otherwise fill; the library outranks a Scholar-only Location; a Scholar
+    otherwise fill; the library outranks a Scholar-only Location and a
+    recollected Booksubtitle; a Scholar
     Publisher the library confirms is not replaced by Gemini's."""
     import biblio_agent
     import extract_pages
     import gemini_search
-    entry = NEW.replace("\tPages", "\tLocation = {Evanston},\n"
+    entry = NEW.replace("\tPages", "\tLocation = {Evanston},\n\tBooksubtitle = {Remembered Wrongly},\n"
                         "\tPublisher = {University of Chicago Press},\n\tPages")
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config.update(enrich_missing_fields=False, validate_entries=False, render_check=False,
@@ -213,6 +214,10 @@ def test_pipeline_fills_from_the_library_before_gemini():
     def fake_enrich(self, e, c):      # Scholar supplied the Location
         self._scholar_fields().update({"location", "publisher"})
         return e, None
+
+    def fake_verify(self, e, c):      # Claude recollected the Booksubtitle
+        self.inferred_fields = ["booksubtitle"]
+        return e, False
     biblio_agent.EXTRACTORS[".fake"] = lambda path, **kw: extract_pages.SourceContent(
         text="Nora New, On Silence", label="PDF")
     err = io.StringIO()
@@ -223,7 +228,7 @@ def test_pipeline_fills_from_the_library_before_gemini():
                                   return_value={"answers": answers, "usage": []}), \
                 mock.patch.object(biblio_agent.BiblioAgent, "enrich_entry", fake_enrich), \
                 mock.patch.object(biblio_agent.BiblioAgent, "verify_and_flag_recollection",
-                                  lambda self, e, c: (e, False)):
+                                  fake_verify):
             agent.config["enrich_missing_fields"] = True
             src = Path(td) / "x.fake"
             src.write_text("x")
@@ -236,6 +241,9 @@ def test_pipeline_fills_from_the_library_before_gemini():
     assert "Location = {Chicago}" in e and "Paris" not in e, e
     # Scholar's Publisher, confirmed by the library, is no longer Gemini's to replace.
     assert "Publisher = {University of Chicago Press}" in e and "Gemini House" not in e, e
+    # A recollected value gives way to the library's, and is no longer inferred.
+    assert "Booksubtitle = {Theory and Practice}" in e and "Remembered" not in e, e
+    assert "booksubtitle" not in result.inferred_fields, result.inferred_fields
     assert "Library (" in (result.field_sources or ""), result.field_sources
     prompt = agent.client.messages.calls[1]["messages"][0]["content"][-1]["text"]
     assert "house form" in prompt and "@incollection{Alpha2010" in prompt, prompt[-600:]
