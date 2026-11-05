@@ -14,7 +14,7 @@ checking before you cite from them. macOS only; BibDesk is optional.
 Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
 
 - [Rationale](#rationale)
-- [What it does](#what-it-does)
+- [How it works](#how-it-works)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Usage](#usage)
