@@ -44,7 +44,7 @@ For each source, sequentially:
 3. **Estimates the entry fields**: with Claude, given the previously estimated type, per the extraction rules and your
    house style.
 4. **Retrieves missing locators**: volume, number, pages, chapter, book title and, for books, publisher, from the work's CrossRef record, with Google Scholar as a fallback [`enrich_missing_fields`].
-5. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [enrich_missing_fields].
+5. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
 6. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) inherits its container's (e.g., book's) fields from the library for consistency [`library_match`].
 7. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), from Gemini's search-grounded answers [`gemini_type_check`].
 8. **Enforces house style compliance**: i.e., with the library's normalization rules and spellings
