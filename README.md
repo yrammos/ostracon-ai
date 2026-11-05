@@ -49,9 +49,10 @@ For each source, sequentially:
 5. **Recollection verification**: fields not read from the source are checked against the same
    records; CrossRef corrects them where it can, and the rest are reported as
    inferred [`enrich_missing_fields`].
-6. **Library reconciliation**: duplicates reported; a chapter takes its book's fields from the
-   library [`library_match`].
-7. **Missing-field retrieval #2**: from Gemini [`gemini_type_check`].
+6. **Library reconciliation**: duplicates reported; an item (e.g., chapter) inherits its container's (e.g., book's) fields from the
+   library for consistency [`library_match`].
+7. **Residual-field completion**: from Gemini's search-grounded answers, for
+   fields still missing [`gemini_type_check`].
 8. **House style compliance**: with the library's normalization rules and spellings
    [`house_cleanup`].
 9. **Validation**: by biber against biblatex-chicago's data model, with one repair
@@ -129,7 +130,7 @@ repository.
 | `interactive_ocr` | `true` | Ask for the OCR language; `false` uses `default_ocr_language` (`eng`). |
 | `library_bib_file` | — | Your library, for `library_match`, `house_cleanup` and `library_exemplars`. |
 | `library_exemplars` | `false` | Show Claude up to three library entries as models of form. |
-| `library_match` | `true` | Report duplicates; fill a chapter's book fields from the library. |
+| `library_match` | `true` | Report duplicates; an item inherits its container's fields from the library. |
 | `max_tokens` | `4000` | Ceiling per response. |
 | `model` | `claude-sonnet-4-6` | Claude model. |
 | `ocr_threshold` | `100` | Words below which a page is OCR'd. |
