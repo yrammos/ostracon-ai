@@ -24,6 +24,7 @@ import enrich
 import gemini_search
 import type_fields
 import house_style
+import library_match
 import repairs
 from api_keys import resolve_api_keys
 
@@ -900,6 +901,8 @@ excerpt's text won't (e.g. an embedded Author field):
         prompt = self.build_prompt(content)
         if decided:
             prompt += self._decided_type_instruction(decided, gemini.get('reason') or '')
+        if self.config.get('library_exemplars'):
+            prompt += self._exemplar_block(decided, gemini)
 
         # Call Claude API
         if model_override:
@@ -970,6 +973,14 @@ excerpt's text won't (e.g. an embedded Author field):
                 if replaced:
                     note = "CrossRef replaced recollection: " + ", ".join(replaced)
                     field_sources = f"{field_sources}; {note}" if field_sources else note
+
+            # The library (library_match): a duplicate is reported; a chapter
+            # whose book the library holds takes the book's fields in the
+            # library's form. After the grounding audit, which would report
+            # them as inferred; before Gemini's answers, which fill gaps only,
+            # so the library outranks them.
+            if entry is not None and self.config.get('library_match', True):
+                bibtex_entry, field_sources = self._match_library(bibtex_entry, field_sources)
 
             # Gemini's field answers go in after the grounding audit, which
             # would otherwise report them as inferred: they fill gaps only and
@@ -1260,6 +1271,73 @@ else, using null for anything the text does not show:
             info['questions_status'] = 'answered'
             info['questions'] = questions
             info['answers'] = qa['answers']
+
+    def _library(self):
+        """(Lib or None, citekeys never matched). library_exclude_keys is set
+        by the eval harness: its sources are library entries themselves."""
+        lib = library_match.load(self.config.get('library_bib_file'))
+        return lib, set(self.config.get('library_exclude_keys') or ())
+
+    def _match_library(self, entry_text, field_sources):
+        """Duplicates logged; container fields from the library's siblings
+        filled (library_match.container_fill). (entry_text, field_sources)."""
+        try:
+            lib, exclude = self._library()
+        except Exception as e:  # noqa: BLE001 - the library must never cost the entry
+            self._log(f"   ⚠️  Library unreadable ({e}) - no matching", 'warning')
+            return entry_text, field_sources
+        if lib is None:
+            return entry_text, field_sources
+        dups = library_match.duplicates(entry_text, lib, exclude)
+        if dups:
+            # Kept on the saved entry too: in a batch the log line scrolls past.
+            self._log(f"   ⚠️  Already in the library as {', '.join(dups)}", 'warning')
+            note = "Already in library as " + ", ".join(dups)
+            field_sources = f"{field_sources}; {note}" if field_sources else note
+        etype = enrich.get_entry_type(entry_text)
+        allowed = {f for f, _ in type_fields.fields_for(etype)} or None
+        scholar = self._scholar_fields()
+        entry_text, r = library_match.container_fill(
+            entry_text, lib, allowed=allowed, replaceable=set(scholar),
+            exclude=exclude | set(dups))
+        # A value the library now holds or confirms is no longer Scholar's
+        # alone, so Gemini's answer does not outrank it.
+        scholar.difference_update(r['replaced'] + r['snapped'] + r['confirmed'])
+        filled = r['added'] + r['replaced']
+        if filled:
+            note = f"Library ({', '.join(r['siblings'])}): " + ", ".join(filled)
+            field_sources = f"{field_sources}; {note}" if field_sources else note
+            self._log(f"   Filled from the library's {', '.join(r['siblings'])}: {', '.join(filled)}", 'info')
+        for f in r['snapped']:
+            self._log(f"   {f.capitalize()}: the library's spelling", 'info')
+        for d in r['differs']:
+            self._log(f"   Library differs (entry kept) - {d}", 'info')
+        if r['disagree']:
+            self._log(f"   Library siblings disagree, left alone: {', '.join(r['disagree'])}", 'info')
+        return entry_text, field_sources
+
+    EXEMPLAR_INTRO = (
+        "\n\nEntries from the user's own library, in the house form this entry should "
+        "follow (field choice, spelling of names, places and publishers, title casing). "
+        "They describe other works: take their form, never their values, unless the "
+        "source shows the same value.\n")
+
+    def _exemplar_block(self, decided, gemini):
+        """library_exemplars: up to three library entries for the prompt - the
+        container's own (from the identity call) first, then the decided
+        type's. '' when there is no library or nothing to show."""
+        try:
+            lib, exclude = self._library()
+        except Exception:  # noqa: BLE001
+            return ''
+        ident = (gemini or {}).get('identity') or {}
+        container = ident.get('container') if isinstance(ident.get('container'), str) else None
+        found = library_match.exemplars(lib, entry_type=decided, container=container,
+                                        exclude=exclude, n=int(self.config.get('library_exemplar_count', 3)))
+        if not found:
+            return ''
+        self._log(f"   Showing {len(found)} library entr{'y' if len(found) == 1 else 'ies'} as house-form examples", 'info')
+        return self.EXEMPLAR_INTRO + "\n\n".join(found)
 
     def _scholar_fields(self):
         """This source's fields whose value came only from Google Scholar - a

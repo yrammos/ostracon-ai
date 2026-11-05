@@ -347,6 +347,9 @@ def main(argv=None):
         def run_one(citekey, source):
             agent.config['default_ocr_language'] = ocr_language_hint(
                 expected_entries.get(citekey), base_lang)
+            # Each source is a library entry itself: library_match must not
+            # find it there, or the duplicate's fields would score as extracted.
+            agent.config['library_exclude_keys'] = {citekey}
             agent.usage = []
             try:
                 return run_pipeline(agent, source, citekey=citekey, save_dir=args.last_run_dir)

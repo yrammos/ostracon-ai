@@ -50,6 +50,9 @@ For each source in turn:
    result for fields drawn from Claude's recollection rather than from the
    source. A recollected value is replaced when a CrossRef record confirmed to
    be this work (by DOI, or by an author the source gives) disagrees with it.
+   Given `library_bib_file`, a work the library already holds is reported, and a
+   chapter whose book the library holds takes that book's fields in the
+   library's form (outranking Gemini and Scholar; never a value from the source).
 5. Applies the library's own cleanup rules (`src/bib_normalize.py`) and, given
    `library_bib_file`, the library's spelling of degree strings, places and
    publishers it already holds.
@@ -126,7 +129,9 @@ reaches Gemini when `gemini_type_check` is off.
 
 `python3 dev/test_recollection.py` and `python3 dev/test_house_style.py`
 self-test the CrossRef replacement of recollected values and the per-entry
-house cleanup, with constructed fixtures.
+house cleanup, with constructed fixtures. `python3 dev/test_library_match.py`
+does the same for library matching; `python3 dev/library_match_coverage.py
+dev/eval/expected.bib` measures it, read-only, against the library.
 
 `python3 dev/test_repairs.py` self-tests the cleanup spec's repairs: the mechanical rules
 (`src/repairs.py`), the one repair call and the render check, with Claude and TeX stubbed.
@@ -180,6 +185,8 @@ absent from disk is an error at startup, not a warning.
 | `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
 | `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
 | `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |
+| `library_match`         | `true`              | Given `library_bib_file`: log a work already in the library; fill a chapter's book fields (Booktitle, Editor, Publisher, Location, Series…) from the library's other chapters of the same book, or the book's own entry, when title and year match. Fills gaps and replaces values found only by a search; a value read from the source stands. |
+| `library_exemplars`     | `false`             | Show the extraction up to three library entries (same container, else the type Gemini decided) as house-form examples. |
 | `repair_entries`        | `true`              | When biber still rejects an entry after cleanup, one Claude call repairs it (re-type only if Gemini did not decide the type; never a value the source lacks). What remains colours the entry. |
 | `render_check`          | `false`             | `true`: compile each entry and check what prints. A compile failure, a field that never reaches the page (moved into `Note`), or quotes nested wrongly colours the entry. About 3 s a source. |
 | `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
@@ -397,6 +404,7 @@ ostracon-ai/
 │   ├── bib_audit.py        # Shared .bib scanner and rule predicates (dev/ links here)
 │   ├── bib_normalize.py    # The library's normalizer rules (dev/ links here)
 │   ├── house_style.py      # Those rules and the library's spellings, on each new entry
+│   ├── library_match.py    # Duplicates, a chapter's book fields, exemplars from the library
 │   ├── gemini_search.py    # Gemini type decision and closed questions
 │   ├── type_fields.py      # The fields each type takes, from the biblatex manual
 │   ├── repairs.py          # Mechanical repairs from the library cleanup spec
@@ -418,6 +426,8 @@ ostracon-ai/
 │   ├── test_bib_validate.py, test_bib_render.py # Their self-tests
 │   ├── test_gemini_search.py, test_gemini_step.py # Gemini self-tests, network stubbed
 │   ├── test_recollection.py, test_house_style.py # CrossRef replacement; house cleanup
+│   ├── test_library_match.py # Library matching; constructed fixtures
+│   ├── library_match_coverage.py # Read-only: sibling coverage and precision on a .bib
 │   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
 │       ├── run.py                # Scores dev/eval/sample/ against expected.bib
 │       ├── scorer.py             # Field-level comparison
