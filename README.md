@@ -35,7 +35,7 @@ The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirr
 
 The agent assumes the Chicago Manual of Style throughout. Adapting it to another style, such as APA, is left as a trivial exercise for the reader.
 
-## What it does
+## How it works
 
 For each source:
 
