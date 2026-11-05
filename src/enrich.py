@@ -1040,7 +1040,7 @@ def container_fields_missing(fields, entry_type=None):
 
 def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
                          crossref_email=None, scrapingdog_api_key=None, log=None,
-                         provenance=None):
+                         provenance=None, confirmed=None):
     """
     Attempt to confirm or refute entry fields Claude flagged as sourced from
     its own background knowledge of the work rather than the PDF text/metadata,
@@ -1066,6 +1066,9 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
     than the correct one (0.65 vs 0.41) - so Scholar's own search relevance
     ranking (particularly title+author combined) is trusted directly, taking
     its top result, rather than re-ranked by a heuristic proven unreliable.
+
+    `confirmed`, if given (a set), learns which fields a found record states
+    exactly as the entry does: confirmed, so no longer inferred.
 
     `log`, if given, is called with short human-readable strings describing
     what was searched and what each source returned, for transparency into
@@ -1222,6 +1225,8 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
             verified_value = ' and '.join(names)
             if not _exact_match(claimed, verified_value):
                 _maybe_reconcile(field, claimed, verified_value)
+            elif confirmed is not None:
+                confirmed.add(field)
         else:
             verified_value = verified.get(field)
             if not verified_value:
@@ -1229,6 +1234,8 @@ def verify_recollection(work_title, flagged_fields, entry_fields, year=None,
                 continue
             if not _exact_match(claimed, verified_value):
                 _maybe_reconcile(field, claimed, verified_value)
+            elif confirmed is not None:
+                confirmed.add(field)
 
     additions = {}
     for field in _CONTAINER_FIELDS:
