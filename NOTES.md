@@ -57,7 +57,7 @@ maintained by hand: no pricing API exists to read it from.
 
 ## The orchestration
 
-The pipeline, step by step, is in [`README.md`](README.md#what-it-does); the code
+The pipeline, step by step, is in [`README.md`](README.md#how-it-works); the code
 is `extract_bibtex()` in `src/biblio_agent.py`. The branching belongs to the
 harness around the model calls: the bibliographic judgment happens inside the
 Claude calls (identity, extraction, merge, audit, reconciliation, repair) and
