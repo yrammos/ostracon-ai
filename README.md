@@ -46,9 +46,10 @@ For each source, sequentially:
    house style.
 4. **Missing-field retrieval #1**: from CrossRef, with Google Scholar as a fallback
    [`enrich_missing_fields`].
-5. **Recollection verification**: fields not read from the source are checked against the same
-   records; CrossRef corrects them where it can, and the rest are reported as
-   inferred [`enrich_missing_fields`].
+5. **Recollection verification**: fields that Claude wrote from memory rather
+   than from the PDF or web page are looked up in CrossRef, with Google Scholar as
+   a fallback. A CrossRef record of the same work may correct them; those that
+   neither confirms are reported as inferred [`enrich_missing_fields`].
 6. **Library reconciliation**: duplicates reported; an item (e.g., chapter) inherits its container's (e.g., book's) fields from the
    library for consistency [`library_match`].
 7. **Residual-field completion**: from Gemini's search-grounded answers, for
