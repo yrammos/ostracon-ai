@@ -37,25 +37,25 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 
 ## How it works
 
-For each source:
+For each source, sequentially:
 
-1. **Text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
-2. **Entry type**: decided by Gemini, grounded in Google Search
-   [`gemini_type_check`]; otherwise by Claude, in step 3.
-3. **Entry**: written by Claude under that type, per the extraction rules and your
+1. **Text extraction**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
+2. **Entry type estimation**: by Gemini, based on a Google Search
+   [`gemini_type_check`]; otherwise by Claude in step 3.
+3. **Entry field estimation**: by Claude under the estimated type, per the extraction rules and your
    house style.
-4. **Missing fields**: from CrossRef and Google Scholar. Fields absent from the
+4. **Missing-field retrieval #1**: from CrossRef and Google Scholar. Fields absent from the
    source are checked against CrossRef; unconfirmed ones are reported
    [`enrich_missing_fields`].
-5. **Library**: duplicates reported; a chapter takes its book's fields from the
+5. **Library reconciliation**: duplicates reported; a chapter takes its book's fields from the
    library [`library_match`].
-6. **Remaining fields**: from Gemini [`gemini_type_check`].
-7. **House style**: the library's normalization rules and spellings
+6. **Missing-field retrieval #2**: from Gemini [`gemini_type_check`].
+7. **House style compliance**: with the library's normalization rules and spellings
    [`house_cleanup`].
 8. **Validation**: by biber against biblatex-chicago's data model, with one repair
    by Claude [`validate_entries`, `repair_entries`]; a test compile shows that
    every field prints [`render_check`].
-9. **Output**: the staging file, or BibDesk [`autofile_bibdesk`].
+9. **Output**: to the staging file, or in BibDesk [`autofile_bibdesk`].
 
 **Precedence**: the source and a matching CrossRef record; the library; Gemini;
 Google Scholar and unconfirmed recollection. Borrowed values are listed in the
