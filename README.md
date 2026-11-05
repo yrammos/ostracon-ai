@@ -45,7 +45,7 @@ For each source, sequentially:
    house style.
 4. **Retrieves missing locators**: volume, number, pages, chapter, book title and, for books, publisher, from the work's CrossRef record, with Google Scholar as a fallback [`enrich_missing_fields`].
 5. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
-6. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) inherits its container's (e.g., book's) fields from the library for consistency [`library_match`].
+6. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) and its container (e.g., book) inherit each other's fields from the library for consistency, whichever was entered first; supplements (e.g., an introduction) and their books likewise [`library_match`].
 7. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), from Gemini's search-grounded answers [`gemini_type_check`].
 8. **Enforces house style compliance**: i.e., with the library's normalization rules and spellings
    [`house_cleanup`].
@@ -135,7 +135,7 @@ repository.
 | `interactive_ocr` | `true` | Ask for the OCR language; `false` uses `default_ocr_language` (`eng`). |
 | `library_bib_file` | — | Your library, for `library_match`, `house_cleanup` and `library_exemplars`. |
 | `library_exemplars` | `false` | Show Claude up to three library entries as models of form. |
-| `library_match` | `true` | Report duplicates; fill a chapter's book fields from the library. |
+| `library_match` | `true` | Report duplicates; an item and its container inherit each other's fields from the library. |
 | `max_tokens` | `4000` | Ceiling per response. |
 | `model` | `claude-sonnet-4-6` | Claude model. |
 | `ocr_threshold` | `100` | Words below which a page is OCR'd. |
