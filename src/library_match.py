@@ -10,7 +10,10 @@ Three uses, all deterministic and offline:
   inproceedings/proceedings, inbook/book, inreference/reference) - inherits
   the container's fields in the library's form: gaps filled, a value from a
   search or unconfirmed recollection replaced, a value from the source kept.
-  An article takes only its journal's spelling. Gated: same container title,
+  Inheritance runs both ways: a new container inherits from its parts, and a
+  supplement (suppbook, suppcollection) and its book from each other, whichever
+  is new (SUPP_PAIRS, REVERSE_PAIRS, CONTAINER_TYPES). An article takes only
+  its journal's spelling. Gated: same container title,
   same year (an online reference work: both online), and no disagreement on
   volume, editor, maintitle or edition; a field the parts disagree on, or most
   of them lack, is left alone.
@@ -50,8 +53,31 @@ PAIRS = {'incollection': {'collection', 'mvcollection'},
          'inbook': {'book', 'mvbook'},
          'bookinbook': {'book', 'mvbook'},
          'inreference': {'reference', 'mvreference'}}
+# A supplement (an introduction, preface, glossary or liner notes) keeps its
+# book in Title, as biblatex-chicago has it, and the book's author in
+# Bookauthor. It inherits the book's own fields from the book's entry, and the
+# inheritance runs both ways (maintainer's ruling, 2026-11-05): a supplement
+# is sometimes entered months before its book, so a new book inherits the same
+# fields from its supplements already in the library.
+SUPP_PAIRS = {'suppbook': {'book', 'mvbook', 'collection', 'mvcollection'},
+              'suppcollection': {'collection', 'mvcollection'}}
+REVERSE_PAIRS = {'book': {'suppbook'}, 'mvbook': {'suppbook'},
+                 'collection': {'suppbook', 'suppcollection'},
+                 'mvcollection': {'suppbook', 'suppcollection'}}
+# The book's fields as a supplement writes them. Editor goes only to and from a
+# suppcollection: a suppbook's Editor is its own (a performer, say).
+BOOK_FIELDS = ('subtitle', 'translator', 'publisher', 'location', 'series', 'number',
+               'volumes', 'maintitle', 'mainsubtitle', 'maintitleaddon', 'edition',
+               'origlanguage')
+EDITOR_FIELDS = ('editor', 'editortype', 'editora', 'editoratype', 'editorb', 'editorbtype')
 ROLE_NAMES = {'editor', 'editora', 'editorb'}
 CHILD_TYPES = set(PAIRS)
+SUPP_TYPES = set(SUPP_PAIRS)
+# Inheritance runs both ways for every part-whole pair (maintainer's ruling,
+# 2026-11-05): a new container inherits from its parts already in the library,
+# the part's fields under the container's names.
+CONTAINER_TYPES = set().union(*PAIRS.values()) | set(REVERSE_PAIRS)
+CHILD_MAP = {v: k for k, v in PARENT_MAP.items() if k != 'title'}
 # An entry in a reference work keeps the work in Title (biblatex-chicago,
 # with its own heading in Lista), so it inherits the work's fields under their
 # own names; its Volume is the article's, not the work's.
@@ -146,14 +172,16 @@ def duplicates(entry_text, lib, exclude=()):
     doi = f.get('doi', '').lower()
     if doi:
         hits += [lib.entries[i][0] for i in lib.by_doi.get(doi, [])
-                 if not _title_key(f) or _title_key(lib.entries[i][2]) == _title_key(f)]
+                 if (lib.entries[i][1] in SUPP_TYPES) == (_etype(entry_text) in SUPP_TYPES)
+                 and (not _title_key(f) or _title_key(lib.entries[i][2]) == _title_key(f))]
     t, y = f.get('title'), _year(f) or (f.get('urldate') or '')[:4] or None
     first = (_surnames(f.get('author') or f.get('editor')) or [None])[0]
     if t and y and first:
         tk = _title_key(f)
         for i in lib.by_title.get(_key(t), []):
             k, _ty, g = lib.entries[i]
-            if (_title_key(g) == tk and (_year(g) or (g.get('urldate') or '')[:4]) == y
+            if ((_ty in SUPP_TYPES) == (_etype(entry_text) in SUPP_TYPES)
+                    and _title_key(g) == tk and (_year(g) or (g.get('urldate') or '')[:4]) == y
                     and first in _surnames(g.get('author') or g.get('editor'))):
                 hits.append(k)
     seen = set(exclude)
@@ -171,13 +199,95 @@ def _online(f):
 
 
 def container(entry_text):
-    """(etype, the container's title) for a part type, else (etype, None):
-    Booktitle, or Title for an entry in a reference work."""
+    """(etype, the title that links it to related library entries), else
+    (etype, None): a part's Booktitle; Title for an entry in a reference work,
+    a supplement, or a book that supplements may belong to."""
     f = _fields(entry_text)
     etype = _etype(entry_text)
-    if etype not in CHILD_TYPES:
-        return etype, None
-    return etype, f.get('title' if etype == 'inreference' else 'booktitle')
+    if etype in CHILD_TYPES:
+        return etype, f.get('title' if etype == 'inreference' else 'booktitle')
+    if etype in SUPP_TYPES or etype in CONTAINER_TYPES:
+        return etype, f.get('title')
+    return etype, None
+
+
+def inherited_fields(etype):
+    """The fields an entry of this type may inherit from the library."""
+    if etype == 'inreference':
+        return REFERENCE_FIELDS
+    if etype in CHILD_TYPES:
+        return SIBLING_FIELDS
+    if etype == 'suppbook':
+        return BOOK_FIELDS + ('bookauthor',)
+    if etype == 'suppcollection':
+        return BOOK_FIELDS + EDITOR_FIELDS
+    if etype in ('reference', 'mvreference'):
+        return REFERENCE_FIELDS
+    if etype in CONTAINER_TYPES:
+        names = tuple(x for x in CHILD_MAP.values() if x not in BOOK_FIELDS + EDITOR_FIELDS)
+        return BOOK_FIELDS + EDITOR_FIELDS + names + (('author',) if etype in ('book', 'mvbook') else ())
+    return ()
+
+
+def _book_side(etype, g_type, g):
+    """{field: value} a supplement or book takes from a related entry g: the
+    book's fields under the supplement's names, or the reverse."""
+    out = {x: g[x] for x in BOOK_FIELDS if x in g}
+    pair_has_editor = 'suppcollection' in (etype, g_type)
+    if pair_has_editor:
+        out.update({x: g[x] for x in EDITOR_FIELDS if x in g})
+    if etype in SUPP_TYPES and g_type in SUPP_TYPES and 'bookauthor' in g:
+        out['bookauthor'] = g['bookauthor']           # a sibling supplement
+    elif etype in SUPP_TYPES and g_type in ('book', 'mvbook') and 'author' in g:
+        out['bookauthor'] = g['author']               # the book's own entry
+    elif etype in ('book', 'mvbook') and 'bookauthor' in g:
+        out['author'] = g['bookauthor']               # the reverse
+    return out
+
+
+def _part_candidates(f, etype, lib, skip):
+    """[(key, mapped, g)]: a new container's parts already in the library
+    (chapters, papers, reference entries), their container fields under the
+    container's own names."""
+    parts = {p for p, cs in PAIRS.items() if etype in cs}
+    name = f.get('title')
+    found, seen = [], set()
+    for key in {_key(name), _key(name + ' ' + f.get('subtitle', ''))}:
+        pool = (lib.by_title.get(key, []) if 'inreference' in parts else []) + lib.by_container.get(key, [])
+        for i in pool:
+            k, t, g = lib.entries[i]
+            if t not in parts or k in skip or k in seen:
+                continue
+            if t != 'inreference' and _key(g.get('booktitle', '')) != key and \
+                    _key(g.get('booktitle', '') + ' ' + g.get('booksubtitle', '')) != key:
+                continue
+            seen.add(k)
+            mapped = ({x: g[x] for x in REFERENCE_FIELDS if x in g} if t == 'inreference'
+                      else {CHILD_MAP[x]: g[x] for x in CHILD_MAP if x in g})
+            # A part's Volume is its own volume of a multivolume work; the
+            # library's book entries often stand for the whole set. Not
+            # inherited (measured 2026-11-05: 4 of 22 wrong fills).
+            mapped.pop('volume', None)
+            found.append((k, mapped, g))
+    return found
+
+
+def _supplement_candidates(f, etype, lib, skip):
+    """[(key, mapped, g)]: a supplement's siblings (same type, same Title) and
+    its book's entry; or a book's supplements already in the library."""
+    name = f.get('title')
+    keys = {_key(name), _key(name + ' ' + f.get('subtitle', ''))}
+    related = SUPP_PAIRS[etype] | {etype} if etype in SUPP_TYPES else REVERSE_PAIRS.get(etype, set())
+    if not related:
+        return []
+    found, seen = [], set()
+    for key in keys:
+        for i in lib.by_title.get(key, []):
+            k, t, g = lib.entries[i]
+            if t in related and k not in skip and k not in seen:
+                seen.add(k)
+                found.append((k, _book_side(etype, t, g), g))
+    return found
 
 
 def siblings(entry_text, lib, exclude=(), year_gate=True):
@@ -191,6 +301,25 @@ def siblings(entry_text, lib, exclude=(), year_gate=True):
     etype, name = container(entry_text)
     if not name:
         return []
+    if etype in SUPP_TYPES or etype in CONTAINER_TYPES:
+        online = etype in ('reference', 'mvreference') and _online(f)
+        if year_gate and not online and not _year(f):
+            return []
+        skip = set(exclude) | set(duplicates(entry_text, lib))
+        found = _supplement_candidates(f, etype, lib, skip)
+        if etype in CONTAINER_TYPES:
+            found += _part_candidates(f, etype, lib, skip)
+        out = []
+        for k, mapped, g in found:
+            if etype in ('reference', 'mvreference') and _online(g) != online:
+                continue
+            if year_gate and not online and _year(g) != _year(f):
+                continue
+            if not all(_agree(f, mapped, x) for x in
+                       ('volume', 'edition', 'editor', 'maintitle', 'bookauthor', 'author')):
+                continue
+            out.append((k, mapped))
+        return out
     reference = etype == 'inreference'
     dated = year_gate and not (reference and _online(f))
     if dated and not _year(f):

@@ -71,9 +71,11 @@ def main():
             continue
         if not lm.container(entry)[1]:
             continue
-        part = 'reference entries' if e.etype == 'inreference' else 'chapters'
+        part = ('reference entries' if e.etype == 'inreference' else
+                'supplements' if e.etype in lm.SUPP_TYPES else
+                'containers (from parts)' if e.etype in lm.CONTAINER_TYPES else 'chapters')
         stats[part] += 1
-        inherited = lm.REFERENCE_FIELDS if e.etype == 'inreference' else lm.SIBLING_FIELDS
+        inherited = lm.inherited_fields(e.etype)
         full = lm._fields(entry)
         thin = entry
         for f in e.fields:
@@ -87,11 +89,13 @@ def main():
         if not r['siblings']:
             continue
         stats[f'{part} with sibling'] += 1
+        stats[f'{part}: fields filled'] += len(r['added'])
         got = lm._fields(out)
         for x in r['added']:
             stats['fields filled'] += 1
             if x in full and _key(full[x]) == _key(got[x]):
                 stats['fields filled correctly'] += 1
+                stats[f'{part}: fields filled correctly'] += 1
             else:
                 wrong.append(f"{e.citekey}.{x}: filled {got[x]!r}; expected {full.get(x)!r}")
         stats['fields left (siblings disagree)'] += len(r['disagree'])

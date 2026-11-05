@@ -257,6 +257,102 @@ def test_reference_entries_and_shared_dois_are_not_mistaken_for_duplicates():
     assert lm.duplicates(chapter, lib2) == []
 
 
+SUPP_LIB = r"""@book{Kristeva1984,
+	author = {Kristeva, Julia},
+	date = {1984},
+	location = {New York},
+	publisher = {Columbia University Press},
+	title = {Revolution in Poetic Language},
+	translator = {Waller, Margaret}}
+
+@suppbook{Intro1990,
+	author = {Writer, Wanda},
+	bookauthor = {Author, Abe},
+	date = {1990},
+	location = {Chicago},
+	publisher = {University of Chicago Press},
+	title = {A Book Entered Late},
+	type = {preface to}}
+
+@collection{Handbook2011,
+	date = {2011},
+	editor = {Gollin, Edward and Rehding, Alexander},
+	location = {Oxford},
+	publisher = {Oxford University Press},
+	title = {The Oxford Handbook}}
+"""
+
+
+def test_a_supplement_inherits_its_books_fields():
+    lib = _lib_with(SUPP_LIB)
+    new = ("@suppbook{N,\n\tAuthor = {Roudiez, Leon},\n\tTitle = {Revolution in Poetic Language},\n"
+           "\tType = {introduction to},\n\tDate = {1984}\n}")
+    out, r = lm.container_fill(new, lib)
+    assert r["siblings"] == ["Kristeva1984"], r
+    for x in ("Bookauthor = {Kristeva, Julia}", "Translator = {Waller, Margaret}",
+              "Publisher = {Columbia University Press}", "Location = {New York}"):
+        assert x in out, (x, out)
+    assert lm.duplicates(new, lib) == []          # a supplement is not its book
+    assert lm.container_fill(new.replace("{1984}", "{1999}"), lib)[1]["siblings"] == []
+
+
+def test_a_suppbook_in_a_collection_takes_no_editor_and_a_suppcollection_does():
+    lib = _lib_with(SUPP_LIB)
+    glossary = ("@suppbook{N,\n\tAuthor = {Gollin, Edward},\n\tTitle = {The Oxford Handbook},\n"
+                "\tType = {glossary in},\n\tDate = {2011}\n}")
+    out, _ = lm.container_fill(glossary, lib)
+    assert "Publisher = {Oxford University Press}" in out and "Editor" not in out, out
+    out, _ = lm.container_fill(glossary.replace("@suppbook", "@suppcollection"), lib)
+    assert "Editor = {Gollin, Edward and Rehding, Alexander}" in out, out
+
+
+def test_a_book_inherits_from_its_supplement_entered_first():
+    lib = _lib_with(SUPP_LIB)
+    book = "@book{N,\n\tTitle = {A Book Entered Late},\n\tDate = {1990}\n}"
+    out, r = lm.container_fill(book, lib)
+    assert r["siblings"] == ["Intro1990"], r
+    assert "Author = {Author, Abe}" in out and "Publisher = {University of Chicago Press}" in out, out
+    assert "Writer" not in out and "preface" not in out, out
+    # Another author: not this book.
+    other = book.replace("\tDate", "\tAuthor = {Else, Eli},\n\tDate")
+    assert lm.container_fill(other, lib)[1]["siblings"] == []
+
+
+def test_a_container_inherits_from_its_parts_entered_first():
+    # LIBRARY holds two chapters of Essays on Listening (and its own entry,
+    # excluded here); a new entry for the book inherits from the chapters.
+    lib = lm.load(_lib())
+    book = "@collection{N,\n\tTitle = {Essays on Listening},\n\tDate = {2010}\n}"
+    out, r = lm.container_fill(book, lib, exclude={"Editor2010"})
+    assert sorted(r["siblings"]) == ["Alpha2010", "Beta2010"], r
+    for x in ("Subtitle = {Theory and Practice}", "Editor = {Editor, Eve}",
+              "Publisher = {University of Chicago Press}", "Location = {Chicago}"):
+        assert x in out, (x, out)
+    assert "Gamma" not in str(r) and "Faber" not in out      # the 1995 book
+    # A @book of that title is not the chapters' container (incollection pairs with collection).
+    assert lm.container_fill(book.replace("@collection", "@book"), lib,
+                             exclude={"Editor2010"})[1]["siblings"] == []
+
+
+def test_a_container_does_not_inherit_a_parts_volume():
+    lib_text = LIBRARY.replace("\tpages = {1-20},", "\tpages = {1-20},\n\tvolume = {2},")
+    p = Path(tempfile.mkdtemp()) / "lib.bib"
+    p.write_text(lib_text.replace("title = {On Echoes}}", "title = {On Echoes},\n\tvolume = {2}}"),
+                 encoding="utf-8")
+    book = "@collection{N,\n\tTitle = {Essays on Listening},\n\tDate = {2010}\n}"
+    out, _ = lm.container_fill(book, lm.load(p), exclude={"Editor2010"})
+    assert "Volume" not in out and "Publisher" in out, out
+
+
+def test_a_reference_work_inherits_from_its_entries():
+    lib = _lib_with(REFERENCE_LIB)
+    work = ("@reference{N,\n\tTitle = {Music Online},\n\tEntrysubtype = {online},\n"
+            "\tUrldate = {2024-01-01}\n}")
+    out, r = lm.container_fill(work, lib)
+    assert sorted(r["siblings"]) == ["Ah2001", "Be2001"], r
+    assert "Publisher = {Oxford University Press}" in out, out
+
+
 def test_excluded_keys_are_never_matched():
     _, r = lm.container_fill(NEW, lm.load(_lib()), exclude={"Alpha2010", "Beta2010", "Editor2010"})
     assert r["siblings"] == [] and r["added"] == []
