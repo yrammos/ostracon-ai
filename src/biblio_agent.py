@@ -1297,12 +1297,19 @@ else, using null for anything the text does not show:
         etype = enrich.get_entry_type(entry_text)
         allowed = {f for f, _ in type_fields.fields_for(etype)} or None
         scholar = self._scholar_fields()
+        # The library outranks a value from a search snippet (Scholar) and one
+        # Claude recollected that no record confirmed (ruling 2026-11-05).
+        recollected = {f.lower() for f in self.inferred_fields}
         entry_text, r = library_match.container_fill(
-            entry_text, lib, allowed=allowed, replaceable=set(scholar),
+            entry_text, lib, allowed=allowed, replaceable=set(scholar) | recollected,
             exclude=exclude | set(dups))
-        # A value the library now holds or confirms is no longer Scholar's
-        # alone, so Gemini's answer does not outrank it.
-        scholar.difference_update(r['replaced'] + r['snapped'] + r['confirmed'])
+        # A value the library now holds or confirms is grounded: no longer
+        # Scholar's alone (so Gemini does not outrank it), nor inferred.
+        settled = set(r['replaced'] + r['snapped'] + r['confirmed'])
+        scholar.difference_update(settled)
+        if recollected & settled:
+            self.inferred_fields = [f for f in self.inferred_fields if f.lower() not in settled]
+            self._log(f"   The library settles recollected: {', '.join(sorted(recollected & settled))}", 'info')
         filled = r['added'] + r['replaced']
         if filled:
             note = f"Library ({', '.join(r['siblings'])}): " + ", ".join(filled)

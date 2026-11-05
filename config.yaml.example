@@ -134,7 +134,8 @@ repair_entries: true
 render_check: false
 # Given library_bib_file: report a work the library already holds, and give a
 # chapter whose book the library holds that book's fields in the library's form
-# (gaps and search-only values; a value read from the source stands).
+# (gaps, search-only and unconfirmed recollected values; a value read from
+# the source stands).
 library_match: true
 # Show the extraction up to three library entries (the container's, else the
 # decided type's) as house-form examples. Changes the prompt; off by default.
