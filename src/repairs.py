@@ -42,7 +42,7 @@ _ORDINAL_WORDS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, 
 # Publishers that keep "Press"/"Verlag" (spec §4) [house].
 _KEEPS_PRESS = re.compile(
     r"(university|universit|college|institute|institution|academy|academic press|free press|"
-    r"\bmit\b|\bsuny\b|seminary|psycho-analytical press|focal press|studio verlag|"
+    r"\bmit\b|\bsuny\b|seminary|psycho-analytical press|focal press|studio verlag|psychology press|"
     r"druckerei und verlag)", re.I)
 
 _ACCENTS = {"'": "́", "`": "̀", "^": "̂", '"': "̈", "~": "̃",

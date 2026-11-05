@@ -952,6 +952,7 @@ excerpt's text won't (e.g. an embedded Author field):
             # logged, not coloured: colour that marks most entries marks none.
             needs_color = False
             field_sources = None
+            self._local.scholar_fields = set()
 
             # Step 3a: the question bank, for the type the entry now has.
             if gemini is not None and entry is not None:
@@ -1260,13 +1261,26 @@ else, using null for anything the text does not show:
             info['questions'] = questions
             info['answers'] = qa['answers']
 
+    def _scholar_fields(self):
+        """This source's fields whose value came only from Google Scholar - a
+        search snippet, which Gemini's grounded answer outranks (ruling
+        2026-11-05). Reset per source in extract_bibtex."""
+        if getattr(self._local, 'scholar_fields', None) is None:
+            self._local.scholar_fields = set()
+        return self._local.scholar_fields
+
     def _apply_gemini_answers(self, entry_text, gemini, field_sources):
         """Step 3a's answers applied: (entry_text, field_sources, needs_color).
         A field Gemini fills is recorded in field_sources, not coloured; only a
         bank check or bank field that contradicts the entry colours it."""
         entry_text, report = gemini_search.apply_answers(
             entry_text, gemini['questions'], gemini.get('answers') or {},
-            gemini.get('final_type') or enrich.get_entry_type(entry_text))
+            gemini.get('final_type') or enrich.get_entry_type(entry_text),
+            outranks=self._scholar_fields())
+        if report.get('replaced'):
+            note = "Gemini over Scholar: " + ", ".join(report['replaced'])
+            field_sources = f"{field_sources}; {note}" if field_sources else note
+            self._log(f"   Gemini's value replaced Scholar's: {', '.join(report['replaced'])}", 'info')
         gemini['answer_report'] = report
         if report['added']:
             note = "Gemini: " + ", ".join(report['added'])
@@ -1437,6 +1451,7 @@ Journaltitle), Langid, and the bookkeeping fields as they are."""
         by_source = {}
         for field, source in field_sources.items():
             by_source.setdefault(source, []).append(field)
+        self._scholar_fields().update(f for f, src in field_sources.items() if src == 'Google Scholar')
         summary = '; '.join(f"{src}: {', '.join(sorted(fs))}" for src, fs in by_source.items())
         self._log(f"   Enriched -- {summary}", 'info')
 
@@ -1684,12 +1699,15 @@ BibLaTeX entry, with no additional commentary."""
 
         work_title = enrich.work_level_title(entry_type, fields)
         year = fields.get('date') or fields.get('year')
+        provenance = {}
         reconcile_candidates, additions, unresolved = enrich.verify_recollection(
             work_title, ungrounded, fields, year=year,
             crossref_email=self.config.get('crossref_email'),
             scrapingdog_api_key=self.config.get('scrapingdog_api_key'),
             log=lambda msg: self._log(f"     {msg}", 'dim'),
+            provenance=provenance,
         )
+        self._scholar_fields().update(f for f, src in provenance.items() if src == 'Google Scholar')
 
         if reconcile_candidates:
             entry_text = self.reconcile_fields(entry_text, content, reconcile_candidates)

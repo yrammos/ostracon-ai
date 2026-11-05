@@ -77,7 +77,7 @@ def test_first_city_and_publisher_short():
     assert "Location = {London}" in _fix(_e("book", location="London and New York"))[0]
     assert "Publisher = {Logos}" in _fix(_e("book", publisher="Logos Verlag"))[0]
     assert "Publisher = {Norton}" in _fix(_e("book", publisher="The Norton Company"))[0]
-    for keep in ("Oxford University Press", "MIT Press", "Academic Press", "SUNY Press"):
+    for keep in ("Oxford University Press", "MIT Press", "Academic Press", "SUNY Press", "Psychology Press"):
         assert f"Publisher = {{{keep}}}" in _fix(_e("book", publisher=keep))[0], keep
     # The library's own form wins: it keeps UMI Research Press.
     out = _fix(_e("book", publisher="UMI Research Press"),

@@ -124,6 +124,16 @@ def test_type_fields_follow_the_manual_and_the_house():
     assert "url" in names("online") and "booktitle" not in names("suppbook")
 
 
+def test_gemini_outranks_a_scholar_value_only():
+    entry = "@incollection{X,\n  Title = {T},\n  Publisher = {Routledge},\n  Location = {London},\n}"
+    qs = [{"id": "field_publisher", "use": "field publisher", "auto": True},
+          {"id": "field_location", "use": "field location", "auto": True}]
+    out, rep = gemini_search.apply_answers(entry, qs, {"field_publisher": "Brill", "field_location": "Leiden"},
+                                           "incollection", outranks={"publisher"})
+    assert "Publisher = {Brill}" in out and "Location = {London}" in out, out
+    assert rep["replaced"] == ["publisher"] and rep["differs"], rep
+
+
 def test_listed_types_are_the_21_in_the_prompt():
     import biblio_agent
     types = gemini_search.listed_types(biblio_agent.TYPE_DEFINITIONS)
