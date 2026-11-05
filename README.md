@@ -54,15 +54,26 @@ For each source, sequentially:
    every field prints [`render_check`].
 10. **Saves the output**: in the staging file, or in BibDesk [`autofile_bibdesk`].
 
-**Precedence**: the source and a matching CrossRef record; the library; Gemini;
-Google Scholar and unconfirmed recollection. Borrowed values are listed in the
-entry's `% Sources` comment.
+**Precedence.** Where two sources offer different values for the same field, a
+value read from the PDF or web page prevails, as does one from a CrossRef record
+confirmed to describe the same work. Below these come, in order, the library's
+value, Gemini's, and last a value from Google Scholar or one that Claude recalled
+without confirmation. The comments written above each entry name the origin of
+every value not read from the source (`% Sources`) and list the recalled values
+that nothing confirmed (`% INFERRED`).
 
-**Review colour** (amber in BibDesk): a biber rejection, a field that does not
-print, a thin or wrong source, or, with `require_langid`, a missing `Langid`.
+**Review colour.** An entry is coloured amber in BibDesk only when something has
+failed: biber still rejects it after the repair attempt, one of its fields does
+not appear in the printed citation, the source is too thin to trust or is not the
+work at all (a login page, for instance), or, with `require_langid`, it has no
+`Langid`. Doubts that could not be settled are logged, not coloured.
 
-**Blocked pages**: read from an open Safari or Chrome tab, from a new Chrome tab
-[`open_blocked_in_browser`], or from CrossRef when the URL contains a DOI.
+**Blocked pages.** When a bookmarked page cannot be fetched directly, because a
+bot challenge or a login wall stands in the way, it is read from a Safari or
+Chrome tab already showing it, which carries your session. Failing that, with
+`open_blocked_in_browser`, it is read from a Chrome tab opened and closed for the
+purpose; and failing that, if the URL contains a DOI, the entry is built from the
+CrossRef record.
 
 ![Progress window](screenshot.png)
 
