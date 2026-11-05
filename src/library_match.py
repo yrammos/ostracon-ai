@@ -93,6 +93,7 @@ _CACHE: dict = {}
 class Lib:
     def __init__(self, entries):
         self.entries = entries                        # [(key, type, {field: value})]
+        self.types = {k: t for k, t, _ in entries}
         self.by_container = collections.defaultdict(list)
         self.by_title = collections.defaultdict(list)
         self.by_journal = collections.defaultdict(list)
@@ -245,6 +246,27 @@ def _book_side(etype, g_type, g):
     return out
 
 
+def _book_author(t, g):
+    """The book's author as an entry of type t states it: a book's Author; a
+    supplement's Bookauthor; an inbook chapter's Bookauthor, else its Author."""
+    if t in ('book', 'mvbook'):
+        return g.get('author')
+    if t in SUPP_TYPES:
+        return g.get('bookauthor')
+    if t in ('inbook', 'bookinbook'):
+        return g.get('bookauthor') or g.get('author')
+    return None
+
+
+def _same_author(etype, f, g_type, g):
+    """Whether two related entries agree on the book's author, where both
+    state it; a generic title (Collected Essays) recurs across authors."""
+    mine, theirs = _book_author(etype, f), _book_author(g_type, g)
+    if not mine or not theirs:
+        return True
+    return bool(set(_surnames(mine)) & set(_surnames(theirs)))
+
+
 def _part_candidates(f, etype, lib, skip):
     """[(key, mapped, g)]: a new container's parts already in the library
     (chapters, papers, reference entries), their container fields under the
@@ -309,9 +331,19 @@ def siblings(entry_text, lib, exclude=(), year_gate=True):
         found = _supplement_candidates(f, etype, lib, skip)
         if etype in CONTAINER_TYPES:
             found += _part_candidates(f, etype, lib, skip)
+        g_type_of = lib.types
         out = []
         for k, mapped, g in found:
             if etype in ('reference', 'mvreference') and _online(g) != online:
+                continue
+            # Volume is never inherited in these directions, but it still
+            # tells two volumes of one set apart (not for a set's own entry).
+            if not etype.startswith('mv') and not _agree(f, g, 'volume'):
+                continue
+            # Same author: a generic title (Collected Essays) recurs across
+            # authors. A book's Author is a supplement's or chapter's
+            # Bookauthor, or the chapter's own Author when it has none.
+            if not _same_author(etype, f, g_type_of[k], g):
                 continue
             if year_gate and not online and _year(g) != _year(f):
                 continue
@@ -348,9 +380,12 @@ def siblings(entry_text, lib, exclude=(), year_gate=True):
                           else {PARENT_MAP[x]: g[x] for x in PARENT_MAP if x in g})
                 found.append((k, mapped, g))
     gates = ('editor', 'maintitle', 'edition') if reference else ('volume', 'editor', 'maintitle', 'edition')
+    g_type_of = lib.types if etype in ('inbook', 'bookinbook') else {}
     out = []
     for k, mapped, g in found:
         if reference and _online(f) != _online(g):
+            continue
+        if g_type_of and not _same_author(etype, f, g_type_of[k], g):
             continue
         if dated and _year(g) != _year(f):
             continue
