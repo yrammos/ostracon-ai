@@ -44,9 +44,9 @@ For each source, sequentially:
    [`gemini_type_check`]; otherwise by Claude in step 3.
 3. **Entry field estimation**: by Claude under the estimated type, per the extraction rules and your
    house style.
-4. **Missing-field retrieval #1**: from CrossRef and Google Scholar. Fields absent from the
-   source are checked against CrossRef; unconfirmed ones are reported
-   [`enrich_missing_fields`].
+4. **Missing-field retrieval #1**: from CrossRef, with Google Scholar as a fallback.
+   Fields absent from the source are checked the same way; CrossRef may correct
+   them, and unconfirmed ones are reported [`enrich_missing_fields`].
 5. **Library reconciliation**: duplicates reported; a chapter takes its book's fields from the
    library [`library_match`].
 6. **Missing-field retrieval #2**: from Gemini [`gemini_type_check`].
