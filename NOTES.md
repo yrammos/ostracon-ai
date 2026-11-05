@@ -73,36 +73,11 @@ it from.
 
 ## The orchestration
 
-`biblio_agent.py`'s control flow, for anyone modifying it. The branching belongs to
-the harness around the model calls, not to the extraction itself — the bibliographic
-judgment happens inside the four Claude calls, and the diamonds below only decide
-which of them run.
-
-```mermaid
-flowchart TD
-    A[PDF or .webloc file] --> B{Source type}
-    B -- PDF --> C1[Extract text: first/last page,<br/>headers/footers, embedded metadata]
-    B -- .webloc --> C2[Fetch page: body text,<br/>citation_/og/JSON-LD metadata]
-    C1 --> D[Claude: initial extraction]
-    C2 --> D
-    D --> E[Strip forbidden fields]
-    E --> F{Required/desired<br/>fields missing?}
-    F -- yes --> G[CrossRef / Google Scholar search]
-    G --> H[Claude: merge enrichment fields]
-    F -- no --> I[Claude: grounding audit]
-    H --> I
-    I --> J{Recollection-based or<br/>missing container fields?}
-    J -- yes --> K[CrossRef / Google Scholar re-check]
-    K --> L{CrossRef match that is a<br/>strict completion?}
-    L -- yes --> M[Claude: merge completion]
-    L -- no --> N[Leave as-is, flag unresolved]
-    M --> O[Validate brace balance]
-    N --> O
-    J -- no --> O
-    O --> P{Unresolved fields<br/>remain?}
-    P -- yes --> Q[Save + flag amber in BibDesk]
-    P -- no --> R[Save entry]
-```
+The pipeline, step by step, is in [`README.md`](README.md#what-it-does); the code
+is `extract_bibtex()` in `src/biblio_agent.py`. The branching belongs to the
+harness around the model calls: the bibliographic judgment happens inside the
+Claude calls (identity, extraction, merge, audit, reconciliation, repair) and
+Gemini's, and the code only decides which of them run and which value wins.
 
 ## Auto-filing: what was measured
 
@@ -139,6 +114,40 @@ Nothing in `dev/` runs during extraction.
 | `install_service.py` | Builds the Automator workflow from `automator/script.sh` and installs it. |
 | `estimate_cost.py` | Measures the current prefix and prices it, per model. |
 | `ab_compare.py` | Scores two extraction runs against curated ground truth. |
+| `validate_entries.py` | `bib_validate` over a `.bib` or saved run outputs. |
+| `render_entries.py` | `bib_render` over a `.bib` or saved run outputs. |
+| `library_match_coverage.py` | Read-only: how often the library holds a chapter's book, and how often its fields are right, on a `.bib` of known entries. |
+
+Self-tests, each run as `python3 dev/<name>`; fixtures are canned or constructed,
+and Claude, Gemini and the network are stubbed:
+
+| | |
+| --- | --- |
+| `test_web_source.py` | The `.webloc` routes and the plausibility check, against canned pages. |
+| `test_extract_pages.py` | The thin-yield marking of a PDF that yields almost no text. |
+| `test_api_keys.py` | Key resolution: plaintext, environment, command; a failing command's output never leaks. |
+| `test_biblio_agent_markers.py` | What `save_entry()` writes: `% AMBER` comments, colour, `failed_bib_file`. |
+| `test_gemini_search.py`, `test_gemini_step.py` | Gemini's type and questions; nothing reaches Gemini when it is off. |
+| `test_recollection.py` | CrossRef replacing a recollected value. |
+| `test_house_style.py` | The per-entry house cleanup. |
+| `test_library_match.py` | Library matching, and its place in the pipeline. |
+| `test_repairs.py` | The cleanup spec's repairs, the repair call and the render check. |
+| `test_bib_validate.py`, `test_bib_render.py` | The biber check and the render check, with TeX. |
+| `test_batch.py` | Parallel batches: every source saved, one save at a time, a failure not stopping the rest. |
+
+The accuracy harness, `dev/eval/` (see its `README.md`):
+
+| | |
+| --- | --- |
+| `run.py` | Scores `sample/` against `expected.bib`; `--rescore` re-scores saved output. |
+| `scorer.py` | Field-level comparison. |
+| `test_eval.py` | The harness's self-test; synthetic fixtures, no API call. |
+| `gemini_type_eval.py` | Scores Gemini's type on saved outputs. |
+| `select_sample.py` | Builds `sample/` and `expected.bib` from a library. |
+| `populate_sample.py` | The BibDesk attachment resolver `select_sample.py` imports. |
+| `expected.bib` | Ground-truth entries; empty until populated. |
+| `sample/manifest.json`, `sample/selection.json` | The sample's citekeys, sources and hashes; provenance of the last selection. |
+| `baselines/` | One dated report per full run; the comparison point. |
 
 Context generators, to be re-run after a package update and then diffed:
 

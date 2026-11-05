@@ -35,48 +35,74 @@ The immense number of types and fields in the [BibLaTeX-Chicago](https://ch.mirr
 
 The agent assumes the Chicago Manual of Style throughout. Adapting it to another style, such as APA, is left as a trivial exercise for the reader.
 
-## Function
+## What it does
 
-For each source in turn:
+For each source, in this order (`extract_bibtex()` in `src/biblio_agent.py`). The
+switch that turns a step on or off is in brackets.
 
-1. Extracts text (OCR if scanned; for a `.webloc`, fetches the bookmarked page).
-2. With `gemini_type_check` on: a light Claude call reads the item's identity
-   (title, authors, container, year), and Gemini, grounded in Google Search,
-   decides the entry type from it. If Gemini finds nothing, Claude chooses.
-3. Asks Claude, once, for the entry in accordance with BibLaTeX specifications,
-   under the decided type; then Gemini answers the type's closed questions and supplies every other field the type
-   takes that a page it found shows; those values fill only fields the entry lacks.
-4. Searches CrossRef and Google Scholar for any missing fields, and audits the
-   result for fields drawn from Claude's recollection rather than from the
-   source. A recollected value is replaced when a CrossRef record confirmed to
-   be this work (by DOI, or by an author the source gives) disagrees with it.
-   Given `library_bib_file`, a work the library already holds is reported, and a
-   chapter whose book the library holds takes that book's fields in the
-   library's form (outranking Gemini, Scholar and unconfirmed recollection; never a value from the source).
-5. Applies the library's own cleanup rules (`src/bib_normalize.py`) and, given
-   `library_bib_file`, the library's spelling of degree strings, places and
-   publishers it already holds.
-6. Validates and saves.
+1. **Read the source.** A PDF yields the text of its key pages, OCR'd when they
+   hold fewer than `ocr_threshold` words. A `.webloc` yields the bookmarked page
+   (see below).
+2. **Decide the type** [`gemini_type_check`]. A light Claude call reads the item's
+   identity (title, authors, container, year); Gemini, grounded in Google Search,
+   picks the entry type from a closed list. Without it, or when Gemini finds
+   nothing, Claude picks the type in step 3.
+3. **Extract.** One Claude call writes the entry, under the decided type. The
+   prompt is the cached prefix (the rules, your house-style file, the template and
+   references in `prompt-context/`) plus the source, and, with
+   `library_exemplars`, up to three entries from your library as models of form.
+4. **Ask Gemini** [`gemini_type_check`]. For the entry's final type, the question
+   bank (`prompt-context/gemini-questions.yaml`) and every other field the type
+   takes. The answers are applied in step 8.
+5. **Fill missing fields** [`enrich_missing_fields`]. CrossRef and Google Scholar
+   are searched for required or desired fields the entry lacks; one Claude call merges what
+   they return.
+6. **Audit the grounding** [`enrich_missing_fields`]. One Claude call lists the
+   fields not read from the source. Each is re-checked: a CrossRef record
+   confirmed to be this work (by DOI, or by an author the source gives) replaces
+   a recollected value; what stays unconfirmed is reported as inferred.
+7. **Match the library** [`library_match`, needs `library_bib_file`]. A work
+   already in the library is reported. A chapter whose book the library holds
+   (other chapters of it, or the book's own entry, same title and year) takes the
+   book's fields in the library's form.
+8. **Apply Gemini's answers.** They fill fields still missing and replace values
+   that came only from Scholar; a disagreement with the entry is logged.
+9. **Clean up**, in code. Forbidden fields stripped; an English `Langid` becomes
+   `american`. With `house_cleanup`: the library's normalizer rules, the cleanup
+   spec's repairs (`src/repairs.py`), and the library's spelling of Type,
+   Location and Publisher.
+10. **Validate** [`validate_entries`]. biber checks the entry against
+    biblatex-chicago's data model. If it rejects the entry, one Claude call
+    repairs it [`repair_entries`] and biber checks again.
+11. **Check the rendering** [`render_check`]. The entry is compiled; a field that
+    never reaches the page is moved into `Note`.
+12. **Save** to `main_bib_file`, or straight into BibDesk [`autofile_bibdesk`]. A
+    reply holding no well-formed entry goes to `failed_bib_file`.
 
-A malformed entry is stashed away in `failed_bib_file`; a field that could not be confirmed
-leaves the entry amber in BibDesk.
+**Which value wins.** A value read from the source, or from a CrossRef record
+confirmed to be this work, stands. Below it, in order: the library's (same book),
+Gemini's, and Google Scholar's or Claude's unconfirmed recollection. Each value
+taken from elsewhere is named in the entry's `% Sources` comment; one nothing
+confirmed, in `% INFERRED`.
 
-A `.webloc` bookmark does not always refer to the intended page. Some publishers (Oxford
-Academic and other Silverchair platforms) sit behind a Cloudflare challenge no HTTP
-client can pass; others return a login wall or consent gate that looks like an
-ordinary page. So each `.webloc` is tried in turn:
+**What colours an entry** (amber in BibDesk, `% AMBER` in the file): only a real
+failure. biber still rejects it, the render check fails, the source is thin or
+not the work, or, with `require_langid`, it has no `Langid`. Doubts the pipeline
+could not settle are logged, not coloured.
+
+**`.webloc` sources.** A bookmarked page is not always reachable (Cloudflare
+challenges on Oxford Academic and other Silverchair platforms, login walls,
+consent gates), so three routes are tried in turn:
 
 1. **Fetched** directly.
-2. **Read from an open Safari or Chrome tab** showing the same URL, if the fetch
-   fails. The browser already holds your session (see Troubleshooting).
-   With `open_blocked_in_browser: true`, a page no open tab holds is opened in a
-   new Chrome tab, read the same way, and the tab closed again.
-3. **Built from CrossRef**, if the fetch hit a bot challenge and the URL contains a DOI.
+2. **Read from an open Safari or Chrome tab** showing the same URL, which already
+   holds your session (see Troubleshooting). With `open_blocked_in_browser`, a
+   page no tab holds is opened in a new Chrome tab, read, and closed.
+3. **Built from CrossRef**, when the URL contains a DOI.
 
-Each result is checked before use. A page that is not the one requested (a login
-wall, a tab navigated elsewhere) is rejected and the next route tried. A page that
-is merely thin (no author, DOI or date; little text) still yields an entry, marked
-amber for review.
+A page that is not the one requested is rejected and the next route tried; one
+that is merely thin (no author, DOI or date; little text) yields an entry,
+coloured for review.
 
 ![Progress window](screenshot.png)
 
@@ -98,47 +124,15 @@ cp automator/script.sh.example automator/script.sh   # then set PYTHON and WORKD
 python3 dev/test_setup.py                            # verify
 ```
 
-`config.yaml` and `automator/script.sh` are excluded from version control. Re-run
-`./install` after any change to `script.sh`: it rebuilds the quick action when
-`script.sh` or `dev/install_service.py` is newer than the installed one.
+`config.yaml` and `automator/script.sh` are not under version control. Re-run
+`./install` after changing `script.sh`: it rebuilds the quick action when it is
+stale.
 
-`dev/test_setup.py` checks dependencies, configuration, the context files and OCR
-availability, and confirms the documentation still names every configuration key,
-every command-line flag and every tracked file. The quick action runs
-`dev/test_setup.py --preflight` before each batch: silent when all is well, and
-abandoning the run with a message when it is not.
-
-`python3 dev/test_web_source.py` self-tests the `.webloc` fallbacks and the
-plausibility check against canned pages, since a real bot challenge can't be staged.
-
-`python3 dev/test_extract_pages.py` self-tests the amber marking of a PDF that yields
-almost no text, using canned page text and no OCR.
-
-`python3 dev/test_api_keys.py` self-tests how API keys are resolved: plaintext,
-environment and command, and that a failing command's message never carries its
-output.
-
-`python3 dev/test_biblio_agent_markers.py` self-tests what `save_entry()` writes:
-that an amber entry keeps its `% AMBER: ...` comment in the saved `.bib` and gets
-its colour in BibDesk, and that a malformed model response goes to `failed_bib_file`
-rather than into the library.
-
-`python3 dev/test_gemini_search.py` and `python3 dev/test_gemini_step.py` self-test
-the Gemini type check and questions with the network stubbed, and that nothing
-reaches Gemini when `gemini_type_check` is off.
-
-`python3 dev/test_recollection.py` and `python3 dev/test_house_style.py`
-self-test the CrossRef replacement of recollected values and the per-entry
-house cleanup, with constructed fixtures. `python3 dev/test_library_match.py`
-does the same for library matching; `python3 dev/library_match_coverage.py
-dev/eval/expected.bib` measures it, read-only, against the library.
-
-`python3 dev/test_repairs.py` self-tests the cleanup spec's repairs: the mechanical rules
-(`src/repairs.py`), the one repair call and the render check, with Claude and TeX stubbed.
-
-`python3 dev/test_batch.py` self-tests parallel batches (`batch_workers`) with
-extraction stubbed: every source saved, one save at a time, each source's
-messages kept together, a failing source not stopping the rest.
+`dev/test_setup.py` checks dependencies, configuration, the context files, OCR,
+and that the documentation names every configuration key, command-line flag and
+tracked file. The quick action runs `dev/test_setup.py --preflight` before each
+batch. The self-tests (`dev/test_*.py`, `dev/eval/test_eval.py`) are listed in
+[`NOTES.md`](NOTES.md#developer-tooling).
 
 ## Configuration
 
@@ -150,50 +144,45 @@ main_bib_file: "~/Desktop/biblio-staging.bib" # where entries are appended
 failed_bib_file: "~/Desktop/biblio-failed.bib" # where invalid entries go
 ```
 
-The API key is best kept out of `config.yaml`. `anthropic_api_key_command` names a
-command, run without a shell, whose first line of output is the key; any command
-that prints it will do, for instance `security find-generic-password -s NAME -w`
-(macOS Keychain) or `pass show NAME`. The Quick Action's `PATH` is minimal, so name a
-program outside `/usr/bin` by its full path; `~` is expanded. A plaintext
-`anthropic_api_key` takes precedence, then the `ANTHROPIC_API_KEY` environment
-variable, then the command. A command that fails, prints nothing or hangs for ten
-seconds stops the run with its first line of stderr.
+`anthropic_api_key_command` names a command, run without a shell, whose first line
+of output is the key: `security find-generic-password -s NAME -w` (macOS Keychain),
+`pass show NAME`, or anything else that prints it. The quick action's `PATH` is
+minimal, so name a program outside `/usr/bin` by its full path. A plaintext
+`anthropic_api_key` takes precedence, then `ANTHROPIC_API_KEY`, then the command.
+A command that fails, prints nothing or hangs for ten seconds stops the run.
 
-Relative paths resolve against the repository rather than the working directory, so
-the commands below work from anywhere. A context file named in `config.yaml` but
-absent from disk is an error at startup, not a warning.
+Relative paths resolve against the repository. A context file named in
+`config.yaml` but missing is an error at startup.
 
-| Key                     | Default             | Effect                                                                                                            |
-| ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `model`                 | `claude-sonnet-4-6` | Price alternatives with `dev/estimate_cost.py --model <id>` first.                                                |
-| `careful_model`         | `claude-opus-5`     | Used automatically for sources in `pdf-in/careful/` during `--all`. See Usage.                                    |
-| `batch_workers`         | `3`                 | Sources processed at once in a batch; `1` processes them one at a time. Each source's messages appear together when it finishes. |
-| `max_tokens`            | `4000`              | Ceiling per response; entries run 400–500 tokens.                                                                 |
-| `cache_ttl`             | `"1h"`              | Prompt-cache lifetime. Cheaper unless runs are genuinely isolated.                                                |
-| `enrich_missing_fields` | `true`              | The CrossRef/Scholar lookups, the grounding audit and reconciliation. `false` leaves only the initial extraction. |
-| `verbose`               | `true`              | Progress on stderr.                                                                                               |
-| `ocr_threshold`         | `100`               | Words below which a PDF is treated as scanned.                                                                    |
-| `thin_yield_threshold`  | `400`               | Words a PDF must yield in total, after OCR, before its extraction is trusted. Below it the entry is marked amber. `0` disables. |
-| `ocr_timeout`           | `180`               | Seconds allowed to `ocrmypdf`.                                                                                    |
-| `default_ocr_language`  | `eng`               | Tesseract language used when `interactive_ocr` is `false`.                                                        |
-| `interactive_ocr`       | `true`              | `false`: never show the OCR-language dropdown, always use `default_ocr_language`. Independent of `verbose`.       |
-| `autofile_bibdesk`      | `false`             | Import into BibDesk directly rather than to the staging file.                                                     |
-| `crossref_email`        | —                   | Opts into CrossRef's faster polite pool. Free, no account.                                                        |
-| `scrapingdog_api_key`   | —                   | Enables the Google Scholar fallback. Paid, roughly a fifth of a cent per lookup.                                  |
-| `scrapingdog_api_key_command` | —             | A command printing the ScrapingDog key, as for `anthropic_api_key_command`. The plaintext key wins if both are set. |
-| `open_blocked_in_browser` | `false`         | `true`: a `.webloc` page behind a bot wall that no open tab holds is opened in a new Chrome tab, read, and the tab closed. Needs Chrome's "Allow JavaScript from Apple Events". |
-| `gemini_type_check`     | `false`             | `true`: a light Claude call reads the item's identity, Gemini (grounded in Google Search) decides the entry type from it, and the extraction runs once under that type. Then Gemini answers the questions in `prompt-context/gemini-questions.yaml` and gives every other field the type takes (biblatex's lists, `src/type_fields.py`) where a page it found shows it; its values only fill missing fields. About two cents a source. |
-| `house_cleanup`         | `true`              | Apply the library's normalizer rules (`src/bib_normalize.py`) to each new entry, and snap Type, Location and Publisher to the library's spelling of an equivalent value. |
-| `library_bib_file`      | —                   | The library whose spellings `house_cleanup` follows; read once per run. Without it, no snapping. |
-| `library_match`         | `true`              | Given `library_bib_file`: log a work already in the library; fill a chapter's book fields (Booktitle, Editor, Publisher, Location, Series…) from the library's other chapters of the same book, or the book's own entry, when title and year match. Fills gaps and replaces values found only by a search or recollected without confirmation; a value read from the source stands. |
-| `library_exemplars`     | `false`             | Show the extraction up to three library entries (same container, else the type Gemini decided) as house-form examples. |
-| `repair_entries`        | `true`              | When biber still rejects an entry after cleanup, one Claude call repairs it (re-type only if Gemini did not decide the type; never a value the source lacks). What remains colours the entry. |
-| `render_check`          | `false`             | `true`: compile each entry and check what prints. A compile failure, a field that never reaches the page (moved into `Note`), or quotes nested wrongly colours the entry. About 3 s a source. |
-| `gemini_api_key`        | —                   | Needed by `gemini_type_check`; a billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for `anthropic_api_key_command`. |
-| `anthropic_api_key`     | —                   | The key in plaintext, instead of `anthropic_api_key_command`. Not recommended.                                    |
+| Key                     | Default             | Effect |
+| ----------------------- | ------------------- | ------ |
+| `model`                 | `claude-sonnet-4-6` | Price alternatives with `dev/estimate_cost.py --model <id>` first. |
+| `careful_model`         | `claude-opus-5`     | For sources in `pdf-in/careful/` during `--all`. See Usage. |
+| `batch_workers`         | `3`                 | Sources processed at once; `1` processes them one at a time. |
+| `max_tokens`            | `4000`              | Ceiling per response; entries run 400–500 tokens. |
+| `cache_ttl`             | `"1h"`              | Prompt-cache lifetime. See Cost. |
+| `enrich_missing_fields` | `true`              | Steps 5–6. `false` leaves the extraction as written. |
+| `gemini_type_check`     | `false`             | Steps 2, 4 and 8. Needs `gemini_api_key`. About two cents a source. |
+| `gemini_api_key`        | —                   | A billed Google AI project (the free tier returns HTTP 429). `gemini_api_key_command` works as for Anthropic. |
+| `library_bib_file`      | —                   | Your library, read once per run. Steps 7 and 9 use it; without it they skip what needs it. |
+| `library_match`         | `true`              | Step 7. |
+| `library_exemplars`     | `false`             | Library entries as models of form in the extraction prompt (step 3). |
+| `house_cleanup`         | `true`              | Step 9's normalizer rules, repairs and library spellings. |
+| `validate_entries`      | `true`              | Step 10's biber check. Skipped, and said so, without TeX. |
+| `repair_entries`        | `true`              | Step 10's repair call. Re-types the entry only if Gemini did not decide the type. |
+| `render_check`          | `false`             | Step 11. About 3 s a source. |
+| `require_langid`        | `false`             | Colour an entry without `Langid`. |
+| `open_blocked_in_browser` | `false`           | Open a blocked `.webloc` page in Chrome. Needs Chrome's "Allow JavaScript from Apple Events". |
+| `crossref_email`        | —                   | CrossRef's faster polite pool. Free. |
+| `scrapingdog_api_key`   | —                   | Enables Google Scholar. Paid, about a fifth of a cent a lookup. `scrapingdog_api_key_command` works as for Anthropic. |
+| `ocr_threshold`         | `100`               | Words below which a page is OCR'd. |
+| `thin_yield_threshold`  | `400`               | Words a PDF must yield after OCR; fewer colours the entry. `0` disables. |
+| `ocr_timeout`           | `180`               | Seconds allowed to `ocrmypdf`. |
+| `interactive_ocr`       | `true`              | `false`: never ask for the OCR language; use `default_ocr_language` (`eng`). |
+| `autofile_bibdesk`      | `false`             | Import into BibDesk rather than the staging file. |
+| `verbose`               | `true`              | Progress on stderr. |
 
-Presentation settings — nothing below affects extraction — live under one
-`interface:` block:
+Presentation settings live under `interface:`; none affects extraction.
 
 ```yaml
 interface:
@@ -202,42 +191,25 @@ interface:
   notifications: false   # macOS notifications for batch progress and failures.
 ```
 
-A bare top-level `show_window`, `window_models` or `notifications` key (the pre-9
-layout) is still read for one release if `interface:` is absent or omits it, with a
-one-time deprecation warning on stderr; move it under `interface:` when convenient.
+The same keys at the top level are still read, with a deprecation warning, until
+the next release.
 
-The remaining paths — `pdf_in_folder`, `pdf_out_folder`, `template_file`,
-`rules_file`, `ref_file`, `example_files` — name the files constituting the
-cached prefix and may be left as they are. [`NOTES.md`](NOTES.md) sets out what each
-contributes and what dropping it would save.
-
-`rules_file` (default `prompt-context/extraction-rules.md`) holds the generic
-extraction rules. Put your own conventions — your preamble, the languages you work
-in, fields to require or omit — in a private **house-style file** instead of editing
-the rules: `~/.config/ostracon-ai/house-style.md` (or `house_style_file` in
-`config.yaml`) is read when present, sent after the rules, and takes precedence over
-them. `require_langid: true` makes an entry without `Langid` go to review.
-
-`validate_entries` (default `true`) checks each new entry with biber against
-biblatex-chicago's data model, excusing the usages the package documents. A
-field biber rejects for the type, or a missing mandatory one, sends the entry to
-review. Fields the model could neither read from the source nor confirm in a
-catalogue record are reported too, as `% INFERRED:`.
+`pdf_in_folder`, `pdf_out_folder`, `template_file`, `rules_file`, `ref_file` and
+`example_files` name the cached prefix and may be left as they are;
+[`NOTES.md`](NOTES.md) says what each contributes. Put your own conventions (your
+preamble, your languages, fields to require or omit) in a private **house-style
+file**, not in `rules_file`: `~/.config/ostracon-ai/house-style.md` (or
+`house_style_file`) is read when present and overrides the rules.
 
 ## Usage
 
-Right-click a PDF or `.webloc` file in Finder — or a mixed selection — and choose
+Right-click a PDF or `.webloc` file in Finder, or a mixed selection, and choose
 **Extract BibLaTeX-Chicago Bibliography (via Claude)**.
 
-The progress window offers a **Model** dropdown listing whatever `window_models`
-names; a change there applies from the next file onward. Reference works (Grove,
-the Stanford Encyclopedia, Wikipedia) are where the stronger model repays its
-cost — rather than reaching for the dropdown in time, drop such sources into
-`pdf-in/careful/` before an `--all` run and they process with `careful_model`
-automatically, in either windowed or headless mode. See the operator note in
-`CLAUDE.md`.
-
-From the command line:
+The progress window's **Model** dropdown lists `window_models`; a change applies
+from the next file. Reference works (Grove, the Stanford Encyclopedia, Wikipedia)
+repay the stronger model: put them in `pdf-in/careful/` before an `--all` run and
+they process with `careful_model`. See the operator note in `CLAUDE.md`.
 
 ```bash
 python3 src/biblio_agent.py paper.pdf bookmark.webloc  # one or more sources
@@ -260,61 +232,34 @@ python3 src/biblio_agent.py entry.webloc --model claude-opus-5
 
 ## Cost
 
-> **Measured 2026-08-07** against `claude-sonnet-4-6` at $3/$15 per million
-> input/output tokens. Both the prefix size and the published rates drift — editing
-> `CLAUDE.md` alone moved these figures between 3 and 7 August. Re-run
-> `python3 dev/estimate_cost.py`, which measures the assembled prompt rather than
-> restating these numbers, before relying on them.
+The last full evaluation run (2026-11-04: 168 sources, `claude-sonnet-4-6`,
+`gemini_type_check` on) cost $9.77 in Claude tokens and $1.60 in Gemini tokens,
+about seven cents a source; its Google searches fell within the 5,000 free a month.
+The pipeline has changed since; `python3 dev/estimate_cost.py` prices the current
+prompt per model.
 
-The static prefix is **68,928 tokens**. Writing it costs $0.26 at the five-minute
-cache TTL and $0.41 at one hour; every later call in the same run reads it back for
-$0.021.
-
-| Call             | Runs when                                   | First file | Later files |
-| ---------------- | ------------------------------------------- | ---------- | ----------- |
-| Extraction       | always                                      | $0.276     | $0.039      |
-| Grounding audit  | `enrich_missing_fields: true`               | $0.007     | $0.007      |
-| Enrichment merge | required or desired fields missing          | $0.028     | $0.028      |
-| Reconciliation   | a CrossRef match strictly completes a value | $0.028     | $0.028      |
-
-A clean source costs about **$0.28 for the first file in a run and $0.05 for each
-one after**; with all four calls firing, **$0.34 and $0.10**. Reconciliation is
-conservative, so the upper figure is rare.
-
-Because the prefix is written once per run and read thereafter, cost turns on how
-often a run starts cold. At the five-minute default the cache does not survive
-between separate quick-action invocations.
-
-| Pattern                                    | 5-minute TTL | 1-hour TTL |
-| ------------------------------------------ | ------------ | ---------- |
-| One batch of ten, nothing else that hour   | $0.69        | $0.85      |
-| Two batches of five, twenty minutes apart  | $0.93        | $0.85      |
-| Ten single-file invocations across an hour | $2.83        | $0.85      |
-
-The hour costs a flat $0.15 more per cache write and nothing more per file, so it
-loses only when a run is genuinely isolated. External services are negligible:
-CrossRef is free, and the ScrapingDog fallback runs about $0.0004 per credit at a
-couple of credits per lookup.
+Most of the cost is the cached prefix: written once per run, read back cheaply by
+every later call. At the default `cache_ttl: "1h"` it survives between quick-action
+runs within the hour; at `"5m"` each separate run pays to write it again. CrossRef
+is free; ScrapingDog runs about $0.0004 a credit, a couple of credits a lookup.
 
 ## BibDesk integration
 
-By default entries accumulate in `main_bib_file` for you to import. Each carries a
-`bdsk-file-1` bookmark to its source, so links survive the import.
+Entries accumulate in `main_bib_file` for you to import. Each carries a
+`bdsk-file-1` link to its source, which survives the import.
 
-Set `autofile_bibdesk: true` to skip the staging file: entries are imported through
-AppleScript as they are written, and BibDesk files the source document itself.
-
-One caveat before enabling it. BibDesk builds the attachment's filename from `Title`
-and the author fields, and flattens any LaTeX in them: `\bibstring{reviewof}`
-becomes `reviewof`, `\foreignlanguage{russian}{X}` becomes `russianX`, and `~`,
-`\,`, `---` survive verbatim. No BibDesk setting prevents this. Plain ASCII titles
-are unaffected; if yours are not, a `Did Auto File` script hook can correct the name
-after BibDesk has chosen it. [`NOTES.md`](NOTES.md) records what was measured.
+With `autofile_bibdesk: true`, entries are imported through AppleScript as they are
+written, and BibDesk files the source itself. BibDesk builds the attachment's
+filename from `Title` and the authors and flattens any LaTeX in them:
+`\bibstring{reviewof}` becomes `reviewof`, `\foreignlanguage{russian}{X}` becomes
+`russianX`, and `~`, `\,`, `---` survive verbatim. No BibDesk setting prevents
+this; a `Did Auto File` script hook can rename the file afterwards.
+[`NOTES.md`](NOTES.md) records what was measured.
 
 ## Normalizing an existing library
 
-The agent writes new entries; a separate set of tools brings an _existing_ `.bib`
-into the same shape. Nothing in `dev/` runs during extraction.
+Separate tools bring an _existing_ `.bib` into the same shape. None runs during
+extraction.
 
 ```bash
 python3 dev/bib_audit.py library.bib                        # count, change nothing
@@ -324,93 +269,86 @@ python3 dev/bib_apply.py library.bib edits.json             # named edits
 python3 dev/bib_bisect.py library.bib                       # find the entry that breaks a build
 ```
 
-Every change is a byte-span rewrite rather than a re-serialization, and ten gates
-must pass before anything is written. Method, tier taxonomy and outstanding items
-are in [`dev/normalization-plan.md`](dev/normalization-plan.md), which also explains
-why the audit's steady state is not zero and why a compile against your own preamble
-is the check that cannot be skipped.
+Every change is a byte-span rewrite, and ten gates must pass before anything is
+written. See [`dev/normalization-plan.md`](dev/normalization-plan.md).
 
 ## Evaluating extraction accuracy
 
-`NOTES.md` measures what a run costs; this measures whether an entry is right.
-
 ```bash
 python3 dev/eval/run.py           # score dev/eval/sample/ against dev/eval/expected.bib
-python3 dev/eval/test_eval.py     # exercise the harness itself - no sample, no API call
+python3 dev/eval/test_eval.py     # the harness itself; no sample, no API call
 ```
 
-`run.py` runs the pipeline over a sample of real sources and compares each result,
-field by field, with a hand-verified entry for the same source; entry-type accuracy
-is reported separately. The sample and its ground truth ship empty: build them from
-your own library with `dev/eval/select_sample.py`. Details are in
-[`dev/eval/README.md`](dev/eval/README.md).
+`run.py` runs the pipeline over real sources and compares each result, field by
+field, with a hand-verified entry; entry type is scored separately. The sample and
+its ground truth ship empty: build them from your library with
+`dev/eval/select_sample.py`. See [`dev/eval/README.md`](dev/eval/README.md).
 
 ## Troubleshooting
 
-**Entry saved to `failed_bib_file`.** Unbalanced braces. Repair it by hand and move
-it across.
+**Entry saved to `failed_bib_file`.** The reply held no well-formed entry
+(unbalanced braces, prose only). Repair it by hand and move it across.
 
-**Entry amber in BibDesk.** Something failed, not merely went unconfirmed:
-biber rejected a field or found a mandatory one missing, the source was thin or
-not the work (a login wall, a near-empty page), or, with `require_langid`, the
-entry has no `Langid`. The log and the entry's `% AMBER` comment say which.
-Doubts the pipeline could not settle (a value no record confirmed, a record
-that disagrees) are logged, not coloured.
+**Entry amber in BibDesk.** See "What colours an entry" above; the log and the
+entry's `% AMBER` comment say which failure.
 
-**`bdsk-file-1` bookmark inert after import.** `pyobjc-framework-Cocoa` is missing
-from the environment the quick action uses. Check `PYTHON` in
-`automator/script.sh`.
+**`bdsk-file-1` link inert after import.** `pyobjc-framework-Cocoa` is missing from
+the environment the quick action uses. Check `PYTHON` in `automator/script.sh`.
 
 **Quick action absent from Finder.** On macOS 26 it sits under the contextual menu's
-**Services** submenu, and only for PDF and `.webloc` files in Finder. Re-run
+**Services** submenu, for PDF and `.webloc` files only. Re-run
 `python3 dev/install_service.py`, which rebuilds it and relaunches Finder. Failing
 that, tick it under System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services ▸
 Files and Folders.
 
 **“Context files configured in config.yaml are missing.”** A file named in
-`rules_file`, `house_style_file`, `template_file`, `ref_file` or `example_files` is not where the
-configuration says. These constitute the cached prefix, so the agent refuses to
-start rather than proceed without them.
+`rules_file`, `house_style_file`, `template_file`, `ref_file` or `example_files` is
+not where the configuration says. They form the cached prefix, so the agent will
+not start without them.
 
-**A bot-challenged `.webloc` fails even with the page open in a tab.** Reading a tab
+**A bot-challenged `.webloc` fails with the page open in a tab.** Reading a tab
 needs a one-time permission. Safari: Develop ▸ Allow JavaScript from Apple Events
 (enable the Develop menu under Settings ▸ Advanced). Chrome: View ▸ Developer ▸
-Allow JavaScript from Apple Events. Without it, the log reports the refusal and the
-agent falls back to CrossRef or an error; tabs are also matched on their address
-alone, rather than on the work the page declares.
+Allow JavaScript from Apple Events. Without it the log reports the refusal and the
+agent falls back to CrossRef.
 
-**OCR not running.** Install `ocrmypdf`. Without it the agent falls back to direct
-extraction.
+**OCR not running.** Install `ocrmypdf`; without it the agent extracts the text
+layer only.
 
-**A scanned PDF yields little but a date.** Some scans carry a text layer holding
-only whitespace; `ocrmypdf --skip-text` treats those pages as done and exits
-successfully. Strip the layer, or OCR the file externally, and re-run.
+**A scanned PDF yields little but a date.** Its text layer holds only whitespace,
+which `ocrmypdf --skip-text` treats as done. Strip the layer, or OCR the file
+externally, and re-run.
+
+**biber fails on entries with `Volume` or `Number`** (“failed to find
+unicore/version”), or rejects plain dates. macOS has pruned biber's unpacked copy
+of itself. `rm -rf "$TMPDIR"/par-*` and re-run.
 
 ## Repository layout
 
 ```
 ostracon-ai/
 ├── CLAUDE.md               # Instructions for agents developing this repository
+├── NOTES.md                # Design notes, measurements, developer tooling
 ├── config.yaml.example     # Copy to config.yaml
 ├── install                 # Links bib-audit; rebuilds the quick action when stale
 ├── requirements.txt
 ├── src/
-│   ├── biblio_agent.py     # Orchestrator; run this
+│   ├── biblio_agent.py     # The pipeline; run this
 │   ├── extraction_result.py # What extract_bibtex() hands save_entry()
-│   ├── extract_pages.py    # PDF text, OCR, and the thin-yield check
-│   ├── web_source.py       # .webloc page fetching
-│   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
-│   ├── api_keys.py         # API keys from config, environment or a command
+│   ├── extract_pages.py    # Step 1: PDF text, OCR, the thin-yield check
+│   ├── web_source.py       # Step 1: .webloc pages
+│   ├── gemini_search.py    # Steps 2, 4, 8: Gemini's type and answers
+│   ├── type_fields.py      # The fields each type takes, from the biblatex manual
+│   ├── enrich.py           # Steps 5–6: CrossRef/Scholar lookups and reconciliation
+│   ├── library_match.py    # Step 7: duplicates, a chapter's book fields, exemplars
+│   ├── house_style.py      # Step 9: normalizer rules and library spellings
+│   ├── repairs.py          # Step 9: the cleanup spec's mechanical repairs
 │   ├── bib_audit.py        # Shared .bib scanner and rule predicates (dev/ links here)
 │   ├── bib_normalize.py    # The library's normalizer rules (dev/ links here)
-│   ├── house_style.py      # Those rules and the library's spellings, on each new entry
-│   ├── library_match.py    # Duplicates, a chapter's book fields, exemplars from the library
-│   ├── gemini_search.py    # Gemini type decision and closed questions
-│   ├── type_fields.py      # The fields each type takes, from the biblatex manual
-│   ├── repairs.py          # Mechanical repairs from the library cleanup spec
-│   ├── bib_validate.py     # biber data-model check; published by ./install
-│   ├── bib_render.py       # Render check: fields that never reach the page
-│   ├── tex/previewtemplate.tex # Neutral template for the render check
+│   ├── bib_validate.py     # Step 10: biber's data-model check; published by ./install
+│   ├── bib_render.py       # Step 11: fields that never reach the page
+│   ├── tex/previewtemplate.tex # Neutral template for step 11
+│   ├── api_keys.py         # API keys from config, environment or a command
 │   └── progress_window.py  # The floating window
 ├── prompt-context/         # The cached prefix
 │   ├── extraction-rules.md            # The extraction rules; first in the prefix
@@ -420,26 +358,8 @@ ostracon-ai/
 │   ├── notes-test.bib                 # The package's annotated test suite
 │   ├── cms-notes-intro-guide.md       # Entry types by kind of source
 │   └── biblatex-chicago-fields.md     # Manual §4.2; consulted, not loaded
-├── dev/                    # Tooling; see NOTES.md. Nothing here runs during extraction
-│   ├── validate_entries.py # bib_validate over a .bib or saved run outputs
-│   ├── render_entries.py   # bib_render over a .bib or saved run outputs
-│   ├── test_bib_validate.py, test_bib_render.py # Their self-tests
-│   ├── test_gemini_search.py, test_gemini_step.py # Gemini self-tests, network stubbed
-│   ├── test_recollection.py, test_house_style.py # CrossRef replacement; house cleanup
-│   ├── test_library_match.py # Library matching; constructed fixtures
-│   ├── library_match_coverage.py # Read-only: sibling coverage and precision on a .bib
-│   └── eval/               # Accuracy harness; see Evaluating extraction accuracy
-│       ├── run.py                # Scores dev/eval/sample/ against expected.bib
-│       ├── scorer.py             # Field-level comparison
-│       ├── gemini_type_eval.py   # Scores Gemini's type on saved outputs
-│       ├── test_eval.py          # Self-test, synthetic fixtures, no API call
-│       ├── select_sample.py      # Builds sample/ and expected.bib from biblio.bib
-│       ├── populate_sample.py    # BibDesk attachment resolver select_sample.py imports
-│       ├── expected.bib          # Ground-truth entries; empty until populated
-│       ├── baselines/            # One dated report per full run; the comparison point
-│       └── sample/
-│           ├── manifest.json     # citekey/source/hash list; empty until populated
-│           └── selection.json    # Provenance of the last select_sample.py run
+├── dev/                    # Tooling and self-tests; see NOTES.md
+│   └── eval/               # Accuracy harness; see dev/eval/README.md
 ├── automator/
 │   └── script.sh.example   # Copy to script.sh; set PYTHON and WORKDIR
 ├── pdf-in/                 # Sources for --all
