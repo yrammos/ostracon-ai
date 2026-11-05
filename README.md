@@ -307,13 +307,13 @@ ostracon-ai/
 │   ├── gemini_search.py    # Gemini's type and answers
 │   ├── type_fields.py      # The fields each type takes, from the biblatex manual
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation
-│   ├── library_match.py    # duplicates, a chapter's book fields, exemplars
-│   ├── house_style.py      # normalizer rules and library spellings
-│   ├── repairs.py          # the cleanup spec's mechanical repairs
+│   ├── library_match.py    # Duplicates, a chapter's book fields, exemplars
+│   ├── house_style.py      # Normalizer rules and library spellings
+│   ├── repairs.py          # The cleanup spec's mechanical repairs
 │   ├── bib_audit.py        # Shared .bib scanner and rule predicates (dev/ links here)
 │   ├── bib_normalize.py    # The library's normalizer rules (dev/ links here)
 │   ├── bib_validate.py     # biber's data-model check; published by ./install
-│   ├── bib_render.py       # fields that never reach the page
+│   ├── bib_render.py       # Fields that never reach the page
 │   ├── tex/previewtemplate.tex # Neutral template for the test compile
 │   ├── api_keys.py         # API keys from config, environment or a command
 │   └── progress_window.py  # The floating window
