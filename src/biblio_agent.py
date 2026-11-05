@@ -1784,13 +1784,13 @@ BibLaTeX entry, with no additional commentary."""
 
         work_title = enrich.work_level_title(entry_type, fields)
         year = fields.get('date') or fields.get('year')
-        provenance = {}
+        provenance, confirmed = {}, set()
         reconcile_candidates, additions, unresolved = enrich.verify_recollection(
             work_title, ungrounded, fields, year=year,
             crossref_email=self.config.get('crossref_email'),
             scrapingdog_api_key=self.config.get('scrapingdog_api_key'),
             log=lambda msg: self._log(f"     {msg}", 'dim'),
-            provenance=provenance,
+            provenance=provenance, confirmed=confirmed,
         )
         self._scholar_fields().update(f for f, src in provenance.items() if src == 'Google Scholar')
 
@@ -1805,24 +1805,31 @@ BibLaTeX entry, with no additional commentary."""
             self._log(f"   Filled '{field}' from a verified work-level record", 'info')
             entry_text = enrich.add_field(entry_text, field, value)
 
-        if unresolved:
-            # Re-derive what's actually still outstanding rather than reusing
-            # the pre-search lists, which would misreport anything that just
-            # got reconciled/filled above as still missing.
-            reconciled_fields = {c['field'] for c in reconcile_candidates}
-            still_ungrounded = [f for f in ungrounded if f not in reconciled_fields]
-            still_missing_container = [f for f in missing_container if f not in additions]
-            reasons = []
-            if still_ungrounded:
-                reasons.append(f"recollection-based field(s) ({', '.join(still_ungrounded)})")
-                self.inferred_fields = still_ungrounded
-            if still_missing_container:
-                reasons.append(f"container-level field(s) ({', '.join(still_missing_container)})")
-            if reasons:
-                self._log(
-                    f"   ⚠️  Could not verify {' and '.join(reasons)} via CrossRef/Scholar - left as extracted",
-                    'warning'
-                )
+        # Inferred: every field the audit named that no record confirmed or
+        # corrected. Derived whatever else happened: a field outside the ones
+        # verify_recollection() can check (volume, pages, series...) is never
+        # confirmed, so it is always reported; one a record states exactly as
+        # the entry does never is. (It used to be derived only when the check
+        # left something unresolved, which dropped the first kind whenever
+        # everything checkable matched, and reported the second whenever
+        # anything did not.)
+        reconciled_fields = {c['field'] for c in reconcile_candidates}
+        if confirmed & set(ungrounded):
+            self._log(f"   Confirmed by the record: {', '.join(sorted(confirmed & set(ungrounded)))}", 'info')
+        still_ungrounded = [f for f in ungrounded if f not in reconciled_fields and f not in confirmed]
+        still_missing_container = [f for f in missing_container if f not in additions] if unresolved else []
+        self.inferred_fields = still_ungrounded
+        reasons = []
+        if still_ungrounded:
+            reasons.append(f"recollection-based field(s) ({', '.join(still_ungrounded)})")
+        if still_missing_container:
+            reasons.append(f"container-level field(s) ({', '.join(still_missing_container)})")
+        if reasons:
+            self._log(
+                f"   ⚠️  Could not verify {' and '.join(reasons)} via CrossRef/Scholar - left as extracted",
+                'warning'
+            )
+        unresolved = bool(still_ungrounded or still_missing_container)
 
         return entry_text, unresolved
 
