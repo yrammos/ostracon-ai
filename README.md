@@ -42,7 +42,7 @@ For each source, the agent sequentially:
 1. **Extracts text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
 2. **Estimates the entry type**: using Gemini [`gemini_type_check`]; otherwise using Claude in step 3.
 3. **Estimates the entry fields**: with Claude, given the previously estimated type, per the extraction rules and your
-   house style.
+   house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the latest entries of the same type [`library_exemplars`].
 4. **Retrieves missing locators**: volume, number, pages, chapter, book title and, for books, publisher, from the work's CrossRef record, with Google Scholar as a fallback [`enrich_missing_fields`].
 5. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
 6. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) and its container (e.g., book) inherit each other's fields from the library for consistency, whichever was entered first; supplements (e.g., an introduction) and their books likewise [`library_match`].
