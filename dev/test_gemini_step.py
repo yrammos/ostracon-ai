@@ -47,7 +47,8 @@ class _Messages:
 def _run(replies, decided=None, answers=None, check=True, key="KEY", extra=None):
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config.update(enrich_missing_fields=False, validate_entries=False,
-                        gemini_type_check=check, gemini_api_key=key, require_langid=False)
+                        gemini_type_check=check, gemini_api_key=key, require_langid=False,
+                        type_search="gemini")
     agent.config.update(extra or {})
     agent.client = type("C", (), {"messages": _Messages(replies)})()
     biblio_agent.EXTRACTORS[".fake"] = lambda path, **kw: extract_pages.SourceContent(

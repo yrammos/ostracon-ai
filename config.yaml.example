@@ -112,10 +112,14 @@ scrapingdog_api_key: ""
 # 5,000 free searches a month, then paid. A command is preferred to the key.
 # gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-key -w"
 gemini_api_key: ""
-# Let Gemini, grounded in Google Search, decide the entry type and answer the
-# closed questions in gemini_questions_file (off by default; each source then
-# makes three Gemini calls, about 15-20 s each).
+# Let a web search decide the entry type and answer the closed questions in
+# gemini_questions_file (off by default). type_search says who searches.
 gemini_type_check: false
+# Who runs the type search and answers the questions (steps 2 and 7):
+# "claude" - Claude Haiku 5.5 with web search, at most two searches per item
+#            ($0.01 each, billed by Anthropic); needs no Gemini key.
+# "gemini" - Gemini with Google Search; Gemini decides how many searches.
+type_search: "claude"
 
 # A .webloc page a plain fetch cannot read (a bot wall) and no open tab holds:
 # open it in a new Google Chrome tab, read it, close the tab. Uses your Chrome

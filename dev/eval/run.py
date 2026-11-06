@@ -256,10 +256,12 @@ def format_usage(usage, ttl) -> str:
     sums = {f: sum(r[f] for k in keys for r in usage[k])
             for f in ('input', 'output', 'cache_write', 'cache_read')}
     calls = sum(len(usage[k]) for k in keys)
+    searches = sum(r.get('web_searches', 0) for k in keys for r in usage[k])
     lines = [
         "",
         f"Usage ({calls} API calls over {len(keys)} sources, cache TTL {ttl}):",
         "  tokens: " + ", ".join(f"{f} {n:,}" for f, n in sums.items()),
+        f"  web searches: {searches} (Claude's tool, $0.01 each, included below)",
         f"  measured cost: ${sum(costs):.2f} total",
     ]
     if costs:
@@ -267,6 +269,10 @@ def format_usage(usage, ttl) -> str:
                      + (f"; later sources ${sum(costs[1:]) / (len(costs) - 1):.3f} mean"
                         if len(costs) > 1 else ""))
     return "\n".join(lines)
+
+
+class BudgetReached(Exception):
+    """--budget spent: the run stops before the next source."""
 
 
 def main(argv=None):
@@ -293,6 +299,11 @@ def main(argv=None):
     parser.add_argument('--last-run-dir', default=str(DEFAULT_LAST_RUN_DIR),
                          help='Where each produced entry is saved, keyed by citekey, and where '
                               '--rescore reads them back from (default: dev/eval/last-run/)')
+    parser.add_argument('--budget', type=float,
+                         help='Stop before the next source once the measured cost (Claude, '
+                              'web searches included, plus Gemini tokens) reaches this many '
+                              'USD. One source can take the total past it. Saved outputs '
+                              'can be scored afterwards with --rescore')
     parser.add_argument('--only',
                          help='Comma-separated citekeys: extract/score only these manifest '
                               'items instead of the whole sample - for a targeted diagnostic '
@@ -345,6 +356,15 @@ def main(argv=None):
         base_lang = agent.config.get('default_ocr_language', 'eng')
 
         def run_one(citekey, source):
+            if args.budget is not None:
+                from estimate_cost import usage_cost
+                ttl = agent.config.get('cache_ttl') or '5m'
+                spent = sum(usage_cost(u, ttl) for u in usage.values()) + sum(
+                    gemini_cost(json.loads(p.read_text(encoding='utf-8')).get('usage') or [])
+                    for k in usage if (p := Path(args.last_run_dir) / f"{k}.gemini.json").exists())
+                if spent >= args.budget:
+                    raise BudgetReached(f"${spent:.2f} spent over {len(usage)} sources "
+                                        f"(budget ${args.budget:.2f})")
             agent.config['default_ocr_language'] = ocr_language_hint(
                 expected_entries.get(citekey), base_lang)
             # Each source is a library entry itself: library_match must not
@@ -357,7 +377,14 @@ def main(argv=None):
                 usage[citekey] = agent.usage
 
     usage = {}  # citekey -> BiblioAgent.usage records; stays empty under --rescore
-    entry_scores, warnings = evaluate(manifest, sample_dir, expected_entries, run_one=run_one)
+    try:
+        entry_scores, warnings = evaluate(manifest, sample_dir, expected_entries, run_one=run_one)
+    except BudgetReached as e:
+        print(f"Budget reached: {e}. Outputs so far are in {args.last_run_dir}; "
+              f"score them with --rescore --only <their citekeys>.", file=sys.stderr)
+        if usage:
+            print(format_usage(usage, agent.config.get('cache_ttl') or '5m'))
+        return 2
 
     print(format_report(entry_scores, warnings))
     if usage:

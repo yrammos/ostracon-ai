@@ -46,7 +46,11 @@ PRICING = {
     'claude-sonnet-5':    (3.00, 15.00),   # $2/$10 introductory through 2026-08-31
     'claude-sonnet-4-6':  (3.00, 15.00),
     'claude-haiku-4-5':   (1.00,  5.00),
+    'claude-haiku-5-5':   (0.10,  0.50),   # prompts up to 100K tokens
 }
+
+# Claude's web search tool, per search (platform.claude.com, read 2026-11-06).
+WEB_SEARCH = 0.01
 
 # Prompt-cache multipliers against the base input rate.
 CACHE_WRITE = {'5m': 1.25, '1h': 2.00}
@@ -149,7 +153,8 @@ def usage_cost(records, ttl='1h'):
         rate_in, rate_out, rate_read = rates(r['model'])
         total += (r['input'] * rate_in + r['output'] * rate_out
                   + r['cache_write'] * rate_in * CACHE_WRITE[ttl]
-                  + r['cache_read'] * rate_read)
+                  + r['cache_read'] * rate_read
+                  + r.get('web_searches', 0) * WEB_SEARCH)
     return total
 
 

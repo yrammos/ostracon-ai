@@ -402,7 +402,8 @@ def test_pipeline_fills_from_the_library_before_gemini():
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.config.update(enrich_missing_fields=False, validate_entries=False, render_check=False,
                         gemini_type_check=True, gemini_api_key="KEY", require_langid=False,
-                        house_cleanup=False, library_bib_file=str(_lib()), library_exemplars=True)
+                        house_cleanup=False, library_bib_file=str(_lib()), library_exemplars=True,
+                        type_search="gemini")
 
     class _Messages:
         calls = []

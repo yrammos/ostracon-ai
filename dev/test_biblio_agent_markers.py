@@ -754,7 +754,7 @@ def test_effort_is_sent_and_raises_the_token_limit():
     assert calls[0]["max_tokens"] >= 16000, calls[0]["max_tokens"]
     assert agent.usage[0] == {"call": "extraction", "model": agent.config["model"],
                               "input": 11, "output": 7, "cache_write": 5,
-                              "cache_read": 0}, agent.usage
+                              "cache_read": 0, "web_searches": 0}, agent.usage
     return True
 
 
