@@ -37,7 +37,7 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 
 ## How it works
 
-For each source, sequentially:
+For each source, the agent sequentially:
 
 1. **Extracts text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
 2. **Estimates the entry type**: using Gemini [`gemini_type_check`]; otherwise using Claude in step 3.
