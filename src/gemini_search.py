@@ -209,19 +209,25 @@ def query_from_fields(fields, entry_type=""):
 
 # --- Step 4b: a bank of closed questions, chosen by type --------------------
 
-QUESTIONS_PROMPT = """Answer these questions about the work above, from Google Search.
+QUESTIONS_PROMPT = """Answer these questions about the work above, {source}.
 Answer each briefly: a number as the number only; a choice as one of the
 options given, word for word. A line naming a BibLaTeX field asks for that
-field's value for this work: give it only where a page you found shows it,
+field's value for this work: give it only where {shown} shows it,
 written as BibLaTeX expects (names as "Family, Given", several joined by
 " and "; a date as YYYY, YYYY-MM or YYYY-MM-DD; a page range as first-last; a
 title without its subtitle, which has its own field). If you cannot find the
-answer, give null; never guess.
+answer, give null; never guess{memory}.
 
 {questions}
 
 Reply with exactly this and nothing else:
 <result>{{{skeleton}}}</result>"""
+# Without the search tool, the answer above is the only evidence: the question
+# call may not search (each search is billed past 5,000 a month) and must not
+# answer from memory.
+_FROM_SEARCH = {"source": "from Google Search", "shown": "a page you found", "memory": ""}
+_FROM_ANSWER = {"source": "using only your earlier search answer; do not search again",
+                "shown": "that answer", "memory": ", and never answer from memory"}
 
 
 def load_bank(path):
@@ -241,9 +247,12 @@ def select(bank, entry_type):
     return [q for q in bank if q["when"] == "any" or entry_type in q["when"]]
 
 
-def ask_questions(history, questions, api_key, model=MODEL, timeout=120, retries=3, sleep=None):
-    """One grounded call continuing the search conversation: {'answers':
-    {id: value}, 'usage'} or one with 'error'."""
+def ask_questions(history, questions, api_key, model=MODEL, timeout=120, retries=3, sleep=None,
+                  search=False):
+    """One call continuing the search conversation: {'answers': {id: value},
+    'usage'} or one with 'error'. With search=False (the default) it carries
+    no search tool, so it runs no billed search and answers only from the
+    type search's answer already in `history`."""
     import json
     import re
     import time
@@ -256,7 +265,9 @@ def ask_questions(history, questions, api_key, model=MODEL, timeout=120, retries
         lines.append(f"- {q['id']}: {q['ask']}" + (f" Options: {'; '.join(opts)}." if opts else ""))
     skeleton = ", ".join(f'"{q["id"]}": ...' for q in questions)
     body = {"contents": history + [{"role": "user", "parts": [{"text": QUESTIONS_PROMPT.format(
-        questions="\n".join(lines), skeleton=skeleton)}]}], "tools": [{"google_search": {}}]}
+        questions="\n".join(lines), skeleton=skeleton, **(_FROM_SEARCH if search else _FROM_ANSWER))}]}]}
+    if search:
+        body["tools"] = [{"google_search": {}}]
     status, data = _post(body, api_key, model, timeout, retries, sleep)
     if status != 200:
         return {"error": f"HTTP {status}: {str((data.get('error') or {}).get('message', ''))[:120]}"}

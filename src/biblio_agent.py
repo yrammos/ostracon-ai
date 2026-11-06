@@ -1305,7 +1305,8 @@ else, using null for anything the text does not show:
         if info.get('engine') == 'claude':
             qa = claude_search.ask_questions(info.get('history') or [], questions, self._create)
         else:
-            qa = gemini_search.ask_questions(info.get('history') or [], questions, key, model=gm)
+            qa = gemini_search.ask_questions(info.get('history') or [], questions, key, model=gm,
+                                             search=bool(self.config.get('gemini_question_search', False)))
         info['usage'] += qa.get('usage') or []
         if qa.get('error'):
             info['questions_status'] = f"error: {qa['error']}"

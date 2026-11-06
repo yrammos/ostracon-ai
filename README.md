@@ -51,7 +51,7 @@ For each source, the agent works in five stages
    - c. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
 4. **Refine record**
    - a. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) and its container (e.g., book) inherit each other's fields from the library for consistency, whichever was entered first; supplements (e.g., an introduction) and their books likewise [`library_match`].
-   - b. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), answered by Claude from the 2b search results without searching again, or by Gemini, which may search again; or taken from AI Mode's entry, cleaned, if 3a kept its type [`gemini_type_check`].
+   - b. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), answered by Claude or Gemini from the 2b search results without searching again (`gemini_question_search` lets Gemini search again), or taken from AI Mode's entry, cleaned, if 3a kept its type [`gemini_type_check`].
    - c. **Applies them by precedence**: these values fill gaps and replace values that came only from Google Scholar; values from the source, CrossRef and the library stand.
 5. **Cleanup**
    - a. **Enforces house style compliance**: i.e., with the library's normalization rules and spellings [`house_cleanup`].
@@ -149,6 +149,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `crossref_email` | — | CrossRef's faster polite pool. Free. |
 | `enrich_missing_fields` | `true` | Completion from CrossRef and Google Scholar, and the check of unconfirmed fields. |
 | `gemini_api_key` | — | For `gemini_type_check`; a billed Google AI project. Or `gemini_api_key_command`. |
+| `gemini_question_search` | `false` | With `type_search: "gemini"`: let Gemini search Google again to answer its questions in 4b; each search past 5,000 a month is billed. |
 | `gemini_type_check` | `false` | A web search decides the type and fills missing fields (2 and 4b). |
 | `house_cleanup` | `true` | The library's normalization rules and spellings. |
 | `interactive_ocr` | `true` | Ask for the OCR language; `false` uses `default_ocr_language` (`eng`). |
