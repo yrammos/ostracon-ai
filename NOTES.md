@@ -112,6 +112,7 @@ and Claude, Gemini and the network are stubbed:
 | `test_biblio_agent_markers.py` | What `save_entry()` writes: `% AMBER` comments, colour, `failed_bib_file`. |
 | `test_bib_validate.py`, `test_bib_render.py` | The biber check and the render check, with TeX. |
 | `test_extract_pages.py` | The thin-yield marking of a PDF that yields almost no text. |
+| `test_claude_search.py` | The type search through Claude's web search: the per-item cap, no answer without a search, searches recorded and priced. |
 | `test_gemini_search.py`, `test_gemini_step.py` | Gemini's type and questions; nothing reaches Gemini when it is off. |
 | `test_house_style.py` | The per-entry house cleanup. |
 | `test_library_match.py` | Library matching, and its place in the pipeline. |

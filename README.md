@@ -40,13 +40,13 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 For each source, the agent sequentially:
 
 1. **Extracts text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
-2. **Estimates the entry type**: using Gemini [`gemini_type_check`]; otherwise using Claude in step 3.
+2. **Estimates the entry type**: from a web search run by Claude Haiku 5.5, at most two searches per item, or by Gemini [`gemini_type_check`, `type_search`]; otherwise using Claude in step 3.
 3. **Estimates the entry fields**: with Claude, given the previously estimated type, per the extraction rules and your
    house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the latest entries of the same type [`library_exemplars`].
 4. **Retrieves missing locators**: volume, number, pages, chapter, book title and, for books, publisher, from the work's CrossRef record, with Google Scholar as a fallback [`enrich_missing_fields`].
 5. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
 6. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) and its container (e.g., book) inherit each other's fields from the library for consistency, whichever was entered first; supplements (e.g., an introduction) and their books likewise [`library_match`].
-7. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), from Gemini's search-grounded answers [`gemini_type_check`].
+7. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), answered from the step-2 search results without searching again [`gemini_type_check`].
 8. **Enforces house style compliance**: i.e., with the library's normalization rules and spellings
    [`house_cleanup`].
 9. **Validates the new entry**: using biber against biblatex-chicago's data model, with one repair
@@ -121,15 +121,18 @@ full path if it lies outside `/usr/bin`. A plaintext `anthropic_api_key`, then
 `ANTHROPIC_API_KEY`, take precedence. Relative paths resolve against the
 repository.
 
-Gemini is optional. To enable it, set `gemini_type_check: true` and give a key
-from a billed Google AI Studio project (aistudio.google.com/apikey), the same way
-as the Anthropic key: `gemini_api_key_command`, or a plaintext `gemini_api_key`,
-which takes precedence. No environment variable is read. Claude calls are billed
-to the Anthropic API account, Gemini calls to the Google project; a Claude
-subscription covers neither (see [Cost](#cost)).
+The web search of steps 2 and 7 is optional: set `gemini_type_check: true`. By
+default Claude runs it (`type_search: "claude"`) on the Anthropic key, at most
+two searches per item. To use Gemini instead, set `type_search: "gemini"` and give
+a key from a billed Google AI Studio project (aistudio.google.com/apikey), the
+same way as the Anthropic key: `gemini_api_key_command`, or a plaintext
+`gemini_api_key`, which takes precedence. No environment variable is read. Claude
+calls are billed to the Anthropic API account, Gemini calls to the Google project;
+a Claude subscription covers neither (see [Cost](#cost)).
 
 ```yaml
 gemini_type_check: true
+type_search: "gemini"
 gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-key -w"
 ```
 
@@ -142,7 +145,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `crossref_email` | — | CrossRef's faster polite pool. Free. |
 | `enrich_missing_fields` | `true` | Completion from CrossRef and Google Scholar, and the check of unconfirmed fields. |
 | `gemini_api_key` | — | For `gemini_type_check`; a billed Google AI project. Or `gemini_api_key_command`. |
-| `gemini_type_check` | `false` | Gemini decides the type and fills missing fields. |
+| `gemini_type_check` | `false` | A web search decides the type and fills missing fields (steps 2 and 7). |
 | `house_cleanup` | `true` | The library's normalization rules and spellings. |
 | `interactive_ocr` | `true` | Ask for the OCR language; `false` uses `default_ocr_language` (`eng`). |
 | `library_bib_file` | — | Your library, for `library_match`, `house_cleanup` and `library_exemplars`. |
@@ -158,6 +161,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `require_langid` | `false` | Colour an entry without `Langid`. |
 | `scrapingdog_api_key` | — | Enables Google Scholar. Or `scrapingdog_api_key_command`. |
 | `thin_yield_threshold` | `400` | Words a PDF must yield; fewer colours the entry. `0` disables. |
+| `type_search` | `"claude"` | Who runs steps 2 and 7: `claude` (Claude Haiku 5.5, at most two web searches per item, $0.01 each) or `gemini` (Google Search; Gemini decides how many searches). |
 | `validate_entries` | `true` | biber's data-model check. |
 | `verbose` | `true` | Progress on stderr. |
 
@@ -218,9 +222,10 @@ current prompt per model.
 | ----------------------------- | --------------------- | ----------------- |
 | Claude                        | $0.162                | $0.057            |
 | CrossRef                      | free                  | free              |
-| Gemini (`gemini_type_check`)  | $0.01                 | $0.01             |
+| Claude web search (`gemini_type_check`, `type_search: claude`) | at most $0.02 in searches, plus Haiku 5.5 tokens (not yet measured) | the same |
+| Gemini (`type_search: gemini`) | about $0.03 in tokens, plus searches past the free 5,000 a month (about 40 per source in the 2026-11-06 billing export) | the same |
 | Google Scholar (ScrapingDog)  | about $0.001 a lookup | the same          |
-| Google Search, through Gemini | free, 5,000 a month   | free              |
+| Google Search, through Gemini | 5,000 a month free, then $14 per 1,000 | the same |
 
 The first source pays to write the cached prompt; later ones read it back. At the
 default `cache_ttl: "1h"` the cache survives between runs within the hour.
@@ -319,6 +324,7 @@ ostracon-ai/
 │   ├── extraction_result.py # What extract_bibtex() hands save_entry()
 │   ├── extract_pages.py    # PDF text, OCR, the thin-yield check
 │   ├── web_source.py       # .webloc pages
+│   ├── claude_search.py    # The type search through Claude's web search, capped per item
 │   ├── gemini_search.py    # Gemini's type and answers
 │   ├── type_fields.py      # The fields each type takes, from the biblatex manual
 │   ├── enrich.py           # CrossRef/Scholar lookups and reconciliation

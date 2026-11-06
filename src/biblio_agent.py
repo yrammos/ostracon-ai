@@ -21,6 +21,7 @@ from extract_pages import extract_pdf
 from extraction_result import ExtractionResult
 import web_source
 import enrich
+import claude_search
 import gemini_search
 import type_fields
 import house_style
@@ -335,6 +336,9 @@ class BiblioAgent:
             'output': getattr(usage, 'output_tokens', 0) or 0,
             'cache_write': getattr(usage, 'cache_creation_input_tokens', 0) or 0,
             'cache_read': getattr(usage, 'cache_read_input_tokens', 0) or 0,
+            # Web searches run by the server tool, billed per search.
+            'web_searches': getattr(getattr(usage, 'server_tool_use', None),
+                                    'web_search_requests', 0) or 0,
         })
 
         stop = getattr(message, 'stop_reason', None)
@@ -1187,8 +1191,10 @@ else, using null for anything the text does not show:
         not-found, invalid-type, skipped: <why> or error: <message>; on
         anything but decided the extraction chooses the type itself."""
         info = {'status': None, 'usage': []}
+        engine = self._search_engine()
+        info['engine'] = engine
         key = self.config.get('gemini_api_key')
-        if not key:
+        if engine == 'gemini' and not key:
             info['status'] = 'skipped: no gemini_api_key'
             return None, info
         self._log("   Reading the item's identity...", 'info')
@@ -1207,39 +1213,51 @@ else, using null for anything the text does not show:
         if not title:
             info['status'] = 'skipped: no title'
             return None, info
-        gm = self.config.get('gemini_model') or gemini_search.MODEL
-        self._log("   Asking Gemini for the type...", 'info')
-        r = gemini_search.decide_type(query, TYPE_DEFINITIONS, key, model=gm)
+        who = 'the web search' if engine == 'claude' else 'Gemini'
+        self._log(f"   Searching for the type ({engine})...", 'info')
+        if engine == 'claude':
+            r = claude_search.decide_type(query, TYPE_DEFINITIONS, self._create)
+            self._log(f"   Web searches: {r.get('searches', 0)} (limit {claude_search.MAX_USES})", 'info')
+        else:
+            gm = self.config.get('gemini_model') or gemini_search.MODEL
+            r = gemini_search.decide_type(query, TYPE_DEFINITIONS, key, model=gm)
         info['usage'] += r.get('usage') or []
-        info.update({k: r.get(k) for k in ('type', 'found', 'reason', 'answer', 'sources', 'queries', 'history')})
+        info.update({k: r.get(k) for k in ('type', 'found', 'reason', 'answer', 'sources', 'queries',
+                                            'searches', 'history')})
         if r.get('error'):
             info['status'] = f"error: {r['error']}"
-            self._log(f"   ⚠️  Gemini type check failed ({r['error']}) - Claude chooses the type", 'warning')
+            self._log(f"   ⚠️  Type search failed ({r['error']}) - Claude chooses the type", 'warning')
             return None, info
         if not r.get('found') or not r.get('type'):
             info['status'] = 'not-found'
-            self._log("   Gemini did not identify the work - Claude chooses the type", 'info')
+            self._log(f"   {who[0].upper() + who[1:]} did not identify the work - Claude chooses the type", 'info')
             return None, info
         if r['type'] not in gemini_search.listed_types(TYPE_DEFINITIONS):
             info['status'] = 'invalid-type'
-            self._log(f"   ⚠️  Gemini gave a type not on the list (@{r['type']}) - Claude chooses the type", 'warning')
+            self._log(f"   ⚠️  {who[0].upper() + who[1:]} gave a type not on the list (@{r['type']}) - Claude chooses the type", 'warning')
             return None, info
         info['status'] = 'decided'
-        self._log(f"   Gemini: @{r['type']} ({r.get('reason', '')})", 'info')
+        self._log(f"   Type search: @{r['type']} ({r.get('reason', '')})", 'info')
         return r['type'], info
+
+    def _search_engine(self):
+        """'claude' (default: Claude's web search, capped per item) or 'gemini'."""
+        engine = str(self.config.get('type_search') or 'claude').strip().lower()
+        return engine if engine in ('claude', 'gemini') else 'claude'
 
     @staticmethod
     def _decided_type_instruction(entry_type, reason):
         """What the extraction is told when Gemini has decided the type."""
-        return (f"\n\nAn external check, grounded in Google Search, has decided this work's "
+        return (f"\n\nAn external check, grounded in a web search, has decided this work's "
                 f"entry type: @{entry_type}. Its reason: {reason}\nUse @{entry_type}. In step 1, "
                 f"write the type analysis briefly and choose @{entry_type}. Encode the entry under "
                 f"@{entry_type}, putting the container's information in the fields @{entry_type} "
                 "uses. Never add a value the source does not show.")
 
     def _ask_question_bank(self, info, final_type):
-        """Step 3a: the bank's questions for final_type, asked in Gemini's
-        conversation; answers land in info for _apply_gemini_answers()."""
+        """Step 3a: the bank's questions for final_type, asked in the type
+        search's conversation (Claude's or Gemini's); answers land in info for
+        _apply_gemini_answers()."""
         key = self.config.get('gemini_api_key')
         gm = self.config.get('gemini_model') or gemini_search.MODEL
         bank_path = self.config.get('gemini_questions_file') or 'prompt-context/gemini-questions.yaml'
@@ -1261,12 +1279,15 @@ else, using null for anything the text does not show:
             for f, d in type_fields.fields_for(final_type) if f not in asked]
         if not questions:
             return
-        self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
-        qa = gemini_search.ask_questions(info.get('history') or [], questions, key, model=gm)
+        self._log(f"   Asking {len(questions)} question(s) about the search results...", 'info')
+        if info.get('engine') == 'claude':
+            qa = claude_search.ask_questions(info.get('history') or [], questions, self._create)
+        else:
+            qa = gemini_search.ask_questions(info.get('history') or [], questions, key, model=gm)
         info['usage'] += qa.get('usage') or []
         if qa.get('error'):
             info['questions_status'] = f"error: {qa['error']}"
-            self._log(f"   ⚠️  Gemini questions failed ({qa['error']})", 'warning')
+            self._log(f"   ⚠️  Questions failed ({qa['error']})", 'warning')
         else:
             info['questions_status'] = 'answered'
             info['questions'] = questions
