@@ -17,9 +17,10 @@ Three uses, all deterministic and offline:
   same year (an online reference work: both online), and no disagreement on
   volume, editor, maintitle or edition; a field the parts disagree on, or most
   of them lack, is left alone.
-- exemplars(): two or three library entries of the item's container or decided
-  type, cleaned of bookkeeping fields, for the extraction prompt (opt-in:
-  library_exemplars).
+- exemplars(): up to three library entries, for the extraction prompt (opt-in:
+  library_exemplars): the item's container's other items, then the decided
+  type's most fully populated entries, one per author. Only fields biblatex or
+  biblatex-chicago defines are shown.
 
 The library is read once per process and re-read when the file changes.
 `exclude` keys are never matched: the eval harness passes its sample's
@@ -88,6 +89,29 @@ REFERENCE_FIELDS = ('editor', 'editora', 'editorb', 'editortype', 'editoratype',
 PRIVATE = re.compile(r'^(bdsk-|date-added$|date-modified$|annote$|keywords$|file$|abstract$|'
                      r'read$|rating$|devonthink$)')
 _CACHE: dict = {}
+_FIELDS_MD = Path(__file__).resolve().parent.parent / 'prompt-context' / 'biblatex-chicago-fields.md'
+_KNOWN: set = set()
+
+
+def known_fields():
+    """Field names biblatex or biblatex-chicago defines: the biblatex manual's
+    data fields, the headings of the biblatex-chicago field reference, and
+    Journal (house ruling). Anything else in a library entry - a reference
+    manager's or a user's own bookkeeping - is never shown to the model."""
+    if not _KNOWN:
+        import type_fields
+        _KNOWN.update(type_fields._tables()[1])
+        try:
+            text = _FIELDS_MD.read_text(encoding='utf-8')
+        except OSError:
+            text = ''
+        _KNOWN.update(m.group(1).lower() for m in re.finditer(r'^### ([A-Za-z]+)\s*$', text, re.M))
+        _KNOWN.add('journal')
+    return _KNOWN
+
+
+def _shown(key):
+    return key in known_fields() and not PRIVATE.match(key)
 
 
 class Lib:
@@ -493,15 +517,17 @@ def _clean(entry_text):
     if not entries:
         return entry_text
     e = entries[0]
-    keep = [f for f in e.fields if not PRIVATE.match(f.key)]
+    keep = [f for f in e.fields if _shown(f.key)]
     body = ',\n'.join(f"\t{f.name} = {{{f.value.strip()}}}" for f in keep)
     return f"@{e.etype}{{{e.citekey},\n{body}\n}}"
 
 
 def exemplars(lib, entry_type=None, container=None, exclude=(), n=3):
     """Up to n library entries, cleaned, as house-form examples: the
-    container's own chapters or articles first, then the decided type's most
-    recently modified entries."""
+    container's own chapters or articles first, then the decided type's
+    entries with the most populated fields (only fields biblatex or
+    biblatex-chicago defines count), newest first on a tie, one per first
+    author so that the examples differ."""
     if lib is None:
         return []
     skip = set(exclude)
@@ -516,7 +542,18 @@ def exemplars(lib, entry_type=None, container=None, exclude=(), n=3):
         typed = [i for i, (k, t, _f) in enumerate(lib.entries)
                  if t == entry_type and k not in skip and i not in picked]
         typed.sort(key=lambda i: lib.entries[i][2].get('date-modified', ''), reverse=True)
-        picked += typed
+        typed.sort(key=lambda i: sum(1 for x in lib.entries[i][2] if _shown(x)), reverse=True)
+        authors = set()
+        for i in typed:
+            if len(picked) >= n:
+                break
+            k, _t, f = lib.entries[i]
+            names = _surnames(f.get('author') or f.get('editor') or '')
+            who = names[0] if names else re.sub(r'[^A-Za-z]+$', '', re.sub(r'\d.*', '', k))
+            if who in authors:
+                continue
+            authors.add(who)
+            picked.append(i)
     out = []
     for i in picked[:n]:
         a, b = lib.spans[lib.entries[i][0]]

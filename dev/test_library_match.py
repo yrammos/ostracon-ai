@@ -384,6 +384,64 @@ def test_exemplars_are_cleaned_and_container_first():
     assert lm.exemplars(None, entry_type="article") == []
 
 
+RICH_BOOKS = r"""@book{Rich2015,
+	author = {Rich, Ruth},
+	date = {2015},
+	edition = {2},
+	location = {Oxford},
+	publisher = {Clarendon},
+	series = {Studies},
+	title = {Full Form},
+	translator = {Trans, Tom}}
+
+@book{Rich2015a,
+	author = {Rich, Ruth},
+	date = {2015},
+	edition = {2},
+	location = {Oxford},
+	publisher = {Clarendon},
+	series = {Studies},
+	title = {Full Form, Volume Two},
+	translator = {Trans, Tom}}
+
+@book{Kept2001,
+	author = {Kept, Kim},
+	date = {2001},
+	devonthink2 = {x-devonthink-item://AAA},
+	devonthink3 = {x-devonthink-item://BBB},
+	local-url = {/private/path/one.pdf},
+	local-url-2 = {/private/path/two.pdf},
+	local-url-3 = {/private/path/three.pdf},
+	location = {Paris},
+	publisher = {Minuit},
+	title = {Few Fields}}
+
+@book{Mid2010,
+	author = {Mid, Max},
+	date = {2010},
+	location = {Berlin},
+	publisher = {Suhrkamp},
+	series = {Taschenbuch},
+	title = {Some Fields}}
+"""
+
+
+def test_exemplars_prefer_full_entries_one_per_author_without_bookkeeping():
+    lib = _lib_with(RICH_BOOKS)
+    ex = lm.exemplars(lib, entry_type="book", n=3)
+    keys = [e.split("{", 1)[1].split(",", 1)[0] for e in ex]
+    # Rich2015a ties with Rich2015 but repeats its author; Kept2001's
+    # bookkeeping fields do not count, so Mid2010 outranks it.
+    assert keys[:2] == ["Rich2015", "Mid2010"] and "Rich2015a" not in keys, keys
+    assert not any("local-url" in e or "devonthink" in e for e in ex), ex
+    assert keys[2] == "Kept2001" and "publisher = {Minuit}" in ex[2], ex
+
+
+def test_exemplar_fields_are_only_those_biblatex_defines():
+    assert {"lista", "entrysubtype", "userd", "journal", "title"} <= lm.known_fields()
+    assert not {"local-url", "devonthink2", "lastchecked"} & lm.known_fields()
+
+
 def test_no_library_changes_nothing():
     assert lm.load(None) is None and lm.load("/nonexistent/lib.bib") is None
     assert lm.container_fill(NEW, None)[0] == NEW and lm.duplicates(NEW, None) == []

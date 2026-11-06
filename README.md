@@ -46,7 +46,7 @@ For each source, the agent works in five stages
    - b. **Searches the web**: Claude Haiku 5.5, at most two searches per item (`claude`, the default); Google's AI Mode in a Chrome tab, which writes a whole BibLaTeX-Chicago entry (`ai-mode`); or Gemini with Google Search (`gemini`).
    - c. **Estimates the type**: from the search results, or read from AI Mode's entry.
 3. **Create record**
-   - a. **Estimates the entry fields**: with Claude, from the extracted text and the source's metadata, given the type from 2c, per the extraction rules and your house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the latest entries of the same type [`library_exemplars`].
+   - a. **Estimates the entry fields**: with Claude, from the extracted text and the source's metadata, given the type from 2c, per the extraction rules and your house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the same type's most fully populated entries, one per author; only fields that biblatex or biblatex-chicago defines are shown [`library_exemplars`].
    - b. **Retrieves missing publication details**: volume, number, pages, the journal or (for a chapter, from a DOI match) the book title and, for books, the publisher, from the work's CrossRef record, with Google Scholar as a fallback. Only empty fields are filled [`enrich_missing_fields`].
    - c. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
 4. **Refine record**
