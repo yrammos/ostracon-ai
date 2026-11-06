@@ -122,6 +122,11 @@ gemini_type_check: false
 # "ai-mode" - Google Search's AI Mode in Chrome, no API cost: Chrome open and
 #            signed in, View > Developer > Allow JavaScript from Apple Events.
 type_search: "claude"
+# type_search: "gemini" only: let Gemini search Google again for the closed
+# questions (off by default).
+# Off, it answers only from its first search; on, each source may run many
+# more searches, billed at $14 per 1,000 past 5,000 free a month.
+gemini_question_search: false
 
 # A .webloc page a plain fetch cannot read (a bot wall) and no open tab holds:
 # open it in a new Google Chrome tab, read it, close the tab. Uses your Chrome

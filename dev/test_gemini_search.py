@@ -171,7 +171,19 @@ def test_ask_questions_offers_check_options_and_drops_unknown_ids():
         out = gemini_search.ask_questions([{"role": "user", "parts": [{"text": "q"}]}], q, "KEY")
     assert out["answers"] == {"same": "yes"}, out
     sent = post.call_args.kwargs["json"]
-    assert "Options: no; yes." in sent["contents"][-1]["parts"][0]["text"] and sent["tools"] == [{"google_search": {}}]
+    prompt = sent["contents"][-1]["parts"][0]["text"]
+    assert "Options: no; yes." in prompt and "tools" not in sent, sent
+    assert "do not search again" in prompt and "never answer from memory" in prompt, prompt
+
+
+def test_ask_questions_searches_only_when_asked_to():
+    q = [{"id": "pub", "when": "any", "ask": "Publisher?", "use": "field publisher"}]
+    reply = Reply(200, _typed('<result>{"pub": null}</result>'))
+    with mock.patch.object(gemini_search.requests, "post", return_value=reply) as post:
+        gemini_search.ask_questions([], q, "KEY", search=True)
+    sent = post.call_args.kwargs["json"]
+    assert sent["tools"] == [{"google_search": {}}], sent
+    assert "from Google Search" in sent["contents"][-1]["parts"][0]["text"]
 
 
 if __name__ == "__main__":
