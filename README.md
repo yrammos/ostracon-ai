@@ -121,6 +121,18 @@ full path if it lies outside `/usr/bin`. A plaintext `anthropic_api_key`, then
 `ANTHROPIC_API_KEY`, take precedence. Relative paths resolve against the
 repository.
 
+Gemini is optional. To enable it, set `gemini_type_check: true` and give a key
+from a billed Google AI Studio project (aistudio.google.com/apikey), the same way
+as the Anthropic key: `gemini_api_key_command`, or a plaintext `gemini_api_key`,
+which takes precedence. No environment variable is read. Claude calls are billed
+to the Anthropic API account, Gemini calls to the Google project; a Claude
+subscription covers neither (see [Cost](#cost)).
+
+```yaml
+gemini_type_check: true
+gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-key -w"
+```
+
 | Key | Default | Effect |
 | --- | --- | --- |
 | `autofile_bibdesk` | `false` | Import each entry into BibDesk rather than the staging file. |
