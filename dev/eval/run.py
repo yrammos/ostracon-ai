@@ -242,7 +242,7 @@ def format_gemini(save_dir, keys) -> str:
     status = collections.Counter(r.get('status') for r in rows)
     return (f"\nGemini ({len(rows)} sources): " + ", ".join(f"{k} {n}" for k, n in status.most_common())
             + f"\n  Gemini cost: ${sum(r.get('cost_usd', 0) for r in rows):.2f} "
-            f"(model tokens only; searches {sum(len(r.get('queries') or []) for r in rows)})")
+            f"(model tokens only; searches {sum(len(r.get('queries') or []) + len(r.get('question_queries') or []) for r in rows)})")
 
 
 def format_usage(usage, ttl) -> str:

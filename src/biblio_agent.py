@@ -1264,6 +1264,7 @@ else, using null for anything the text does not show:
         self._log(f"   Asking Gemini {len(questions)} question(s)...", 'info')
         qa = gemini_search.ask_questions(info.get('history') or [], questions, key, model=gm)
         info['usage'] += qa.get('usage') or []
+        info['question_queries'] = qa.get('queries') or []
         if qa.get('error'):
             info['questions_status'] = f"error: {qa['error']}"
             self._log(f"   ⚠️  Gemini questions failed ({qa['error']})", 'warning')

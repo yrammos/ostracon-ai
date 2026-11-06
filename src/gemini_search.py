@@ -243,7 +243,7 @@ def select(bank, entry_type):
 
 def ask_questions(history, questions, api_key, model=MODEL, timeout=120, retries=3, sleep=None):
     """One grounded call continuing the search conversation: {'answers':
-    {id: value}, 'usage'} or one with 'error'."""
+    {id: value}, 'queries', 'usage'} or one with 'error'."""
     import json
     import re
     import time
@@ -260,16 +260,19 @@ def ask_questions(history, questions, api_key, model=MODEL, timeout=120, retries
     status, data = _post(body, api_key, model, timeout, retries, sleep)
     if status != 200:
         return {"error": f"HTTP {status}: {str((data.get('error') or {}).get('message', ''))[:120]}"}
-    text, _ = _text(data)
+    text, cand = _text(data)
+    # Each search is billed (past the free monthly allowance): keep them.
+    queries = (cand.get("groundingMetadata") or {}).get("webSearchQueries", [])
     m = re.search(r"<result>\s*(\{.*?\})\s*</result>", text, re.S)
     try:
         answers = json.loads(m.group(1)) if m else None
     except ValueError:
         answers = None
     if not isinstance(answers, dict):
-        return {"error": "unparsable answer", "text": text[:500], "usage": [data.get("usageMetadata", {})]}
+        return {"error": "unparsable answer", "text": text[:500], "queries": queries,
+                "usage": [data.get("usageMetadata", {})]}
     wanted = {q["id"] for q in questions}
-    return {"answers": {k: v for k, v in answers.items() if k in wanted},
+    return {"answers": {k: v for k, v in answers.items() if k in wanted}, "queries": queries,
             "usage": [data.get("usageMetadata", {})]}
 
 

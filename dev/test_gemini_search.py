@@ -174,6 +174,16 @@ def test_ask_questions_offers_check_options_and_drops_unknown_ids():
     assert "Options: no; yes." in sent["contents"][-1]["parts"][0]["text"] and sent["tools"] == [{"google_search": {}}]
 
 
+
+def test_ask_questions_records_its_searches():
+    # Constructed reply in the API's documented shape (groundingMetadata.webSearchQueries).
+    q = [{"id": "pub", "when": "any", "ask": "Publisher?", "use": "field publisher"}]
+    data = _typed('<result>{"pub": "Clarendon"}</result>')
+    data["candidates"][0]["groundingMetadata"] = {"webSearchQueries": ["a publisher", "b publisher"]}
+    with mock.patch.object(gemini_search.requests, "post", return_value=Reply(200, data)):
+        out = gemini_search.ask_questions([], q, "KEY")
+    assert out["queries"] == ["a publisher", "b publisher"], out
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
