@@ -40,7 +40,7 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 For each source, the agent sequentially:
 
 1. **Extracts text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
-2. **Estimates the entry type**: from a web search run by Claude Haiku 5.5, at most two searches per item, or by Gemini [`gemini_type_check`, `type_search`]; otherwise using Claude in step 3.
+2. **Estimates the entry type**: from a web search run by Claude Haiku 5.5 (at most two searches per item), by Gemini, or by Google's AI Mode in Chrome [`gemini_type_check`, `type_search`]; otherwise using Claude in step 3.
 3. **Estimates the entry fields**: with Claude, given the previously estimated type, per the extraction rules and your
    house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the latest entries of the same type [`library_exemplars`].
 4. **Retrieves missing locators**: volume, number, pages, chapter, book title and, for books, publisher, from the work's CrossRef record, with Google Scholar as a fallback [`enrich_missing_fields`].
@@ -161,7 +161,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `require_langid` | `false` | Colour an entry without `Langid`. |
 | `scrapingdog_api_key` | — | Enables Google Scholar. Or `scrapingdog_api_key_command`. |
 | `thin_yield_threshold` | `400` | Words a PDF must yield; fewer colours the entry. `0` disables. |
-| `type_search` | `"claude"` | Who runs steps 2 and 7: `claude` (Claude Haiku 5.5, at most two web searches per item, $0.01 each) or `gemini` (Google Search; Gemini decides how many searches). |
+| `type_search` | `"claude"` | Who runs steps 2 and 7: `claude` (Claude Haiku 5.5, at most two web searches per item, $0.01 each) `gemini` (Google Search; Gemini decides how many searches), or `ai-mode` (Google Search's AI Mode in Chrome: no API cost; Chrome open and signed in, with View > Developer > Allow JavaScript from Apple Events). |
 | `validate_entries` | `true` | biber's data-model check. |
 | `verbose` | `true` | Progress on stderr. |
 
@@ -223,6 +223,7 @@ current prompt per model.
 | Claude                        | $0.162                | $0.057            |
 | CrossRef                      | free                  | free              |
 | Claude web search (`gemini_type_check`, `type_search: claude`) | at most $0.02 in searches, plus Haiku 5.5 tokens (not yet measured) | the same |
+| Google AI Mode (`type_search: ai-mode`) | none; about a minute per item in Chrome | the same |
 | Gemini (`type_search: gemini`) | about $0.03 in tokens, plus searches past the free 5,000 a month (about 40 per source in the 2026-11-06 billing export) | the same |
 | Google Scholar (ScrapingDog)  | about $0.001 a lookup | the same          |
 | Google Search, through Gemini | 5,000 a month free, then $14 per 1,000 | the same |
@@ -324,6 +325,7 @@ ostracon-ai/
 │   ├── extraction_result.py # What extract_bibtex() hands save_entry()
 │   ├── extract_pages.py    # PDF text, OCR, the thin-yield check
 │   ├── web_source.py       # .webloc pages
+│   ├── ai_mode.py          # The type search through Google's AI Mode, in Chrome
 │   ├── claude_search.py    # The type search through Claude's web search, capped per item
 │   ├── gemini_search.py    # Gemini's type and answers
 │   ├── type_fields.py      # The fields each type takes, from the biblatex manual
