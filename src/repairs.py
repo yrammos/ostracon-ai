@@ -138,8 +138,9 @@ def repair(entry_text, is_house=None):
             note(new, old, f[old], f"(dropped; {new} kept)")
         f = _fields(text)
 
-    # A first edition is never cited (CMOS cites an edition only from the
-    # second on), so Edition = {1} is noise from a record or a search answer.
+    # [house] No first edition: biblatex-chicago prints a plain number as an
+    # ordinal plus "ed." (Edition = {1} -> "1st ed."), and Chicago gives an
+    # edition only from the second on (maintainer's ruling, 2026-11-07).
     ed = f.get("edition", "").strip().lower().rstrip(".")
     if ed in ("1", "1st", "first", "1st ed", "first edition"):
         text = enrich.remove_field(text, "edition")
