@@ -154,10 +154,6 @@ library_match: true
 # Show the extraction up to three library entries (the container's, else the
 # decided type's) as house-form examples. Changes the prompt; off by default.
 library_exemplars: false
-# Keep the Url the extraction gives a dated work of a print type (a book or
-# article published only on the web); only its Urldate is dropped. Off, such an
-# entry loses both. Pair it with a house-style rule saying when to give a Url.
-web_only_url: false
 # library_bib_file: "~/Documents/Bibdesk/library.bib"
 # gemini_model: "gemini-3.8-flash"
 # gemini_questions_file: "./prompt-context/gemini-questions.yaml"

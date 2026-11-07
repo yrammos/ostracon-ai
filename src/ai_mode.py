@@ -140,6 +140,10 @@ def answers(entry, final_type, allowed):
     type takes, after the house cleanup, so its values only fill gaps."""
     import house_style
     entry, _ = enrich.strip_forbidden_fields(entry)
+    # A web address AI Mode found says nothing about whether the work is
+    # web-only; Url and Urldate are the extraction's to give, never a search's.
+    for f in ('url', 'urldate'):
+        entry = enrich.remove_field(entry, f)
     entry, _ = house_style.normalize(entry)
     entry, _ = house_style.repair(entry, None)
     fields = {k.lower(): v for k, v in enrich.parse_bibtex_fields(entry).items()}

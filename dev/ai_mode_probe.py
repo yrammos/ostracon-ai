@@ -44,6 +44,8 @@ def clean(entry, library=None):
     """The pipeline's own cleanup (before validation), so that scoring
     compares content rather than form."""
     entry, _ = enrich.strip_forbidden_fields(entry)
+    for f in ('url', 'urldate'):           # as ai_mode.answers() does
+        entry = enrich.remove_field(entry, f)
     entry, _ = enrich.normalize_langid(entry)
     entry, _ = house_style.normalize(entry)
     entry, _ = house_style.repair(entry, library)
