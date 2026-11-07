@@ -21,6 +21,7 @@ from extract_pages import extract_pdf
 from extraction_result import ExtractionResult
 import web_source
 import enrich
+import ai_mode
 import claude_search
 import gemini_search
 import type_fields
@@ -967,7 +968,7 @@ excerpt's text won't (e.g. an embedded Author field):
                 gemini['final_type'] = final_type
                 if decided and final_type != decided:
                     gemini['status'] = 'not-followed'
-                    self._log(f"   ⚠️  Extraction wrote @{final_type}, not Gemini's @{decided}", 'warning')
+                    self._log(f"   ⚠️  Extraction wrote @{final_type}, not the type search's @{decided}", 'warning')
                 if decided:
                     self._ask_question_bank(gemini, final_type)
             if self.config.get('enrich_missing_fields', True) and entry is not None:
@@ -1218,6 +1219,9 @@ else, using null for anything the text does not show:
         if engine == 'claude':
             r = claude_search.decide_type(query, TYPE_DEFINITIONS, self._create)
             self._log(f"   Web searches: {r.get('searches', 0)} (limit {claude_search.MAX_USES})", 'info')
+        elif engine == 'ai-mode':
+            r = ai_mode.decide_type(fields, log=lambda m: self._log(m, 'dim'))
+            info['entry'] = r.get('entry')
         else:
             gm = self.config.get('gemini_model') or gemini_search.MODEL
             r = gemini_search.decide_type(query, TYPE_DEFINITIONS, key, model=gm)
@@ -1241,9 +1245,10 @@ else, using null for anything the text does not show:
         return r['type'], info
 
     def _search_engine(self):
-        """'claude' (default: Claude's web search, capped per item) or 'gemini'."""
+        """'claude' (default: Claude's web search, capped per item), 'gemini',
+        or 'ai-mode' (Google's AI Mode in Chrome, no API)."""
         engine = str(self.config.get('type_search') or 'claude').strip().lower()
-        return engine if engine in ('claude', 'gemini') else 'claude'
+        return engine if engine in ('claude', 'gemini', 'ai-mode') else 'claude'
 
     @staticmethod
     def _decided_type_instruction(entry_type, reason):
@@ -1254,10 +1259,26 @@ else, using null for anything the text does not show:
                 f"@{entry_type}, putting the container's information in the fields @{entry_type} "
                 "uses. Never add a value the source does not show.")
 
+    def _ai_mode_fields(self, info, final_type):
+        """Step 3a for type_search: ai-mode: no question is asked; AI Mode's
+        own entry supplies the field values, for the fields the final type
+        takes, and only when the extraction kept AI Mode's type (another
+        type's fields would land in the wrong places)."""
+        if final_type != info.get('type') or not info.get('entry'):
+            info['questions_status'] = ('skipped: type not followed' if info.get('entry')
+                                        else 'skipped: no entry')
+            return
+        allowed = {f for f, _ in type_fields.fields_for(final_type)}
+        info['questions'], info['answers'] = ai_mode.answers(info['entry'], final_type, allowed)
+        info['questions_status'] = 'answered'
+
     def _ask_question_bank(self, info, final_type):
         """Step 3a: the bank's questions for final_type, asked in the type
         search's conversation (Claude's or Gemini's); answers land in info for
-        _apply_gemini_answers()."""
+        _apply_gemini_answers(). With AI Mode, its own entry answers instead."""
+        if info.get('engine') == 'ai-mode':
+            self._ai_mode_fields(info, final_type)
+            return
         key = self.config.get('gemini_api_key')
         gm = self.config.get('gemini_model') or gemini_search.MODEL
         bank_path = self.config.get('gemini_questions_file') or 'prompt-context/gemini-questions.yaml'
@@ -1383,19 +1404,20 @@ else, using null for anything the text does not show:
             entry_text, gemini['questions'], gemini.get('answers') or {},
             gemini.get('final_type') or enrich.get_entry_type(entry_text),
             outranks=self._scholar_fields())
+        who = {'claude': 'Web search', 'ai-mode': 'AI Mode'}.get(gemini.get('engine'), 'Gemini')
         if report.get('replaced'):
-            note = "Gemini over Scholar: " + ", ".join(report['replaced'])
+            note = f"{who} over Scholar: " + ", ".join(report['replaced'])
             field_sources = f"{field_sources}; {note}" if field_sources else note
-            self._log(f"   Gemini's value replaced Scholar's: {', '.join(report['replaced'])}", 'info')
+            self._log(f"   {who}'s value replaced Scholar's: {', '.join(report['replaced'])}", 'info')
         gemini['answer_report'] = report
         if report['added']:
-            note = "Gemini: " + ", ".join(report['added'])
+            note = f"{who}: " + ", ".join(report['added'])
             field_sources = f"{field_sources}; {note}" if field_sources else note
-            self._log(f"   Filled from Gemini: {', '.join(report['added'])}", 'info')
+            self._log(f"   Filled from {who}: {', '.join(report['added'])}", 'info')
         for c in report['conflicts']:
-            self._log(f"   ⚠️  Gemini disagrees - {c}", 'warning')
+            self._log(f"   ⚠️  {who} disagrees - {c}", 'warning')
         for c in report.get('differs', []):
-            self._log(f"   Gemini differs (entry kept) - {c}", 'info')
+            self._log(f"   {who} differs (entry kept) - {c}", 'info')
         return entry_text, field_sources, bool(report['conflicts'])
 
     # The repair prompt: the cleanup spec's §3.1 type table and §3.11 order.

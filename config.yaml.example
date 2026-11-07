@@ -119,6 +119,8 @@ gemini_type_check: false
 # "claude" - Claude Haiku 5.5 with web search, at most two searches per item
 #            ($0.01 each, billed by Anthropic); needs no Gemini key.
 # "gemini" - Gemini with Google Search; Gemini decides how many searches.
+# "ai-mode" - Google Search's AI Mode in Chrome, no API cost: Chrome open and
+#            signed in, View > Developer > Allow JavaScript from Apple Events.
 type_search: "claude"
 
 # A .webloc page a plain fetch cannot read (a bot wall) and no open tab holds:
