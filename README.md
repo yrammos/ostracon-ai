@@ -6,9 +6,13 @@ BibDesk.
 
 **NOTE: Early-stage software, developed against one ~5,500-item library.** The prompt rules,
 entry-type quotas, and normalization conventions follow one scholar's
-biblatex-chicago practice. Measured accuracy is approximately 83% on entry-type identification against
-hand-verified ground truth; see `dev/eval/baselines/` for the field-level tables
-and `dev/eval/README.md` for what the evaluation suite cannot measure. Assume entries need
+biblatex-chicago practice. On held-out sources never used in development, the entry type
+was correct for 38 of 48 (79%), measured against hand-verified ground truth with
+`claude-sonnet-4-6`, the default type search (Claude web search) and the maintainer's library
+for matching and examples. Without a library, expect less. The full configuration and
+field-level tables are in
+[`dev/eval/baselines/2026-11-06-holdout.md`](dev/eval/baselines/2026-11-06-holdout.md);
+`dev/eval/README.md` says what the evaluation suite cannot measure. Assume entries need
 checking before you cite from them. macOS only; BibDesk is optional.
 
 Design notes, measurements and cost analysis live in [`NOTES.md`](NOTES.md).
