@@ -64,7 +64,7 @@ def test_an_eventtitle_the_booktitle_contains_is_dropped():
 
 def test_a_bracketed_journal_qualifier_moves_to_the_addon():
     out, _ = _fix(_e("article", journal="Journal of Music Theory Pedagogy (Resources)", title="T"))
-    assert "Journal = {Journal of Music Theory Pedagogy}" in out and "Journaltitleaddon = {Resources}" in out, out
+    assert "Journal = {Journal of Music Theory Pedagogy}" in out and "Journaltitleaddon = {(Resources)}" in out, out
     out, _ = _fix(_e("article", journal="Blog of the Analysis Interest Group (PAIG)", title="T"))
     assert "(PAIG)" in out and "Journaltitleaddon" not in out, out
 
