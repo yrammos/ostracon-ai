@@ -11,10 +11,10 @@ text (document.body.innerText).
 
 Each item's author and title come from the expected entry (the pipeline would
 take them from its identity call). The prompt is the maintainer's, from their
-Gemini experiment. Results land in --out as <citekey>.bib (the first
-@type{...} entry in the answer, with the citekey kept as the file name, which
-is how --rescore matches it) and <citekey>.txt (the page text, for checking
-what the scorer saw).
+Gemini experiment. Results land in --out as <citekey>.raw.bib (the first
+@type{...} entry in the answer), <citekey>.bib (that entry after the
+pipeline's own cleanup, which is what --rescore scores; the citekey is the
+file name) and <citekey>.txt (the page text, for checking what was read).
 
 Needs: Google Chrome running and signed in, and View > Developer > "Allow
 JavaScript from Apple Events" switched on; the Terminal (or whatever runs
@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT / "dev"))
 
 import bib_audit  # noqa: E402
 import enrich  # noqa: E402
+import house_style  # noqa: E402
 import web_source as ws  # noqa: E402
 
 PROMPT = ('Find the optimal biblatex-chicago type for {author}\'s "{title}". Consider all '
@@ -76,6 +77,25 @@ def query_parts(entry):
     if f.get("subtitle"):
         title = f"{title}: {f['subtitle']}"
     return author, title
+
+
+def clean(entry, library=None):
+    """The pipeline's own cleanup (extract_bibtex, before validation), so
+    that scoring compares content rather than form: forbidden fields, Langid,
+    then house_style's normalize, repair and snap_to_library."""
+    entry, _ = enrich.strip_forbidden_fields(entry)
+    entry, _ = enrich.normalize_langid(entry)
+    entry, _ = house_style.normalize(entry)
+    entry, _ = house_style.repair(entry, library)
+    entry, _ = house_style.snap_to_library(entry, library)
+    return entry
+
+
+def _library():
+    import yaml
+    cfg = ROOT / "config.yaml"
+    path = (yaml.safe_load(cfg.read_text()) or {}).get("library_bib_file") if cfg.exists() else None
+    return str(Path(path).expanduser()) if path else None
 
 
 def page_text(tab_id, timeout=20):
@@ -126,11 +146,24 @@ def main(argv=None):
     ap.add_argument("--only", required=True, help="comma-separated citekeys")
     ap.add_argument("--out", default=str(ROOT / "dev/eval/out/ai-mode"))
     ap.add_argument("--pause", type=float, default=20.0, help="seconds between items")
+    ap.add_argument("--reclean", action="store_true",
+                    help="no Chrome: clean the saved <key>.raw.bib answers again into <key>.bib")
     args = ap.parse_args(argv)
+    library = _library()
     expected = {e.citekey: e for e in bib_audit.scan(Path(args.expected).read_text(encoding="utf-8"))[0]}
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     keys = [k for k in args.only.split(",") if k]
+    if args.reclean:
+        for key in keys:
+            raw = out / f"{key}.raw.bib"
+            if raw.exists():
+                (out / f"{key}.bib").write_text(clean(raw.read_text(encoding="utf-8"), library) + "\n",
+                                                encoding="utf-8")
+                print(f"{key}: cleaned", file=sys.stderr)
+            else:
+                print(f"{key}: no {raw.name}", file=sys.stderr)
+        return 0
     for n, key in enumerate(keys):
         if key not in expected:
             print(f"{key}: not in {args.expected}", file=sys.stderr)
@@ -140,7 +173,8 @@ def main(argv=None):
         status, entry, text = ask(author, title, log=lambda m: print(m, file=sys.stderr))
         (out / f"{key}.txt").write_text(text or "", encoding="utf-8")
         if entry:
-            (out / f"{key}.bib").write_text(entry + "\n", encoding="utf-8")
+            (out / f"{key}.raw.bib").write_text(entry + "\n", encoding="utf-8")
+            (out / f"{key}.bib").write_text(clean(entry, library) + "\n", encoding="utf-8")
         print(f"  {status}" + (f": {entry.splitlines()[0]}" if entry else ""), file=sys.stderr)
         if status in ("blocked", "refused"):
             print(f"Stopped: {status}. See {out / (key + '.txt')}.", file=sys.stderr)
