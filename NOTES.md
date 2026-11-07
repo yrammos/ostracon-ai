@@ -121,6 +121,7 @@ and Claude, Gemini and the network are stubbed:
 | `test_library_match.py` | Library matching, and its place in the pipeline. |
 | `test_recollection.py` | CrossRef replacing a recollected value. |
 | `test_repairs.py` | The cleanup spec's repairs, the repair call and the render check. |
+| `test_search_choice.py` | The window's Search choice: the options offered, read from config and applied before each file. The popup itself is not exercised. |
 | `test_web_source.py` | The `.webloc` routes and the plausibility check, against canned pages. |
 
 The accuracy harness, `dev/eval/` (see its `README.md`):

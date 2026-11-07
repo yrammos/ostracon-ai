@@ -137,6 +137,35 @@ def response_text(message):
 _deprecated_interface_keys_warned = set()
 
 
+# The type search choices the progress window offers (steps 2b and 4b): the
+# config value and its label. Gemini only when a key is configured.
+SEARCH_CHOICES = (('off', 'Off'), ('claude', 'Claude web search'),
+                  ('ai-mode', 'Google AI Mode (Chrome)'), ('gemini', 'Gemini'))
+
+
+def search_choices(config):
+    """[(value, label)] for the window's Search popup."""
+    return [(v, l) for v, l in SEARCH_CHOICES if v != 'gemini' or config.get('gemini_api_key')]
+
+
+def current_search(config):
+    """The configured type search as a popup value: 'off' when
+    gemini_type_check is off, else type_search (default 'claude')."""
+    if not config.get('gemini_type_check'):
+        return 'off'
+    engine = str(config.get('type_search') or 'claude').strip().lower()
+    return engine if engine in ('claude', 'gemini', 'ai-mode') else 'claude'
+
+
+def apply_search_choice(config, value):
+    """Set gemini_type_check and type_search from a popup value, in place."""
+    if value == 'off':
+        config['gemini_type_check'] = False
+    else:
+        config['gemini_type_check'] = True
+        config['type_search'] = value
+
+
 def _interface_setting(config, key, default=None):
     """Look up a presentation-only setting, preferring config['interface']
     over the deprecated top-level key of the same name."""
@@ -2314,6 +2343,10 @@ end tell'''
                 chosen = getattr(progress_window, 'selected_model', None)
                 if chosen and chosen != self.config['model']:
                     self.config['model'] = chosen
+                # The Search popup likewise (type_search / gemini_type_check).
+                search = getattr(progress_window, 'selected_search', None)
+                if search and search != current_search(self.config):
+                    apply_search_choice(self.config, search)
 
             # A file from pdf_in_folder/careful/ always takes careful_model,
             # regardless of the dropdown above - the point of the folder is
@@ -2420,6 +2453,8 @@ def _run_windowed(agent, pdf_files, move_files):
         total_files=len(pdf_files),
         models=_interface_setting(agent.config, 'window_models', None) or [agent.config['model']],
         current_model=agent.config['model'],
+        searches=search_choices(agent.config),
+        current_search=current_search(agent.config),
     )
     agent._progress_callback = win.make_callback()
     win.show()

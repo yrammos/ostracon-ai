@@ -43,9 +43,10 @@ class _WindowDelegate(NSObject):
     """Handles window close events and the model popup's selection."""
 
     @objc.python_method
-    def setup(self, cancel_event, on_model_change=None):
+    def setup(self, cancel_event, on_model_change=None, on_search_change=None):
         self._cancel_event = cancel_event
         self._on_model_change = on_model_change
+        self._on_search_change = on_search_change
 
     def windowWillClose_(self, notification):
         self._cancel_event.set()
@@ -57,6 +58,11 @@ class _WindowDelegate(NSObject):
         # attribute the worker thread can read without touching AppKit.
         if self._on_model_change:
             self._on_model_change(str(sender.titleOfSelectedItem()))
+
+    def searchChanged_(self, sender):
+        # The popup shows labels; the index maps back to the config value.
+        if self._on_search_change:
+            self._on_search_change(int(sender.indexOfSelectedItem()))
 
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -73,7 +79,8 @@ class ProgressWindow:
         NSApp.run()         # blocks until finish() triggers auto-close or user closes
     """
 
-    def __init__(self, total_files: int, models=None, current_model=None) -> None:
+    def __init__(self, total_files: int, models=None, current_model=None,
+                 searches=None, current_search=None) -> None:
         self._total = total_files
         self._cancel_event = threading.Event()
         self._panel = None
@@ -85,11 +92,26 @@ class ProgressWindow:
         # pays one write per model for the whole run, not one per switch.
         self._models = list(models or [])
         self._selected_model = current_model
+        # [(config value, label)] for the type search (2b and 4b); read by the
+        # worker before each file, like the model.
+        self._searches = list(searches or [])
+        self._selected_search = current_search
         self._build_window()
 
     def _set_selected_model(self, value):
         self._selected_model = value
         self.log(f"\u2699 Model switched to {value} (from the next file)", 'info')
+
+    def _set_selected_search(self, index):
+        value, label = self._searches[index]
+        self._selected_search = value
+        self.log(f"\u2699 Search switched to {label} (from the next file)", 'info')
+
+    @property
+    def selected_search(self):
+        """The type search chosen in the popup: 'off', 'claude', 'ai-mode' or
+        'gemini' (None if no popup)."""
+        return self._selected_search
 
     @property
     def selected_model(self):
@@ -155,6 +177,7 @@ class ProgressWindow:
         # Live, not start-only: the worker re-reads selected_model before each
         # file, so a change applies from the next item onward.
         row_y = H - HEADER_H - 36
+        has_row = bool(self._models or self._searches)
         if self._models:
             label = NSTextField.alloc().initWithFrame_(NSMakeRect(12, row_y + 2, 48, 18))
             label.setEditable_(False)
@@ -167,7 +190,7 @@ class ProgressWindow:
             content.addSubview_(label)
 
             popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-                NSMakeRect(58, row_y - 2, 240, 26), False
+                NSMakeRect(58, row_y - 2, 210, 26), False
             )
             popup.addItemsWithTitles_(self._models)
             if self._selected_model in self._models:
@@ -175,21 +198,41 @@ class ProgressWindow:
             else:
                 self._selected_model = str(popup.titleOfSelectedItem())
             popup.setFont_(NSFont.systemFontOfSize_(11.0))
+            popup.setToolTip_("Extraction model; applies from the next file")
             content.addSubview_(popup)
             self._popup = popup
 
-            hint = NSTextField.alloc().initWithFrame_(NSMakeRect(306, row_y + 2, W - 318, 18))
-            hint.setEditable_(False)
-            hint.setSelectable_(False)
-            hint.setBordered_(False)
-            hint.setDrawsBackground_(False)
-            hint.setFont_(NSFont.systemFontOfSize_(10.0))
-            hint.setTextColor_(self._colors['dim'])
-            hint.setStringValue_("applies from the next file")
-            content.addSubview_(hint)
+        # ── search popup ─────────────────────────────────────────────────────
+        # Who runs the type search (2b) and its field answers (4b); "Off"
+        # leaves the type to the extraction. Applies from the next file.
+        self._search_popup = None
+        if self._searches:
+            label = NSTextField.alloc().initWithFrame_(NSMakeRect(278, row_y + 2, 52, 18))
+            label.setEditable_(False)
+            label.setSelectable_(False)
+            label.setBordered_(False)
+            label.setDrawsBackground_(False)
+            label.setFont_(NSFont.systemFontOfSize_(11.0))
+            label.setTextColor_(self._colors['dim'])
+            label.setStringValue_("Search:")
+            content.addSubview_(label)
+
+            spop = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+                NSMakeRect(330, row_y - 2, W - 342, 26), False
+            )
+            spop.addItemsWithTitles_([lbl for _, lbl in self._searches])
+            values = [v for v, _ in self._searches]
+            if self._selected_search in values:
+                spop.selectItemAtIndex_(values.index(self._selected_search))
+            else:
+                self._selected_search = values[int(spop.indexOfSelectedItem())]
+            spop.setFont_(NSFont.systemFontOfSize_(11.0))
+            spop.setToolTip_("Type search and field answers; applies from the next file")
+            content.addSubview_(spop)
+            self._search_popup = spop
 
         # ── separator line ───────────────────────────────────────────────────
-        sep_y = H - HEADER_H - (48 if self._models else 20)
+        sep_y = H - HEADER_H - (48 if has_row else 20)
         sep = NSTextField.alloc().initWithFrame_(NSMakeRect(0, sep_y, W, 1))
         sep.setEditable_(False)
         sep.setBordered_(False)
@@ -225,11 +268,14 @@ class ProgressWindow:
 
         # ── delegate ─────────────────────────────────────────────────────────
         delegate = _WindowDelegate.alloc().init()
-        delegate.setup(self._cancel_event, self._set_selected_model)
+        delegate.setup(self._cancel_event, self._set_selected_model, self._set_selected_search)
         panel.setDelegate_(delegate)
         if self._models:
             self._popup.setTarget_(delegate)
             self._popup.setAction_("modelChanged:")
+        if self._search_popup is not None:
+            self._search_popup.setTarget_(delegate)
+            self._search_popup.setAction_("searchChanged:")
 
         self._panel    = panel
         self._tv       = tv
@@ -324,7 +370,11 @@ if __name__ == '__main__':
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
-    win = ProgressWindow(total_files=3)
+    win = ProgressWindow(total_files=3, models=["claude-sonnet-4-6", "claude-opus-5"],
+                         current_model="claude-sonnet-4-6",
+                         searches=[("off", "Off"), ("claude", "Claude web search"),
+                                   ("ai-mode", "Google AI Mode (Chrome)")],
+                         current_search="claude")
     win.show()
 
     def _demo():

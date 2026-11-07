@@ -194,8 +194,11 @@ file**, not in `rules_file`: `~/.config/ostracon-ai/house-style.md` (or
 Right-click a PDF or `.webloc` file in Finder, or a mixed selection, and choose
 **Extract BibLaTeX-Chicago Bibliography (via Claude)**.
 
-The progress window's **Model** dropdown lists `window_models`; a change applies
-from the next file. Reference works (Grove, the Stanford Encyclopedia, Wikipedia)
+The progress window's **Model** dropdown lists `window_models`; its **Search**
+dropdown chooses the type search for 2b and 4b: Off, Claude web search, Google AI
+Mode (Chrome), or Gemini when a Gemini key is configured. It starts from
+`gemini_type_check` and `type_search`. A change in either applies from the next
+file and lasts for that batch only; `config.yaml` is not changed. Reference works (Grove, the Stanford Encyclopedia, Wikipedia)
 repay the stronger model: put them in `pdf-in/careful/` before an `--all` run and
 they process with `careful_model`. See the operator note in `CLAUDE.md`.
 
