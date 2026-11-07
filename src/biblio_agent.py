@@ -1044,7 +1044,8 @@ excerpt's text won't (e.g. an embedded Author field):
             # than trusting prompt compliance alone. After enrichment, not
             # before: a webloc entry with no Date keeps its Url/Urldate, and
             # verify_and_flag_recollection() may then fill that Date in.
-            bibtex_entry, stripped = enrich.strip_forbidden_fields(bibtex_entry)
+            bibtex_entry, stripped = enrich.strip_forbidden_fields(
+                bibtex_entry, keep_given_url=bool(self.config.get('web_only_url')))
             if stripped:
                 self._log(f"   Stripped disallowed field(s): {', '.join(stripped)}", 'warning')
 
