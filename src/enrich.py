@@ -334,27 +334,19 @@ def remove_field(entry_text, field_name):
 FORBIDDEN_FIELDS_ALWAYS = {'issn', 'isbn', 'keywords', 'reference', 'devonthink'}
 
 
-def strip_forbidden_fields(entry_text, keep_given_url=False):
+def strip_forbidden_fields(entry_text):
     """
     Remove fields extraction-rules.md forbids from a raw BibLaTeX entry, structurally -
     the initial extraction prompt already asks Claude not to include these,
-    but doesn't reliably follow through (e.g. a PDF that's actually a
-    printout of an online-only page can get typed as something other than
-    @Online, or a PDF whose own body text states a URL can still get a Url
-    field despite the instruction against it).
+    but doesn't reliably follow through.
 
-    Url/Urldate are kept only when either is true - regardless of whether
-    the entry was sourced from a PDF or a webloc:
-    - the entry is typed @Online, the one type with no other locator to
-      fall back on; or
-    - the entry has no Date (nor a Year other than "no date"), in which
-      case Urldate is the only dating evidence available and Url its
-      necessary companion.
-    A dated @Unpublished entry keeps Url (an author-circulated document has
-    no other locator) and loses Urldate; so does any dated entry when
-    keep_given_url is set (config `web_only_url`: the house style asks for a
-    Url only on a web-only work of a print type). Otherwise both are stripped. Run it last: the enrichment steps can still
-    add a Date, which moves an entry out of the second case.
+    Url is never removed here: whether a work keeps it (an @Online entry, an
+    author-circulated document, a book or article published only on the web)
+    is a judgment the rules and the house style leave to the extraction.
+    Urldate goes from a dated entry unless it is @Online or an online
+    reference work: an access date is then redundant. An undated entry keeps
+    it as its only dating evidence. Run it last: the enrichment steps can
+    still add a Date.
 
     Returns (entry_text, stripped_field_names).
     """
@@ -362,22 +354,15 @@ def strip_forbidden_fields(entry_text, keep_given_url=False):
     fields = parse_bibtex_fields(entry_text)
 
     to_strip = [f for f in FORBIDDEN_FIELDS_ALWAYS if fields.get(f)]
-    # An online reference work is the third case that must keep its locator.
-    # The package is explicit that these "need not only a url but also,
-    # always, a urldate (instead of a date), as these sources are in constant
-    # flux" - so a dated @Inreference/@Reference carrying entrysubtype=online
-    # would otherwise be stripped of exactly the fields it requires.
+    # The package is explicit that online reference works "need not only a
+    # url but also, always, a urldate (instead of a date), as these sources
+    # are in constant flux".
     online_reference = (entry_type in ('inreference', 'reference')
                         and fields.get('entrysubtype', '').strip().lower() == 'online')
     year = fields.get('year', '')
     dated = fields.get('date') or (year and not _NODATE_VALUE.match(year))
-    keep_url = entry_type == 'online' or online_reference or not dated
-    if not keep_url and (entry_type == 'unpublished' or keep_given_url):
-        # An author-circulated document has no other locator: it keeps Url,
-        # and, being dated, loses only the access date.
-        to_strip += [f for f in ('urldate',) if fields.get(f)]
-    elif not keep_url:
-        to_strip += [f for f in ('url', 'urldate') if fields.get(f)]
+    if dated and not (entry_type == 'online' or online_reference) and fields.get('urldate'):
+        to_strip.append('urldate')
 
     for field in to_strip:
         entry_text = remove_field(entry_text, field)

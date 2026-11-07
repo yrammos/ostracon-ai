@@ -902,9 +902,10 @@ def test_extract_bibtex_moves_nodate_from_date_to_year():
 
 
 def test_url_rule_sees_the_date_enrichment_adds():
-    # A webloc entry with no Date keeps Url/Urldate, as Urldate is then its
-    # only dating evidence. The recollection check can fill the Date in from
-    # CrossRef; the Url rule must judge the entry as it leaves, not as it was.
+    # Url is never stripped: whether a work keeps it is the rules' and the
+    # house style's call (#124). Urldate goes once an entry is dated - here by
+    # the Date the recollection check adds after extraction, so the rule must
+    # judge the entry as it leaves, not as it was.
     import enrich
     response = ("@Book{W,\n  Author = {Doe, Jane},\n  Title = {T},\n"
                 "  Url = {https://example.org/w},\n  Urldate = {2026-09-19},\n}")
@@ -915,30 +916,21 @@ def test_url_rule_sees_the_date_enrichment_adds():
             enrich.add_field(entry, "date", "1998"), False)
         result, err, _ = _extract_with(agent, td, response)
     assert "1998" in result.entry, result.entry
-    assert "Url" not in result.entry and "Urldate" not in result.entry, result.entry
-    assert "Stripped disallowed field(s): url, urldate" in err, err
+    assert "Url = {" in result.entry and "Urldate" not in result.entry, result.entry
+    assert "Stripped disallowed field(s): urldate" in err, err
 
     # A Year dates the entry as a Date does; a "no date" Year does not.
-    for year, kept in (("1998", False), ("\\bibstring{nodate}", True)):
+    for year, stripped_expected in (("1998", ["urldate"]), ("\\bibstring{nodate}", [])):
         entry = ("@Article{A,\n  Year = {%s},\n  Url = {https://example.org/a},\n"
                  "  Urldate = {2026-09-19},\n}" % year)
         _, stripped = enrich.strip_forbidden_fields(entry)
-        assert (stripped == []) is kept, (year, stripped)
+        assert stripped == stripped_expected, (year, stripped)
 
-    # A dated @Unpublished document keeps Url, its only locator; only the
-    # access date goes (maintainer's ruling, 2026-11-08, #124).
-    entry = ("@Unpublished{U,\n  Date = {2018},\n  Url = {https://example.org/u.pdf},\n"
-             "  Urldate = {2026-09-19},\n}")
-    out, stripped = enrich.strip_forbidden_fields(entry)
-    assert stripped == ["urldate"] and "Url = {" in out, (stripped, out)
-
-    # web_only_url: a dated print-type entry keeps the Url it was given.
-    book = ("@Book{B,\n  Date = {2023},\n  Url = {https://example.org/book/},\n"
-            "  Urldate = {2026-09-19},\n}")
-    _, stripped = enrich.strip_forbidden_fields(book)
-    assert stripped == ["url", "urldate"], stripped
-    out, stripped = enrich.strip_forbidden_fields(book, keep_given_url=True)
-    assert stripped == ["urldate"] and "Url = {" in out, (stripped, out)
+    # @Online and an online reference work keep both, dated or not.
+    for head in ("@Online{O,\n", "@InReference{R,\n  Entrysubtype = {online},\n"):
+        entry = head + "  Date = {2020},\n  Url = {https://example.org/o},\n  Urldate = {2026-09-19},\n}"
+        _, stripped = enrich.strip_forbidden_fields(entry)
+        assert stripped == [], (head, stripped)
     return True
 
 
