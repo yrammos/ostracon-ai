@@ -69,7 +69,7 @@ def _natural(name):
 
 def query_parts(entry):
     """(author, title) for the prompt, read from an expected entry."""
-    f = {x.key: enrich.strip_latex(x.value).strip() for x in entry.fields}
+    f = {x.key: enrich.strip_latex(x.value).replace("~", " ").strip() for x in entry.fields}
     names = [n.strip() for n in re.split(r"\s+and\s+", f.get("author") or f.get("editor") or "") if n.strip()]
     author = _natural(names[0]) + (" et al." if len(names) > 1 else "") if names else ""
     title = f.get("lista") or f.get("title") or ""
