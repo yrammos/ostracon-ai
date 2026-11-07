@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Self-tests for steps 2-3a in extract_bibtex(): the identity call, Gemini's
+"""Self-tests for steps 2a-4b in extract_bibtex(): the identity call, Gemini's
 type decision, the single extraction told that type, and the question bank,
 with the network stubbed.
 

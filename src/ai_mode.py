@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The type search and its gap-filling fields (extract_bibtex steps 2 and 7)
+"""The type search and its gap-filling fields (steps 2b-2c and 4b)
 through Google Search's AI Mode, in Google Chrome (type_search: "ai-mode").
 
 One query per item, in the maintainer's wording: find the optimal

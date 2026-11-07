@@ -84,7 +84,7 @@ class ExtractionResult:
     # removed from the reply before parsing. Kept for review and evaluation.
     type_analysis: Optional[str] = None
 
-    # Gemini's type check and question answers (steps 3 and 3a): status,
+    # Gemini's type check and question answers (steps 2b-2c and 4b): status,
     # draft and final type, reason, query, sources, answers, token usage.
     # None when the check is off. dev/eval/run.py saves it per source.
     gemini: Optional[dict] = None

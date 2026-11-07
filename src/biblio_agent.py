@@ -894,10 +894,11 @@ excerpt's text won't (e.g. an embedded Author field):
 
         model = model_override or self.config['model']
 
-        # Steps 2-3 when gemini_type_check is on: a light call reads the item's
-        # identity, Gemini decides the type from it, and the extraction below
-        # runs once, told that type. Otherwise (or when Gemini finds nothing)
-        # Claude chooses the type itself, with its type analysis.
+        # Steps 2a-2c (README, How it works), when gemini_type_check is on: a
+        # light call reads the item's identity, the type search (type_search)
+        # decides the type from it, and the extraction below (3a) runs once,
+        # told that type. Otherwise, or when the search finds nothing, Claude
+        # chooses the type itself, with its type analysis.
         gemini, decided = None, None
         if self.config.get('gemini_type_check'):
             decided, gemini = self._decide_type_first(content, model)
@@ -962,7 +963,7 @@ excerpt's text won't (e.g. an embedded Author field):
             field_sources = None
             self._local.scholar_fields = set()
 
-            # Step 3a: the question bank, for the type the entry now has.
+            # Step 4b: the field questions, for the type the entry now has.
             if gemini is not None and entry is not None:
                 final_type = enrich.get_entry_type(bibtex_entry)
                 gemini['final_type'] = final_type
@@ -1188,7 +1189,7 @@ else, using null for anything the text does not show:
         return fields, ''
 
     def _decide_type_first(self, content, model):
-        """Steps 2-3: (decided_type or None, info). info['status'] is decided,
+        """Steps 2a-2c: (decided_type or None, info). info['status'] is decided,
         not-found, invalid-type, skipped: <why> or error: <message>; on
         anything but decided the extraction chooses the type itself."""
         info = {'status': None, 'usage': []}
@@ -1260,7 +1261,7 @@ else, using null for anything the text does not show:
                 "uses. Never add a value the source does not show.")
 
     def _ai_mode_fields(self, info, final_type):
-        """Step 3a for type_search: ai-mode: no question is asked; AI Mode's
+        """Step 4b for type_search: ai-mode: no question is asked; AI Mode's
         own entry supplies the field values, for the fields the final type
         takes, and only when the extraction kept AI Mode's type (another
         type's fields would land in the wrong places)."""
@@ -1273,7 +1274,7 @@ else, using null for anything the text does not show:
         info['questions_status'] = 'answered'
 
     def _ask_question_bank(self, info, final_type):
-        """Step 3a: the bank's questions for final_type, asked in the type
+        """Step 4b: the bank's questions for final_type, asked in the type
         search's conversation (Claude's or Gemini's); answers land in info for
         _apply_gemini_answers(). With AI Mode, its own entry answers instead."""
         if info.get('engine') == 'ai-mode':
@@ -1397,7 +1398,7 @@ else, using null for anything the text does not show:
         return self._local.scholar_fields
 
     def _apply_gemini_answers(self, entry_text, gemini, field_sources):
-        """Step 3a's answers applied: (entry_text, field_sources, needs_color).
+        """Step 4b's answers applied (4c): (entry_text, field_sources, needs_color).
         A field Gemini fills is recorded in field_sources, not coloured; only a
         bank check or bank field that contradicts the entry colours it."""
         entry_text, report = gemini_search.apply_answers(

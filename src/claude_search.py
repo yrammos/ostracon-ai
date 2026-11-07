@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The type search and its questions (extract_bibtex steps 2 and 7) through
+"""The type search and its questions (steps 2b-2c and 4b) through
 Claude's web search tool, with a hard limit on searches per item.
 
 Three calls, one conversation:

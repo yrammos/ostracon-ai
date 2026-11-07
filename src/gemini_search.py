@@ -207,7 +207,7 @@ def query_from_fields(fields, entry_type=""):
     return title, type_query(title, author, container)
 
 
-# --- Step 3a: a bank of closed questions, chosen by type --------------------
+# --- Step 4b: a bank of closed questions, chosen by type --------------------
 
 QUESTIONS_PROMPT = """Answer these questions about the work above, from Google Search.
 Answer each briefly: a number as the number only; a choice as one of the
@@ -279,7 +279,7 @@ def _plain(value):
 
 
 def apply_answers(entry_text, questions, answers, entry_type, outranks=()):
-    """(entry_text, report) for step 3a's answers. A field answer fills a
+    """(entry_text, report) for step 4b's answers. A field answer fills a
     missing field and is never written over a value the entry has; a differing
     value, or a check whose answer is not what the type implies, goes to review.
     report = {'added': [field], 'confirmed': [field], 'conflicts': [str],

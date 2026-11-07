@@ -1,7 +1,7 @@
 """The fields an entry type takes, each with a one-line definition, read from
 the biblatex manual installed with TeX (biblatex.tex §2.1 and §2.2).
 
-Gemini is asked for these fields (extract_bibtex step 3a), so that a value the
+Gemini is asked for these fields (step 4b), so that a value the
 source does not show but a page it found does - a chapter's book title,
 editor, publisher - can fill the gap, whatever the type.
 
