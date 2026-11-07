@@ -8,7 +8,7 @@ import time
 import objc
 from AppKit import (
     NSApplication, NSApp, NSPanel, NSTextView, NSScrollView, NSTextField,
-    NSPopUpButton,
+    NSPopUpButton, NSButton,
     NSColor, NSFont, NSAttributedString,
     NSForegroundColorAttributeName, NSFontAttributeName,
     NSWindowStyleMaskTitled, NSWindowStyleMaskClosable,
@@ -47,6 +47,7 @@ class _WindowDelegate(NSObject):
         self._cancel_event = cancel_event
         self._on_model_change = on_model_change
         self._on_search_change = on_search_change
+        self._on_start = None
 
     def windowWillClose_(self, notification):
         self._cancel_event.set()
@@ -63,6 +64,10 @@ class _WindowDelegate(NSObject):
         # The popup shows labels; the index maps back to the config value.
         if self._on_search_change:
             self._on_search_change(int(sender.indexOfSelectedItem()))
+
+    def startPressed_(self, sender):
+        if self._on_start:
+            self._on_start()
 
 
 # ── public API ────────────────────────────────────────────────────────────────
@@ -96,6 +101,10 @@ class ProgressWindow:
         # worker before each file, like the model.
         self._searches = list(searches or [])
         self._selected_search = current_search
+        # Set by the Start button; the worker waits on it (wait_to_start) so
+        # the popups can be changed before the first file.
+        self._start_event = threading.Event()
+        self._start_button = None
         self._build_window()
 
     def _set_selected_model(self, value):
@@ -162,7 +171,7 @@ class ProgressWindow:
         # ── header label ─────────────────────────────────────────────────────
         HEADER_H = 32
         header = NSTextField.alloc().initWithFrame_(
-            NSMakeRect(12, H - HEADER_H - 8, W - 24, HEADER_H)
+            NSMakeRect(12, H - HEADER_H - 8, W - 24 - 92, HEADER_H)
         )
         header.setEditable_(False)
         header.setSelectable_(False)
@@ -172,6 +181,15 @@ class ProgressWindow:
         header.setTextColor_(self._colors['header'])
         header.setStringValue_("Preparing…")
         content.addSubview_(header)
+
+        # ── start button ─────────────────────────────────────────────────────
+        start = NSButton.alloc().initWithFrame_(NSMakeRect(W - 12 - 84, H - HEADER_H - 6, 84, 28))
+        start.setTitle_("Start")
+        start.setBezelStyle_(1)          # NSBezelStyleRounded
+        start.setFont_(NSFont.systemFontOfSize_(11.0))
+        start.setKeyEquivalent_("\r")
+        content.addSubview_(start)
+        self._start_button = start
 
         # ── model popup ──────────────────────────────────────────────────────
         # Live, not start-only: the worker re-reads selected_model before each
@@ -269,7 +287,10 @@ class ProgressWindow:
         # ── delegate ─────────────────────────────────────────────────────────
         delegate = _WindowDelegate.alloc().init()
         delegate.setup(self._cancel_event, self._set_selected_model, self._set_selected_search)
+        delegate._on_start = self._start_event.set
         panel.setDelegate_(delegate)
+        self._start_button.setTarget_(delegate)
+        self._start_button.setAction_("startPressed:")
         if self._models:
             self._popup.setTarget_(delegate)
             self._popup.setAction_("modelChanged:")
@@ -283,6 +304,21 @@ class ProgressWindow:
         self._delegate = delegate
 
     # ── public methods ────────────────────────────────────────────────────────
+
+    def wait_to_start(self, delay):
+        """Block the worker until Start is pressed, the window is closed, or
+        `delay` seconds pass, counting down in the header, so the Model and
+        Search popups can be set before the first file. 0 starts at once.
+        Returns False if the window was closed."""
+        delay = max(0, int(delay or 0))
+        for left in range(delay, 0, -1):
+            if self._start_event.is_set() or self._cancel_event.is_set():
+                break
+            self._set_header(f"Starting in {left} s \u2014 set Model and Search, or press Start")
+            self._start_event.wait(1.0)
+        button = self._start_button
+        _on_main(lambda: button.setHidden_(True))
+        return not self._cancel_event.is_set()
 
     def show(self):
         """Make the window visible. Call before NSApp.run()."""
