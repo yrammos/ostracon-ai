@@ -48,6 +48,12 @@ def test_bibtex_address_and_year_become_location_and_date():
     assert "Year = {" in out and "Date" not in out, out
 
 
+def test_a_first_edition_is_dropped_and_later_ones_kept():
+    out, applied = _fix(_e("book", edition="1", title="T"))
+    assert "Edition" not in out and any(a.startswith("edition-first") for a in applied), (out, applied)
+    assert "Edition = {2}" in _fix(_e("book", edition="2", title="T"))[0]
+
+
 def test_volume_roman_split_and_combined():
     assert "Volume = {23}" in _fix(_e("article", volume="XXIII"))[0]
     out = _fix(_e("article", volume="29(2)"))[0]

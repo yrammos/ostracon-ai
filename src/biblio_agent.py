@@ -156,6 +156,11 @@ def _interface_setting(config, key, default=None):
     return default
 
 
+# Types whose search results describe another work (a review's describe the
+# reviewed book): step 4b asks them only the curated question bank, and takes
+# no field from AI Mode's entry (#116).
+NO_AUTO_QUESTIONS = {'review'}
+
 # The closed list of entry types, defined as this library uses them. Step 1 of
 # the extraction prompt shows it; Gemini's type check (src/gemini_search.py) too.
 TYPE_DEFINITIONS = """      article         A contribution to an issue of a periodical (journal,
@@ -1036,6 +1041,10 @@ excerpt's text won't (e.g. an embedded Author field):
                     bibtex_entry, self.config.get('library_bib_file'))
                 for f, old, new in snapped:
                     self._log(f"   {f.capitalize()}: {old!r} -> the library's {new!r}", 'info')
+                bibtex_entry, dropped = house_style.drop_fields(
+                    bibtex_entry, self.config.get('drop_fields'))
+                if dropped:
+                    self._log(f"   Dropped (drop_fields): {', '.join(dropped)}", 'info')
 
             inferred = list(self.inferred_fields) if entry is not None else []
             if inferred:
@@ -1269,6 +1278,9 @@ else, using null for anything the text does not show:
             info['questions_status'] = ('skipped: type not followed' if info.get('entry')
                                         else 'skipped: no entry')
             return
+        if final_type in NO_AUTO_QUESTIONS:
+            info['questions_status'] = f'skipped: no field answers for @{final_type}'
+            return
         allowed = {f for f, _ in type_fields.fields_for(final_type)}
         info['questions'], info['answers'] = ai_mode.answers(info['entry'], final_type, allowed)
         info['questions_status'] = 'answered'
@@ -1292,13 +1304,16 @@ else, using null for anything the text does not show:
         questions = gemini_search.select(bank, final_type)
         # Every other field the type takes, asked the same way: Gemini gives
         # a value only where a page it found shows one. Bank questions about
-        # the same field win (they carry wording tuned for it).
+        # the same field win (they carry wording tuned for it). Not for a
+        # review: the pages describe the reviewed work, whose editor,
+        # translator and subtitle are not the review's (#116).
         asked = {q['use'].split(None, 1)[1].strip().lower() for q in questions
                  if q['use'].startswith('field ')}
-        questions = questions + [
-            {'id': f'field_{f}', 'when': [final_type], 'use': f'field {f}', 'auto': True,
-             'ask': f"{f}: {d}".strip().rstrip(':')}
-            for f, d in type_fields.fields_for(final_type) if f not in asked]
+        if final_type not in NO_AUTO_QUESTIONS:
+            questions = questions + [
+                {'id': f'field_{f}', 'when': [final_type], 'use': f'field {f}', 'auto': True,
+                 'ask': f"{f}: {d}".strip().rstrip(':')}
+                for f, d in type_fields.fields_for(final_type) if f not in asked]
         if not questions:
             return
         self._log(f"   Asking {len(questions)} question(s) about the search results...", 'info')

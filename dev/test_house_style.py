@@ -52,6 +52,13 @@ def test_normalize_applies_the_library_rules_in_the_entrys_own_style():
     assert {"split-title", "range-punctuation"} <= set(rules), rules
 
 
+def test_drop_fields_removes_the_users_list_only():
+    entry = "@book{X,\n  Title = {T},\n  Pagetotal = {311},\n  Month = {3},\n  Edition = {2},\n}"
+    out, dropped = house_style.drop_fields(entry, ["pagetotal", "month", "issue"])
+    assert dropped == ["pagetotal", "month"] and "Edition = {2}" in out and "Pagetotal" not in out, out
+    assert house_style.drop_fields(entry, None) == (entry, [])
+
+
 def test_normalize_leaves_a_clean_entry_alone():
     entry = "@book{X,\n\tTitle = {Music},\n\tDate = {2001},\n}"
     assert house_style.normalize(entry) == (entry, [])
