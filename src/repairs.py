@@ -138,6 +138,14 @@ def repair(entry_text, is_house=None):
             note(new, old, f[old], f"(dropped; {new} kept)")
         f = _fields(text)
 
+    # A first edition is never cited (CMOS cites an edition only from the
+    # second on), so Edition = {1} is noise from a record or a search answer.
+    ed = f.get("edition", "").strip().lower().rstrip(".")
+    if ed in ("1", "1st", "first", "1st ed", "first edition"):
+        text = enrich.remove_field(text, "edition")
+        note("edition-first", "edition", f["edition"], "(dropped)")
+        f = _fields(text)
+
     # [house, CMOS 14.147] volume is an integer: Roman numerals become Arabic.
     vol = f.get("volume", "")
     n = _roman(vol)

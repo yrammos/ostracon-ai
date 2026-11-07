@@ -110,6 +110,15 @@ def test_gemini_is_asked_for_the_types_fields_and_fills_only_gaps():
     assert "Gemini: " in (result.field_sources or ""), result.field_sources
 
 
+def test_a_review_is_asked_no_automatic_field_questions():
+    review = ("@review{X,\n  Author = {De Groot, Rokus},\n  Title = {Review of Music at the Limits},\n"
+              "  Journal = {Music Analysis},\n}")
+    decided = {"type": "review", "found": True, "reason": "r", "history": [], "usage": []}
+    _, _, ask, _ = _run([IDENT, review], decided)
+    asked = [q["id"] for q in ask.call_args.args[1]] if ask.called else []
+    assert not any(a.startswith("field_") for a in asked), asked
+
+
 def test_a_filled_subtitle_leaves_its_title():
     decided = {"type": "incollection", "found": True, "reason": "r", "history": [], "usage": []}
     redone = REDONE.replace("{How the West Was Won}", "{How the West Was Won: Essays on the Canon}")

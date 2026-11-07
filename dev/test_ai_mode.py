@@ -128,6 +128,14 @@ def test_a_type_not_followed_takes_no_fields():
     assert "Leiden" not in result.entry, result.entry
 
 
+def test_a_review_takes_no_fields_from_ai_mode():
+    review_answer = ANSWER.replace("@incollection{degroot2010music", "@review{r")
+    review_draft = "@review{X,\n  Author = {De Groot, Rokus},\n  Title = {Review},\n}"
+    result, _, _ = _run(("ok", review_answer, PAGE), draft=review_draft)
+    assert result.gemini["questions_status"] == "skipped: no field answers for @review", result.gemini
+    assert "Leiden" not in result.entry, result.entry
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

@@ -96,6 +96,17 @@ def repair(entry_text, library_path=None):
     return repairs.repair(entry_text, is_house)
 
 
+def drop_fields(entry_text, fields):
+    """(text, dropped): entry_text without the fields the user never records
+    (config drop_fields, a personal convention, so it lives in config.yaml)."""
+    import enrich
+    present = {k.lower() for k in enrich.parse_bibtex_fields(entry_text)}
+    dropped = [f for f in (str(x).strip().lower() for x in fields or ()) if f in present]
+    for f in dropped:
+        entry_text = enrich.remove_field(entry_text, f)
+    return entry_text, dropped
+
+
 def snap_to_library(entry_text, library_path):
     """(text, changes): each SNAP_FIELDS value given the library's spelling
     when the library holds an equivalent one; changes is [(field, old, new)]."""
