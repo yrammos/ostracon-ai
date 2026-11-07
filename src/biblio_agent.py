@@ -221,25 +221,30 @@ TYPE_DEFINITIONS = """      article         A contribution to an issue of a peri
                       conference papers whose title does not is collection,
                       even if its series or front matter names the event.
       inproceedings   A paper in a proceedings volume as defined above.
-      unpublished     A work neither published nor available online: a
-                      manuscript, typescript, lecture, working paper, or a
-                      conference paper never printed in proceedings, obtained
-                      from its author or as a handout. If it is available
-                      online, it is online. The type is the work's: a draft
-                      of a work published since takes the published work's
-                      type.
+      unpublished     A work no publisher, periodical or institution has
+                      issued: a manuscript, typescript, lecture, working
+                      paper, preprint, self-published article or edition, or
+                      a conference paper never printed in proceedings,
+                      whether obtained from its author, as a handout, or as
+                      a document file (PDF, Word) posted online. Being online
+                      does not make it online. The type is the work's: a
+                      draft of a work published since takes the published
+                      work's type.
       thesis          A thesis or dissertation submitted for a degree, unless
                       later published as a book.
       report          A report issued by an institution, usually numbered in
                       a series.
-      online          A work available online that has no printed
-                      counterpart and is not better classified as another
-                      type. Rule out the others first: an article in an
-                      online journal is article; an online encyclopedia
-                      entry is inreference; an online copy of a printed work
-                      takes the printed work's type. A paper, talk or
-                      manuscript available online, including a conference
-                      paper not in proceedings, is online.
+      online          Web media that resembles no printed form: a website
+                      or web page, a social-media post, a forum or
+                      mailing-list post, an online video. A work that
+                      resembles a printed form takes that form's type,
+                      whether or not a printed version exists: an article
+                      in an online journal is article; an online
+                      encyclopedia entry is inreference; a book published
+                      as a website is book; an online copy of a printed
+                      work takes the printed work's type. A document file
+                      (PDF, Word) its author posts is unpublished, not
+                      online.
       reference       A whole reference work (dictionary, encyclopedia,
                       lexicon), cited as a whole.
       inreference     An entry in a reference work, in print or online
@@ -562,8 +567,9 @@ class BiblioAgent:
                 "fits - not only as a tie-breaker between types you have already narrowed "
                 "down to. The entry-type guide is organised by kind of source, and its "
                 "\"Online materials\" section governs the access-mode question in "
-                "particular (an online edition of a printed work keeps its print-equivalent "
-                "type; only material with no print counterpart is @Online). The test "
+                "particular (a work that resembles a printed form keeps that form's "
+                "type, whether or not a print version exists; only web media - pages, "
+                "posts, social media, video - is @Online). The test "
                 "suite's `annote` fields state what each source is and why its type and "
                 "fields follow. Then use the same corpora to settle the harder boundaries "
                 "between confusable types.\n\n"
@@ -822,7 +828,9 @@ excerpt's text won't (e.g. an embedded Author field):
    usual (step 1) - a webpage may still be a printable book, article, etc.
    with its own type, not necessarily @Online.
    Include Url and Urldate only where the URL rule above allows them - an
-   @Online entry, an online reference work, or an entry with no Date. A
+   @Online entry, an online reference work, or an entry with no Date; an
+   @Unpublished document keeps Url (its only locator) but takes Urldate
+   only when it has no Date. A
    dated book or article is cited as the book or article, not by the page
    it was read on, and takes neither field. Where they do belong, Url is
    exactly this address: {content.url}

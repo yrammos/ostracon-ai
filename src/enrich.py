@@ -350,7 +350,8 @@ def strip_forbidden_fields(entry_text):
     - the entry has no Date (nor a Year other than "no date"), in which
       case Urldate is the only dating evidence available and Url its
       necessary companion.
-    Otherwise both are stripped. Run it last: the enrichment steps can still
+    A dated @Unpublished entry keeps Url (an author-circulated document has
+    no other locator) and loses Urldate. Otherwise both are stripped. Run it last: the enrichment steps can still
     add a Date, which moves an entry out of the second case.
 
     Returns (entry_text, stripped_field_names).
@@ -369,7 +370,11 @@ def strip_forbidden_fields(entry_text):
     year = fields.get('year', '')
     dated = fields.get('date') or (year and not _NODATE_VALUE.match(year))
     keep_url = entry_type == 'online' or online_reference or not dated
-    if not keep_url:
+    if not keep_url and entry_type == 'unpublished':
+        # An author-circulated document has no other locator: it keeps Url,
+        # and, being dated, loses only the access date.
+        to_strip += [f for f in ('urldate',) if fields.get(f)]
+    elif not keep_url:
         to_strip += [f for f in ('url', 'urldate') if fields.get(f)]
 
     for field in to_strip:
