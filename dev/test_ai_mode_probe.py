@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Self-tests for dev/ai_mode_probe.py's parsing: the entry found in page
-text, and the prompt's author and title. Constructed inputs; Chrome is not
-touched."""
+"""Self-tests for dev/ai_mode_probe.py: the prompt's author and title read
+from an expected entry, and the cleanup applied before scoring. Constructed
+entries; Chrome is not touched (src/ai_mode.py's own tests cover the page)."""
 from __future__ import annotations
 
 import sys
@@ -14,24 +14,9 @@ sys.path.insert(0, str(ROOT / "src"))
 import ai_mode_probe as p  # noqa: E402
 import bib_audit  # noqa: E402
 
-PAGE = """AI Mode
-The optimal type is @incollection, because ...
-@incollection{juslin2001,
-  author = {Juslin, Patrik N.},
-  title = {Communicating Emotion in {Music} Performance},
-  booktitle = {Music and Emotion},
-}
-Sources: ..."""
-
-
-def test_first_entry_is_brace_balanced():
-    e = p.first_entry(PAGE)
-    assert e.startswith("@incollection{juslin2001,") and e.endswith("}") and "{Music}" in e, e
-    assert p.first_entry("no entry here; mentions @incollection only") is None
-
 
 def test_query_parts_from_an_expected_entry():
-    entry = bib_audit.scan("@incollection{K,\n  author = {Juslin, Patrik N. and Sloboda, John},\n"
+    entry = bib_audit.scan("@incollection{K,\n  author = {Juslin, Patrik~N. and Sloboda, John},\n"
                            "  title = {Communicating Emotion},\n  subtitle = {A Review},\n}\n")[0][0]
     assert p.query_parts(entry) == ("Patrik N. Juslin et al.", "Communicating Emotion: A Review")
     ref = bib_audit.scan("@inreference{G,\n  author = {Fischer, Kurt},\n  title = {Grove Music Online},\n"
@@ -39,10 +24,12 @@ def test_query_parts_from_an_expected_entry():
     assert p.query_parts(ref) == ("Kurt Fischer", "Kurth, Ernst")
 
 
-def test_the_url_carries_the_prompt():
-    import urllib.parse
-    url = p.URL.format(q=urllib.parse.quote_plus(p.PROMPT.format(author="A B", title="T")))
-    assert "udm=50" in url and "biblatex-chicago" in urllib.parse.unquote_plus(url)
+def test_cleanup_before_scoring():
+    raw = ("@book{x,\n  author = {A, B},\n  title = {T: S},\n  address = {Oxford},\n"
+           "  year = {2001},\n  url = {https://x},\n}")
+    out = p.clean(raw)
+    assert "location" in out.lower() and "date" in out.lower(), out
+    assert "address" not in out.lower() and "url" not in out.lower(), out
 
 
 if __name__ == "__main__":

@@ -95,7 +95,7 @@ Nothing in `dev/` runs during extraction.
 | | |
 | --- | --- |
 | `ab_compare.py` | Scores two extraction runs against curated ground truth. |
-| `ai_mode_probe.py` | Proof of concept: asks Google Search's AI Mode, through Chrome, for an entry per hold-out item and saves the answers for `run.py --rescore`. |
+| `ai_mode_probe.py` | Measures `type_search: "ai-mode"` alone: asks Google's AI Mode (`src/ai_mode.py`), in Chrome, for an entry per item with a known entry and saves the answers, cleaned, for `run.py --rescore`. |
 | `estimate_cost.py` | Measures the current prefix and prices it, per model. |
 | `install_service.py` | Builds the Automator workflow from `automator/script.sh` and installs it. |
 | `library_match_coverage.py` | Read-only: how often the library holds a chapter's book, and how often its fields are right, on a `.bib` of known entries. |
@@ -108,7 +108,7 @@ and Claude, Gemini and the network are stubbed:
 
 | | |
 | --- | --- |
-| `test_ai_mode_probe.py` | The AI Mode probe's parsing: the entry in the page text, the prompt's author and title. |
+| `test_ai_mode_probe.py` | The probe's prompt parts from an expected entry, and its cleanup before scoring. |
 | `test_api_keys.py` | Key resolution: plaintext, environment, command; a failing command's output never leaks. |
 | `test_batch.py` | Parallel batches: every source saved, one save at a time, a failure not stopping the rest. |
 | `test_biblio_agent_markers.py` | What `save_entry()` writes: `% AMBER` comments, colour, `failed_bib_file`. |
