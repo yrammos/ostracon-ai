@@ -442,6 +442,35 @@ def test_exemplar_fields_are_only_those_biblatex_defines():
     assert not {"local-url", "devonthink2", "lastchecked"} & lm.known_fields()
 
 
+ISMIR = r"""@inproceedings{Gotham2019,
+	author = {Gotham, Mark},
+	booktitle = {Proceedings of the 20th International Society for Music Information Retrieval (ISMIR) Conference},
+	date = {2019},
+	location = {Delft},
+	publisher = {International Society for Music Information Retrieval},
+	title = {A},
+}
+
+@inproceedings{Shi2019,
+	author = {Shi, Z.},
+	booktitle = {Proceedings of the 20th International Society for Music Information Retrieval (ISMIR) Conference},
+	date = {2019},
+	location = {Delft},
+	publisher = {International Society for Music Information Retrieval},
+	title = {B},
+}
+"""
+
+
+def test_a_bracketed_acronym_does_not_hide_the_siblings():
+    new = ("@inproceedings{J,\n  Author = {Jeong, Dasaem},\n  Title = {VirtuosoNet},\n"
+           "  Booktitle = {Proceedings of the 20th International Society for Music Information Retrieval Conference},\n"
+           "  Date = {2019},\n}")
+    out, r = lm.container_fill(new, _lib_with(ISMIR))
+    assert sorted(r["siblings"]) == ["Gotham2019", "Shi2019"], r
+    assert "Location = {Delft}" in out and "Publisher = {International Society" in out, out
+
+
 def test_no_library_changes_nothing():
     assert lm.load(None) is None and lm.load("/nonexistent/lib.bib") is None
     assert lm.container_fill(NEW, None)[0] == NEW and lm.duplicates(NEW, None) == []
