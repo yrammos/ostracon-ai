@@ -471,6 +471,27 @@ def test_a_bracketed_acronym_does_not_hide_the_siblings():
     assert "Location = {Delft}" in out and "Publisher = {International Society" in out, out
 
 
+JMTP = r"""@article{A2018,
+	author = {A, B},
+	journal = {Journal of Music Theory Pedagogy},
+	title = {X},
+}
+
+@article{B2019,
+	author = {C, D},
+	journal = {Journal of Music Theory Pedagogy},
+	title = {Y},
+}
+"""
+
+
+def test_a_journal_qualifier_neither_hides_the_journal_nor_is_lost():
+    new = "@article{N,\n  Author = {E, F},\n  Title = {Z},\n  Journal = {journal of music theory pedagogy (Resources)},\n}"
+    out, r = lm.container_fill(new, _lib_with(JMTP))
+    assert r["snapped"] == ["journal"], r
+    assert "Journal = {Journal of Music Theory Pedagogy (Resources)}" in out, out
+
+
 def test_no_library_changes_nothing():
     assert lm.load(None) is None and lm.load("/nonexistent/lib.bib") is None
     assert lm.container_fill(NEW, None)[0] == NEW and lm.duplicates(NEW, None) == []

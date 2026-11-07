@@ -89,6 +89,7 @@ REFERENCE_FIELDS = ('editor', 'editora', 'editorb', 'editortype', 'editoratype',
 PRIVATE = re.compile(r'^(bdsk-|date-added$|date-modified$|annote$|keywords$|file$|abstract$|'
                      r'read$|rating$|devonthink$)')
 _CACHE: dict = {}
+_BRACKET = re.compile(r'\s*\([^)]*\)\s*$')
 
 
 def _ckey(value):
@@ -98,8 +99,8 @@ def _ckey(value):
     whole library (2026-11-07): 5 more chapters matched, 4 more fields right,
     6 more that differ from the entry, each a disagreement between library
     entries of the same proceedings. A 90%-similarity match added one chapter
-    more and was not adopted. Journals are matched by _key(): a bracket there
-    can name a different series ('... Pedagogy (Resources)')."""
+    more and was not adopted. Journals too: a bracketed qualifier there
+    ('... Pedagogy (Resources)') belongs in Journaltitleaddon."""
     return _key(re.sub(r'\s*\([^)]*\)', ' ', value or ''))
 _FIELDS_MD = Path(__file__).resolve().parent.parent / 'prompt-context' / 'biblatex-chicago-fields.md'
 _KNOWN: set = set()
@@ -141,7 +142,7 @@ class Lib:
                 self.by_title[_ckey(f['title'])].append(i)
             j = f.get('journal') or f.get('journaltitle')
             if j:
-                self.by_journal[_key(j)].append(i)
+                self.by_journal[_ckey(j)].append(i)
             if f.get('doi'):
                 self.by_doi[f['doi'].strip().lower()].append(i)
 
@@ -507,13 +508,17 @@ def _journal_snap(entry_text, f, lib, exclude, report):
         return entry_text, report
     skip = set(exclude)
     forms = collections.Counter()
-    for i in lib.by_journal.get(_key(f[name]), []):
+    for i in lib.by_journal.get(_ckey(f[name]), []):
         k, _t, g = lib.entries[i]
         if k not in skip:
-            forms[g.get('journal') or g.get('journaltitle')] += 1
+            # The name without a bracketed qualifier: that belongs in
+            # Journaltitleaddon (extraction-rules), so it is neither taken
+            # from the library nor removed from the entry (#121).
+            forms[_BRACKET.sub('', g.get('journal') or g.get('journaltitle')).strip()] += 1
     if not forms:
         return entry_text, report
-    house = forms.most_common(1)[0][0]
+    tail = _BRACKET.search(f[name])
+    house = forms.most_common(1)[0][0] + (' ' + tail.group(0).strip() if tail else '')
     if house != f[name]:
         entry_text = enrich.set_field(entry_text, name, house)
         report['snapped'].append(name)
@@ -547,7 +552,7 @@ def exemplars(lib, entry_type=None, container=None, exclude=(), n=3):
     if container:
         ck = _ckey(container)
         refs = [i for i in lib.by_title.get(ck, []) if lib.entries[i][1] == 'inreference']
-        for i in lib.by_container.get(ck, []) + lib.by_journal.get(_key(container), []) + refs:
+        for i in lib.by_container.get(ck, []) + lib.by_journal.get(ck, []) + refs:
             if lib.entries[i][0] not in skip and i not in picked:
                 picked.append(i)
     if entry_type and len(picked) < n:

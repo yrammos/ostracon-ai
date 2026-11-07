@@ -162,6 +162,19 @@ def repair(entry_text, is_house=None):
             note("eventtitle-redundant", "eventtitle", f["eventtitle"], "(dropped; in booktitle)")
             f = _fields(text)
 
+    # A qualifier in brackets after a journal's name goes in Journaltitleaddon
+    # (extraction-rules: "a qualifier of its title"): "Journal of Music Theory
+    # Pedagogy (Resources)". A bare acronym ("(PAIG)") stays: it is part of
+    # the name as written.
+    jname = "journal" if "journal" in f else "journaltitle" if "journaltitle" in f else None
+    if jname and "journaltitleaddon" not in f:
+        m = re.search(r"\s*\(([^()]*)\)\s*$", f[jname])
+        if m and not re.fullmatch(r"[A-Z0-9&.\- ]+", m.group(1).strip()) and f[jname][:m.start()].strip():
+            text = enrich.set_field(text, jname, f[jname][:m.start()].strip())
+            text = enrich.add_field(text, "Journaltitleaddon", m.group(1).strip())
+            note("journaltitleaddon", jname, f[jname], m.group(1).strip())
+            f = _fields(text)
+
     # [house, CMOS 14.147] volume is an integer: Roman numerals become Arabic.
     vol = f.get("volume", "")
     n = _roman(vol)
