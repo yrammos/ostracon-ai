@@ -166,6 +166,9 @@ verbose: true
 # release, with a deprecation warning, if this block is absent or omits it.
 interface:
   show_window: false  # Floating progress window (overridden by --window / --no-window flags)
+  # Seconds the window waits before the first file, counting down, so its
+  # Model and Search dropdowns can be set first; its Start button skips the wait.
+  window_start_delay: 5
   # Models offered in the progress window's dropdown, so the Finder Quick
   # Action can reach a stronger model without a command line. The first entry
   # is only a default if `model` above is absent from the list. Switching

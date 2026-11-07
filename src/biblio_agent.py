@@ -2460,6 +2460,9 @@ def _run_windowed(agent, pdf_files, move_files):
     win.show()
 
     def _process():
+        # Hold the first file until Start (or window_start_delay seconds), so
+        # the Model and Search popups apply from the very first file.
+        win.wait_to_start(_interface_setting(agent.config, 'window_start_delay', 5))
         if win.cancelled:  # window closed before the worker thread got going
             win.finish(had_error=False)
             return

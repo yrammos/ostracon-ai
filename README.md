@@ -177,6 +177,7 @@ Presentation settings live under `interface:`; none affects extraction.
 interface:
   show_window: false     # The floating progress window; --window/--no-window override.
   window_models: [...]   # Models offered in the window's dropdown. Unset hides it.
+  window_start_delay: 5  # Seconds the window waits before the first file; Start skips it.
   notifications: false   # macOS notifications for batch progress and failures.
 ```
 
@@ -197,8 +198,10 @@ Right-click a PDF or `.webloc` file in Finder, or a mixed selection, and choose
 The progress window's **Model** dropdown lists `window_models`; its **Search**
 dropdown chooses the type search for 2b and 4b: Off, Claude web search, Google AI
 Mode (Chrome), or Gemini when a Gemini key is configured. It starts from
-`gemini_type_check` and `type_search`. A change in either applies from the next
-file and lasts for that batch only; `config.yaml` is not changed. Reference works (Grove, the Stanford Encyclopedia, Wikipedia)
+`gemini_type_check` and `type_search`. The window waits `window_start_delay`
+seconds (default 5), counting down, before the first file, so both can be set
+first; **Start** (or Return) begins at once. Later changes apply from the next
+file. A choice lasts for that batch only; `config.yaml` is not changed. Reference works (Grove, the Stanford Encyclopedia, Wikipedia)
 repay the stronger model: put them in `pdf-in/careful/` before an `--all` run and
 they process with `careful_model`. See the operator note in `CLAUDE.md`.
 
