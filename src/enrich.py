@@ -334,7 +334,7 @@ def remove_field(entry_text, field_name):
 FORBIDDEN_FIELDS_ALWAYS = {'issn', 'isbn', 'keywords', 'reference', 'devonthink'}
 
 
-def strip_forbidden_fields(entry_text):
+def strip_forbidden_fields(entry_text, keep_given_url=False):
     """
     Remove fields extraction-rules.md forbids from a raw BibLaTeX entry, structurally -
     the initial extraction prompt already asks Claude not to include these,
@@ -351,7 +351,9 @@ def strip_forbidden_fields(entry_text):
       case Urldate is the only dating evidence available and Url its
       necessary companion.
     A dated @Unpublished entry keeps Url (an author-circulated document has
-    no other locator) and loses Urldate. Otherwise both are stripped. Run it last: the enrichment steps can still
+    no other locator) and loses Urldate; so does any dated entry when
+    keep_given_url is set (config `web_only_url`: the house style asks for a
+    Url only on a web-only work of a print type). Otherwise both are stripped. Run it last: the enrichment steps can still
     add a Date, which moves an entry out of the second case.
 
     Returns (entry_text, stripped_field_names).
@@ -370,7 +372,7 @@ def strip_forbidden_fields(entry_text):
     year = fields.get('year', '')
     dated = fields.get('date') or (year and not _NODATE_VALUE.match(year))
     keep_url = entry_type == 'online' or online_reference or not dated
-    if not keep_url and entry_type == 'unpublished':
+    if not keep_url and (entry_type == 'unpublished' or keep_given_url):
         # An author-circulated document has no other locator: it keeps Url,
         # and, being dated, loses only the access date.
         to_strip += [f for f in ('urldate',) if fields.get(f)]

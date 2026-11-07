@@ -931,6 +931,14 @@ def test_url_rule_sees_the_date_enrichment_adds():
              "  Urldate = {2026-09-19},\n}")
     out, stripped = enrich.strip_forbidden_fields(entry)
     assert stripped == ["urldate"] and "Url = {" in out, (stripped, out)
+
+    # web_only_url: a dated print-type entry keeps the Url it was given.
+    book = ("@Book{B,\n  Date = {2023},\n  Url = {https://example.org/book/},\n"
+            "  Urldate = {2026-09-19},\n}")
+    _, stripped = enrich.strip_forbidden_fields(book)
+    assert stripped == ["url", "urldate"], stripped
+    out, stripped = enrich.strip_forbidden_fields(book, keep_given_url=True)
+    assert stripped == ["urldate"] and "Url = {" in out, (stripped, out)
     return True
 
 

@@ -160,6 +160,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `interactive_ocr` | `true` | Ask for the OCR language; `false` uses `default_ocr_language` (`eng`). |
 | `library_bib_file` | — | Your library, for `library_match`, `house_cleanup` and `library_exemplars`. |
 | `library_exemplars` | `false` | Show Claude up to three library entries as models of form. |
+| `web_only_url` | `false` | Keep the `Url` Claude gives a dated book or article published only on the web (`Urldate` is dropped). Pair it with a house-style rule saying when to give one. |
 | `library_match` | `true` | Report duplicates; an item and its container inherit each other's fields from the library. |
 | `max_tokens` | `4000` | Ceiling per response. |
 | `model` | `claude-sonnet-4-6` | Claude model. |
