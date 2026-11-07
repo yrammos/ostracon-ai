@@ -37,27 +37,31 @@ The agent assumes the Chicago Manual of Style throughout. Adapting it to another
 
 ## How it works
 
-For each source, the agent sequentially:
+For each source, the agent works in five stages
+([chart](https://mermaidviewer.com/share/7wOvylSzCtjhAwM2XEPHl)):
 
-1. **Extracts text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
-2. **Estimates the entry type**: from a web search run by Claude Haiku 5.5 (at most two searches per item), by Gemini, or by Google's AI Mode in Chrome [`gemini_type_check`, `type_search`]; otherwise using Claude in step 3.
-3. **Estimates the entry fields**: with Claude, given the previously estimated type, per the extraction rules and your
-   house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the latest entries of the same type [`library_exemplars`].
-4. **Retrieves missing locators**: volume, number, pages, chapter, book title and, for books, publisher, from the work's CrossRef record, with Google Scholar as a fallback [`enrich_missing_fields`].
-5. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
-6. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) and its container (e.g., book) inherit each other's fields from the library for consistency, whichever was entered first; supplements (e.g., an introduction) and their books likewise [`library_match`].
-7. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), answered from the step-2 search results without searching again [`gemini_type_check`].
-8. **Enforces house style compliance**: i.e., with the library's normalization rules and spellings
-   [`house_cleanup`].
-9. **Validates the new entry**: using biber against biblatex-chicago's data model, with one repair
-   by Claude [`validate_entries`, `repair_entries`]; a test compile shows that
-   every field prints [`render_check`].
-10. **Saves the output**: in the staging file, or in BibDesk [`autofile_bibdesk`].
+1. **Extract text**: from the PDF, with OCR for scanned pages, or from the bookmarked page.
+2. **Identify type** [`gemini_type_check`, `type_search`]; when off, or when nothing is found, Claude chooses the type in 3a.
+   - a. **Identifies the item**: Claude reads the first pages for its title, author and, for a part, the item containing it.
+   - b. **Searches the web**: Claude Haiku 5.5, at most two searches per item (`claude`, the default); Google's AI Mode in a Chrome tab, which writes a whole BibLaTeX-Chicago entry (`ai-mode`); or Gemini with Google Search (`gemini`).
+   - c. **Estimates the type**: from the search results, or read from AI Mode's entry.
+3. **Create record**
+   - a. **Estimates the entry fields**: with Claude, from the extracted text and the source's metadata, given the type from 2c, per the extraction rules and your house style. Optionally, Claude is also shown up to three library entries as models of form: the container's other items first, then the latest entries of the same type [`library_exemplars`].
+   - b. **Retrieves missing publication details**: volume, number, pages, the journal or (for a chapter, from a DOI match) the book title and, for books, the publisher, from the work's CrossRef record, with Google Scholar as a fallback. Only empty fields are filled [`enrich_missing_fields`].
+   - c. **Verifies recollected field values**: fields that Claude wrote from memory rather than the PDF or web page are looked up in CrossRef, with Google Scholar as a fallback. Fields that neither engine confirms are reported as inferred [`enrich_missing_fields`].
+4. **Refine record**
+   - a. **Reconciles the new item with related library items**: duplicate items are reported; an item (e.g., chapter) and its container (e.g., book) inherit each other's fields from the library for consistency, whichever was entered first; supplements (e.g., an introduction) and their books likewise [`library_match`].
+   - b. **Retrieves the remaining fields**: any other field the type takes (editor, series, edition, translator, and so on), answered by Claude from the 2b search results without searching again, or by Gemini, which may search again; or taken from AI Mode's entry, cleaned, if 3a kept its type [`gemini_type_check`].
+   - c. **Applies them by precedence**: these values fill gaps and replace values that came only from Google Scholar; values from the source, CrossRef and the library stand.
+5. **Cleanup**
+   - a. **Enforces house style compliance**: i.e., with the library's normalization rules and spellings [`house_cleanup`].
+   - b. **Validates the new entry**: using biber against biblatex-chicago's data model, with one repair by Claude [`validate_entries`, `repair_entries`]; a test compile shows that every field prints [`render_check`].
+   - c. **Saves the output**: in the staging file, or in BibDesk [`autofile_bibdesk`].
 
 **Precedence.** Where two sources offer different values for the same field, a
 value read from the PDF or web page prevails, as does one from a CrossRef record
 confirmed to describe the same work. Below these come, in order, the library's
-value, Gemini's, and last a value from Google Scholar or one that Claude recalled
+value, the type search's (4b), and last a value from Google Scholar or one that Claude recalled
 without confirmation. The comments written above each entry name the origin of
 every value not read from the source (`% Sources`) and list the recalled values
 that nothing confirmed (`% INFERRED`).
@@ -121,7 +125,7 @@ full path if it lies outside `/usr/bin`. A plaintext `anthropic_api_key`, then
 `ANTHROPIC_API_KEY`, take precedence. Relative paths resolve against the
 repository.
 
-The web search of steps 2 and 7 is optional: set `gemini_type_check: true`. By
+The web search of stages 2 and 4b is optional: set `gemini_type_check: true`. By
 default Claude runs it (`type_search: "claude"`) on the Anthropic key, at most
 two searches per item. To use Gemini instead, set `type_search: "gemini"` and give
 a key from a billed Google AI Studio project (aistudio.google.com/apikey), the
@@ -145,7 +149,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `crossref_email` | — | CrossRef's faster polite pool. Free. |
 | `enrich_missing_fields` | `true` | Completion from CrossRef and Google Scholar, and the check of unconfirmed fields. |
 | `gemini_api_key` | — | For `gemini_type_check`; a billed Google AI project. Or `gemini_api_key_command`. |
-| `gemini_type_check` | `false` | A web search decides the type and fills missing fields (steps 2 and 7). |
+| `gemini_type_check` | `false` | A web search decides the type and fills missing fields (2 and 4b). |
 | `house_cleanup` | `true` | The library's normalization rules and spellings. |
 | `interactive_ocr` | `true` | Ask for the OCR language; `false` uses `default_ocr_language` (`eng`). |
 | `library_bib_file` | — | Your library, for `library_match`, `house_cleanup` and `library_exemplars`. |
@@ -161,7 +165,7 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `require_langid` | `false` | Colour an entry without `Langid`. |
 | `scrapingdog_api_key` | — | Enables Google Scholar. Or `scrapingdog_api_key_command`. |
 | `thin_yield_threshold` | `400` | Words a PDF must yield; fewer colours the entry. `0` disables. |
-| `type_search` | `"claude"` | Who runs steps 2 and 7: `claude` (Claude Haiku 5.5, at most two web searches per item, $0.01 each) `gemini` (Google Search; Gemini decides how many searches), or `ai-mode` (Google Search's AI Mode in Chrome: no API cost; Chrome open and signed in, with View > Developer > Allow JavaScript from Apple Events). |
+| `type_search` | `"claude"` | Who runs 2b and 4b: `claude` (Claude Haiku 5.5, at most two web searches per item, $0.01 each) `gemini` (Google Search; Gemini decides how many searches), or `ai-mode` (Google Search's AI Mode in Chrome: no API cost; Chrome open and signed in, with View > Developer > Allow JavaScript from Apple Events). |
 | `validate_entries` | `true` | biber's data-model check. |
 | `verbose` | `true` | Progress on stderr. |
 
