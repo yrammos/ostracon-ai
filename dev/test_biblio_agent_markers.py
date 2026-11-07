@@ -924,6 +924,13 @@ def test_url_rule_sees_the_date_enrichment_adds():
                  "  Urldate = {2026-09-19},\n}" % year)
         _, stripped = enrich.strip_forbidden_fields(entry)
         assert (stripped == []) is kept, (year, stripped)
+
+    # A dated @Unpublished document keeps Url, its only locator; only the
+    # access date goes (maintainer's ruling, 2026-11-08, #124).
+    entry = ("@Unpublished{U,\n  Date = {2018},\n  Url = {https://example.org/u.pdf},\n"
+             "  Urldate = {2026-09-19},\n}")
+    out, stripped = enrich.strip_forbidden_fields(entry)
+    assert stripped == ["urldate"] and "Url = {" in out, (stripped, out)
     return True
 
 
