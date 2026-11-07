@@ -58,6 +58,12 @@ def _etype(text):
     return enrich.get_entry_type(text) or ""
 
 
+def _plain_key(value):
+    """Lowercase words only, for comparing two fields' wording."""
+    v = re.sub(r"\\[a-zA-Z]+\s*|[{}]", "", value or "")
+    return " ".join(re.sub(r"[^\w\s]", " ", v.lower()).split())
+
+
 def _rename(text, old, new):
     """`old = {…}` renamed `new`, keeping the entry's capitalization style."""
     def sub(m):
@@ -146,6 +152,15 @@ def repair(entry_text, is_house=None):
         text = enrich.remove_field(text, "edition")
         note("edition-first", "edition", f["edition"], "(dropped)")
         f = _fields(text)
+
+    # [house] An Eventtitle that the Booktitle already contains says it twice
+    # ("Proceedings of the 20th ... Conference" and "20th ... Conference").
+    if f.get("eventtitle") and f.get("booktitle"):
+        ev, bt = _plain_key(f["eventtitle"]), _plain_key(f["booktitle"])
+        if ev and ev in bt:
+            text = enrich.remove_field(text, "eventtitle")
+            note("eventtitle-redundant", "eventtitle", f["eventtitle"], "(dropped; in booktitle)")
+            f = _fields(text)
 
     # [house, CMOS 14.147] volume is an integer: Roman numerals become Arabic.
     vol = f.get("volume", "")

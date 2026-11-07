@@ -89,6 +89,18 @@ REFERENCE_FIELDS = ('editor', 'editora', 'editorb', 'editortype', 'editoratype',
 PRIVATE = re.compile(r'^(bdsk-|date-added$|date-modified$|annote$|keywords$|file$|abstract$|'
                      r'read$|rating$|devonthink$)')
 _CACHE: dict = {}
+
+
+def _ckey(value):
+    """A container title's key for finding related entries: _key() without
+    bracketed segments, so 'Proceedings of the 20th ... Retrieval (ISMIR)
+    Conference' and '... Retrieval Conference' meet (#121). Measured on the
+    whole library (2026-11-07): 5 more chapters matched, 4 more fields right,
+    6 more that differ from the entry, each a disagreement between library
+    entries of the same proceedings. A 90%-similarity match added one chapter
+    more and was not adopted. Journals are matched by _key(): a bracket there
+    can name a different series ('... Pedagogy (Resources)')."""
+    return _key(re.sub(r'\s*\([^)]*\)', ' ', value or ''))
 _FIELDS_MD = Path(__file__).resolve().parent.parent / 'prompt-context' / 'biblatex-chicago-fields.md'
 _KNOWN: set = set()
 
@@ -124,9 +136,9 @@ class Lib:
         self.by_doi = collections.defaultdict(list)
         for i, (_k, t, f) in enumerate(entries):
             if f.get('booktitle'):
-                self.by_container[_key(f['booktitle'])].append(i)
+                self.by_container[_ckey(f['booktitle'])].append(i)
             if f.get('title'):
-                self.by_title[_key(f['title'])].append(i)
+                self.by_title[_ckey(f['title'])].append(i)
             j = f.get('journal') or f.get('journaltitle')
             if j:
                 self.by_journal[_key(j)].append(i)
@@ -203,7 +215,7 @@ def duplicates(entry_text, lib, exclude=()):
     first = (_surnames(f.get('author') or f.get('editor')) or [None])[0]
     if t and y and first:
         tk = _title_key(f)
-        for i in lib.by_title.get(_key(t), []):
+        for i in lib.by_title.get(_ckey(t), []):
             k, _ty, g = lib.entries[i]
             if ((_ty in SUPP_TYPES) == (_etype(entry_text) in SUPP_TYPES)
                     and _title_key(g) == tk and (_year(g) or (g.get('urldate') or '')[:4]) == y
@@ -298,14 +310,14 @@ def _part_candidates(f, etype, lib, skip):
     parts = {p for p, cs in PAIRS.items() if etype in cs}
     name = f.get('title')
     found, seen = [], set()
-    for key in {_key(name), _key(name + ' ' + f.get('subtitle', ''))}:
+    for key in {_ckey(name), _ckey(name + ' ' + f.get('subtitle', ''))}:
         pool = (lib.by_title.get(key, []) if 'inreference' in parts else []) + lib.by_container.get(key, [])
         for i in pool:
             k, t, g = lib.entries[i]
             if t not in parts or k in skip or k in seen:
                 continue
-            if t != 'inreference' and _key(g.get('booktitle', '')) != key and \
-                    _key(g.get('booktitle', '') + ' ' + g.get('booksubtitle', '')) != key:
+            if t != 'inreference' and _ckey(g.get('booktitle', '')) != key and \
+                    _ckey(g.get('booktitle', '') + ' ' + g.get('booksubtitle', '')) != key:
                 continue
             seen.add(k)
             mapped = ({x: g[x] for x in REFERENCE_FIELDS if x in g} if t == 'inreference'
@@ -322,7 +334,7 @@ def _supplement_candidates(f, etype, lib, skip):
     """[(key, mapped, g)]: a supplement's siblings (same type, same Title) and
     its book's entry; or a book's supplements already in the library."""
     name = f.get('title')
-    keys = {_key(name), _key(name + ' ' + f.get('subtitle', ''))}
+    keys = {_ckey(name), _ckey(name + ' ' + f.get('subtitle', ''))}
     related = SUPP_PAIRS[etype] | {etype} if etype in SUPP_TYPES else REVERSE_PAIRS.get(etype, set())
     if not related:
         return []
@@ -381,8 +393,8 @@ def siblings(entry_text, lib, exclude=(), year_gate=True):
     if dated and not _year(f):
         return []
     skip = set(exclude) | set(duplicates(entry_text, lib))
-    ck = _key(name)
-    keys = {ck, _key(name + ' ' + f.get('subtitle' if reference else 'booksubtitle', ''))}
+    ck = _ckey(name)
+    keys = {ck, _ckey(name + ' ' + f.get('subtitle' if reference else 'booksubtitle', ''))}
     found = []
     if reference:
         for i in lib.by_title.get(ck, []):
@@ -533,9 +545,9 @@ def exemplars(lib, entry_type=None, container=None, exclude=(), n=3):
     skip = set(exclude)
     picked = []
     if container:
-        ck = _key(container)
+        ck = _ckey(container)
         refs = [i for i in lib.by_title.get(ck, []) if lib.entries[i][1] == 'inreference']
-        for i in lib.by_container.get(ck, []) + lib.by_journal.get(ck, []) + refs:
+        for i in lib.by_container.get(ck, []) + lib.by_journal.get(_key(container), []) + refs:
             if lib.entries[i][0] not in skip and i not in picked:
                 picked.append(i)
     if entry_type and len(picked) < n:
