@@ -35,6 +35,19 @@ def test_journaltitle_becomes_journal():
     assert out.count("Journal") == 1 and "Journaltitle" not in out, out
 
 
+def test_bibtex_address_and_year_become_location_and_date():
+    out, applied = _fix(_e("book", address="Oxford", year="2001", title="T"))
+    assert "Location = {Oxford}" in out and "Date = {2001}" in out, out
+    assert "Address" not in out and "Year" not in out and len(applied) == 2, applied
+    out, _ = _fix(_e("book", location="Oxford", address="Oxford", date="2001-05", year="2001"))
+    assert "Address" not in out and "Year" not in out, out
+    # A differing duplicate is kept, and Year's nodate bibstring is the house form.
+    out, _ = _fix(_e("book", location="Oxford", address="New York"))
+    assert "Address = {New York}" in out, out
+    out, _ = _fix(_e("book", year="\\bibstring{nodate}"))
+    assert "Year = {" in out and "Date" not in out, out
+
+
 def test_volume_roman_split_and_combined():
     assert "Volume = {23}" in _fix(_e("article", volume="XXIII"))[0]
     out = _fix(_e("article", volume="29(2)"))[0]

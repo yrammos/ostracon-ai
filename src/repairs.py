@@ -120,6 +120,24 @@ def repair(entry_text, is_house=None):
             note("journal", "journaltitle", "journaltitle", "journal")
         f = _fields(text)
 
+    # [house] BibTeX's legacy names, written by imported or search-made
+    # entries: `location`, not `address` (biblatex's own alias); `date`, not
+    # `year`, except for Year = {\bibstring{nodate}}. When both are present
+    # with the same value the legacy one goes; a differing one is kept.
+    for old, new in (("address", "location"), ("year", "date")):
+        if old not in f:
+            continue
+        value = f[old].strip()
+        if old == "year" and not re.fullmatch(r"\d{4}", value):
+            continue
+        if new not in f:
+            text = _rename(text, old, new)
+            note(new, old, old, new)
+        elif f[new].strip() == value or (old == "year" and f[new].strip()[:4] == value):
+            text = enrich.remove_field(text, old)
+            note(new, old, f[old], f"(dropped; {new} kept)")
+        f = _fields(text)
+
     # [house, CMOS 14.147] volume is an integer: Roman numerals become Arabic.
     vol = f.get("volume", "")
     n = _roman(vol)
