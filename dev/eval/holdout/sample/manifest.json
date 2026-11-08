@@ -1,0 +1,332 @@
+[
+ {
+  "citekey": "Ayrey2006",
+  "source": "Ayrey2006.pdf",
+  "sha256": "3f8216a77b628d85ec0270212035066e5873679e158730e4ce4cd3b646b07bcc",
+  "note": "@article — non-Latin/foreign title, titleaddon"
+ },
+ {
+  "citekey": "Biggs2010",
+  "source": "Biggs2010.pdf",
+  "sha256": "c707b7cbf16c6289639e2cab79a5cba82eb4bc81c5f14315df4b0af05a9d4e81",
+  "note": "@collection — titleaddon"
+ },
+ {
+  "citekey": "Black2025",
+  "source": "Black2025.pdf",
+  "sha256": "d34f623c4f20fa83f95a0bf39d8a7a577b18e9f9c3eedeab4fa64014f5f48706",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Brown2001",
+  "source": "Brown2001.pdf",
+  "sha256": "bd96add385d367ad1254f04423943db43d99f4a3d770717310f7208324c4e3cf",
+  "note": "@review — plain (control)"
+ },
+ {
+  "citekey": "Colley2014",
+  "source": "Colley2014.pdf",
+  "sha256": "bcd0d3ca2bb265ac4240c6c4eab39481bb8c40747b08d09d79da1d6952aeede1",
+  "note": "@inproceedings — plain (control)"
+ },
+ {
+  "citekey": "Cumming2000",
+  "source": "Cumming2000.pdf",
+  "sha256": "5bb9c735cdbf2d3967222ca80bdc0a27dd3e46b3dc7de762f2822d89392c32ec",
+  "note": "@book — plain (control)"
+ },
+ {
+  "citekey": "Draper2009",
+  "source": "Draper2009.pdf",
+  "sha256": "f40cc9b98ad81dd110a694c309047e299ddea0f0ec7faf55509ecfa830e5264d",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Fenaroli2018",
+  "source": "Fenaroli2018.pdf",
+  "sha256": "00a14d0530f318021b52e39b26dd1c0dafdb2fa43f590a019947b5fa21c99fdf",
+  "note": "@unpublished — plain (control)"
+ },
+ {
+  "citekey": "Fischer2009",
+  "source": "Fischer2009.pdf",
+  "sha256": "1aada2b84868a410673f3b1b714573ef22bd310701aacfb4a5c89c8313424722",
+  "note": "@inreference — subtype"
+ },
+ {
+  "citekey": "Freud1964",
+  "source": "Freud1964.pdf",
+  "sha256": "e635b9a23275671d5c51591c731501e92f895e351ad52882f39c59c24be7c3dd",
+  "note": "@inbook — plain (control)"
+ },
+ {
+  "citekey": "Frisch1991",
+  "source": "Frisch1991.pdf",
+  "sha256": "9a91e742e189451e241e21ddd56716c948a7351ccaeaaaead6a1190bf9828302",
+  "note": "@review — plain (control)"
+ },
+ {
+  "citekey": "Gaur2006",
+  "source": "Gaur2006.pdf",
+  "sha256": "9b01d1beb6fd43a3d6944000be340909a76adf8f7e90225b6bf5c6e2ab420695",
+  "note": "@inproceedings — plain (control; was @online, corrected 2026-11-08)"
+ },
+ {
+  "citekey": "Gotham",
+  "source": "Gotham.pdf",
+  "sha256": "043e530e000e968579de2c99c57e7f47b41354e404e6d9155470183212618a6b",
+  "note": "@online — titleaddon"
+ },
+ {
+  "citekey": "Gould2000",
+  "source": "Gould2000.pdf",
+  "sha256": "198d1739dc4bdcd01691238a8673ac4aebd6dbb981f825e4d48193781ddbf61d",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Green1978",
+  "source": "Green1978.pdf",
+  "sha256": "fb10b659a02d46f634ad14d345b9c5294d8a3ef283d39f7f9c51d1d7ecf4eb32",
+  "note": "@thesis — plain (control)"
+ },
+ {
+  "citekey": "Judd1998",
+  "source": "Judd1998.pdf",
+  "sha256": "725b0280a4e1366dd1999157b4c25577627a2d3047213ff5531a0ff1e2cfb3a1",
+  "note": "@collection — plain (control)"
+ },
+ {
+  "citekey": "Juslin2001",
+  "source": "Juslin2001.pdf",
+  "sha256": "fdd832642dc4ba0dc97c15b481c6130d97c56bef3193c75d31ca44962fb68f2d",
+  "note": "@incollection — plain (control)"
+ },
+ {
+  "citekey": "Kanend",
+  "source": "Kanend.pdf",
+  "sha256": "1941dc5cc2f11a6c1c49647390583bdb87291bb833e1b462c6272ec12ec9670f",
+  "note": "@unpublished — plain (control)"
+ },
+ {
+  "citekey": "Konak2016",
+  "source": "Konak2016.pdf",
+  "sha256": "9db6fbb69f0257d8c03f9c22b04c8ffae2f82be950cc36f1e86130e11cdc2c1c",
+  "note": "@inproceedings — plain (control)"
+ },
+ {
+  "citekey": "Krebs1980",
+  "source": "Krebs1980.pdf",
+  "sha256": "3153d46167c0345119b401f383715d7ddfb178ae687998f36d729900c3aa995c",
+  "note": "@thesis — plain (control)"
+ },
+ {
+  "citekey": "Krims1998",
+  "source": "Krims1998.pdf",
+  "sha256": "520451d3baee3e13908361a9f5a7956b9c1d71f5096dbeb4d4541864c7708f0d",
+  "note": "@collection — plain (control)"
+ },
+ {
+  "citekey": "Laufer1981",
+  "source": "Laufer1981.pdf",
+  "sha256": "50ece81a04bb005aada9f796d92df73d835a15616647cc0b6ecacf7c8b0640b8",
+  "note": "@review — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Madgwick2010",
+  "source": "Madgwick2010.pdf",
+  "sha256": "d80f0e520c0c0a25ebb91a7c78be84e52783c1209221fca5783b66a26f59f3d8",
+  "note": "@report — plain (control)"
+ },
+ {
+  "citekey": "Marx1853",
+  "source": "Marx1853.pdf",
+  "sha256": "a452085305aac81f9cd8c30f2215bd6303b85f6a73e4a28f43e61280f4d174fa",
+  "note": "@book — edition, reprint/origdate, titleaddon, translated"
+ },
+ {
+  "citekey": "Massey2009",
+  "source": "Massey2009.pdf",
+  "sha256": "4352bc6e59f73ae6fd49228e751454f6b8c6d12f6cabb6a92ffa29df14404ad4",
+  "note": "@inbook — series"
+ },
+ {
+  "citekey": "Mellard2006a",
+  "source": "Mellard2006a.pdf",
+  "sha256": "882ca988263b554127527ca392737a29b5a16158647b939c34efbd4958716d35",
+  "note": "@inbook — series"
+ },
+ {
+  "citekey": "Milsom2011",
+  "source": "Milsom2011.pdf",
+  "sha256": "ae2fe7fb8b0950d3fc67ee192f5d17d68ad19269bf12a0297312074a36e92cca",
+  "note": "@collection — series"
+ },
+ {
+  "citekey": "Neuwirth2018",
+  "source": "Neuwirth2018.pdf",
+  "sha256": "a6e9172fd92c55f67a3760f7673eb316ed1bfa178904790275726f9d68400762",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Reef2020",
+  "source": "Reef2020.pdf",
+  "sha256": "f49b63a3dbdf7dfa188a851656444f907f39672b101c9282c41abfb29b91a9fc",
+  "note": "@review — plain (control)"
+ },
+ {
+  "citekey": "Reybrouck2021",
+  "source": "Reybrouck2021.pdf",
+  "sha256": "b46d88b20c957d6dc046ece8f2f6f66347db83f251586e60f0b5e50c8c0ee9e4",
+  "note": "@book — plain (control)"
+ },
+ {
+  "citekey": "Riggle2022",
+  "source": "Riggle2022.pdf",
+  "sha256": "07b6d525697a8274fbdec04efa23649b28f57282e433febe71c6b87efd549473",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Rothgeb1983",
+  "source": "Rothgeb1983.pdf",
+  "sha256": "d72dbf1ce0abe7b6aff607ce2b7c301fe14b5eb71137bc578513b926c1b303ca",
+  "note": "@incollection — plain (control)"
+ },
+ {
+  "citekey": "SachsDahlhaus2007",
+  "source": "SachsDahlhaus2007.pdf",
+  "sha256": "3aa71027bec531e7b4ee3e9a1043a89e43303d02d19efcc4f04f691eff204e52",
+  "note": "@inreference — subtype"
+ },
+ {
+  "citekey": "Schenker1990a",
+  "source": "Schenker1990a.pdf",
+  "sha256": "37892b95df77dbb2e67eb11ec295184ee647279830766a00e56de053d7cbb75e",
+  "note": "@book — multi-volume, non-Latin/foreign title, translated"
+ },
+ {
+  "citekey": "Schiller1967",
+  "source": "Schiller1967.pdf",
+  "sha256": "53acacf48ffd61940d60520afeef614d31d15d3d4e0d90957e81fdd9dbe60790",
+  "note": "@book — plain (control)"
+ },
+ {
+  "citekey": "Sladden2014",
+  "source": "Sladden2014.pdf",
+  "sha256": "f6df5fbefc5429c3ba968f442419ae4e8858fc6a7cf1b119e424693fa20a42b7",
+  "note": "@review — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Taycher2014",
+  "source": "Taycher2014.pdf",
+  "sha256": "99f8ab53cdfc1917161a49e22559593f0136b235c67f14099db655fc85e682d7",
+  "note": "@periodical — plain (control)"
+ },
+ {
+  "citekey": "Weber1842",
+  "source": "Weber1842.pdf",
+  "sha256": "2967911a072c093358aadd0f7b06085d85cb26390b4820a702c04deeb9eeabe4",
+  "note": "@book — edition, multi-volume, reprint/origdate, translated"
+ },
+ {
+  "citekey": "Widmer2005",
+  "source": "Widmer2005.pdf",
+  "sha256": "0ddc38b213f9d6954ca0eebdfd7981a62329824b850d308152ee8acc0b7e20b1",
+  "note": "@incollection — plain (control)"
+ },
+ {
+  "citekey": "Xue2018",
+  "source": "Xue2018.pdf",
+  "sha256": "b66825737f59fa10eee827c325d7645663878c21a8c0fad841a201b635179b14",
+  "note": "@thesis — plain (control)"
+ },
+ {
+  "citekey": "Yu2023",
+  "source": "Yu2023.pdf",
+  "sha256": "e777e3923ab2d2a3e04681be09f7900e4eed6da389b46dd06c67191f618a644e",
+  "note": "@review — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Adorno1993",
+  "source": "Adorno1993.pdf",
+  "sha256": "7aee398ae348e052e431a403df1a071348067af72a0d84711d35017e48cab7eb",
+  "note": "@article — reprint/origdate, translated"
+ },
+ {
+  "citekey": "Alekseev1969",
+  "source": "Alekseev1969.pdf",
+  "sha256": "d5bc0d14a0396cddaeefb2dd98799a44ec7793495e5781104e1576807ff8d9ba",
+  "note": "@suppbook — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Arndt2014",
+  "source": "Arndt2014.pdf",
+  "sha256": "681731b65f8983a6bec7701526171a820a4d5021d6faf068aabc0326bfce0d00",
+  "note": "@review — plain (control)"
+ },
+ {
+  "citekey": "Atkins2016",
+  "source": "Atkins2016.pdf",
+  "sha256": "52e94cfdb77d6ef7e096fb039080e17f008bb8780fed7fc5776636faa41de2dc",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Bakulina2017a",
+  "source": "Bakulina2017a.pdf",
+  "sha256": "f504a4f73c2dc4cdd0db856c060cb54848dc6c0d7a24322e4a7e52de5317157a",
+  "note": "@unpublished — plain (control)"
+ },
+ {
+  "citekey": "Barthes1974",
+  "source": "Barthes1974.pdf",
+  "sha256": "aaca0d62b7a8151b28df5e522eef4c9d5072d18c62eef718e1a45c5161ba1154",
+  "note": "@article — titleaddon, translated"
+ },
+ {
+  "citekey": "Bataille2015",
+  "source": "Bataille2015.pdf",
+  "sha256": "9b9d0ffbc6b6786dc3da2a2e5f1cc0bc01f44961327d5b4f84074a1c96470f61",
+  "note": "@article — reprint/origdate, translated"
+ },
+ {
+  "citekey": "Boorman2001a",
+  "source": "Boorman2001a.pdf",
+  "sha256": "8265a5cf54f19a5f58aedd9120dff9c9c6265d4c84c7ec47b5aaf7ea525cbca7",
+  "note": "@inreference — subtype"
+ },
+ {
+  "citekey": "Carruthers2001",
+  "source": "Carruthers2001.pdf",
+  "sha256": "16e061634d569c23f39c26b849c8e9a47f154c0998fdaa79372d493a77594a83",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Coren1974",
+  "source": "Coren1974.pdf",
+  "sha256": "c0cabf97d1105c4f45ea4a5dcfef84ee1557513ab1aff43d21028917686ffb0a",
+  "note": "@article — plain (control)"
+ },
+ {
+  "citekey": "Daverio2002a",
+  "source": "Daverio2002a.pdf",
+  "sha256": "f333e779aa795ed22aaa433dfcd9531098d5635b5804606669df8be18de42dfe",
+  "note": "@review — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Domek2009",
+  "source": "Domek2009.pdf",
+  "sha256": "4787044e6468d1fa1e28f448f668c855bab1621859f5320dc95477c16ca22218",
+  "note": "@review — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Drabkin2008",
+  "source": "Drabkin2008.pdf",
+  "sha256": "eb336a2c4deca6a40b27f1c9f776bdadab761693eac4d64bedf89908b7298b14",
+  "note": "@review — non-Latin/foreign title"
+ },
+ {
+  "citekey": "Giersdorf_2017",
+  "source": "Giersdorf_2017.pdf",
+  "sha256": "0321b6b134cc14f27511eede8cc5389d275a780b10f90ffe48fc42afc9520d8d",
+  "note": "@incollection — plain (control)"
+ }
+]

@@ -24,6 +24,11 @@ dev/eval/out/
 # dev/eval/sample/README.md.
 dev/eval/sample/*.pdf
 dev/eval/sample/*.webloc
+# The hold-out sample (README's accuracy figure): same convention. Its
+# unused reserve pool stays local.
+dev/eval/holdout/sample/*.pdf
+dev/eval/holdout/sample/*.webloc
+dev/eval/holdout/extra/
 
 # select_sample.py's input: a stripped copy of the library, kept out of the
 # repository because it quotes it - same convention as
