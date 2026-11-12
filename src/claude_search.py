@@ -67,6 +67,27 @@ def _blocks(message):
     return [b.to_dict() if hasattr(b, "to_dict") else dict(b) for b in message.content]
 
 
+def _cached(history):
+    """`history` with a prompt-cache breakpoint on its last block, as a copy.
+
+    type-choice and questions both resend the search and its results (about
+    16k tokens). The first writes them to the cache and the second reads them
+    back at a tenth of the price. The default 5-minute TTL is enough: the
+    calls are seconds apart.
+    """
+    if not history:
+        return history
+    last = dict(history[-1])
+    content = last["content"]
+    blocks = ([{"type": "text", "text": content}] if isinstance(content, str)
+              else [dict(b) for b in content])
+    if not blocks:
+        return history
+    blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    last["content"] = blocks
+    return history[:-1] + [last]
+
+
 def _text(message):
     return "".join(getattr(b, "text", "") or "" for b in message.content
                    if getattr(b, "type", "") == "text")
@@ -114,7 +135,7 @@ def decide_type(query, types, create, model=MODEL):
     if not out["searches"]:
         return {**out, "found": False, "type": None, "reason": "no search was run"}
     try:
-        message = create("type-choice", MAX_TOKENS, model=model, messages=out["history"] + [
+        message = create("type-choice", MAX_TOKENS, model=model, messages=_cached(out["history"]) + [
             {"role": "user", "content": TYPE_PROMPT.format(query=query, types=types)}])
     except Exception as e:  # noqa: BLE001
         return {**out, "error": f"{type(e).__name__}: {str(e)[:120]}"}
@@ -141,7 +162,7 @@ def ask_questions(history, questions, create, model=MODEL):
         lines.append(f"- {q['id']}: {q['ask']}" + (f" Options: {'; '.join(opts)}." if opts else ""))
     skeleton = ", ".join(f'"{q["id"]}": ...' for q in questions)
     try:
-        message = create("questions", MAX_TOKENS, model=model, messages=history + [
+        message = create("questions", MAX_TOKENS, model=model, messages=_cached(history) + [
             {"role": "user", "content": QUESTIONS_PROMPT.format(
                 questions="\n".join(lines), skeleton=skeleton)}])
     except Exception as e:  # noqa: BLE001
