@@ -109,6 +109,23 @@ def test_questions_are_answered_without_tools():
     assert "tools" not in create.calls[0][1] and "never answer from memory" in prompt
 
 
+def test_the_search_history_is_cached_for_both_follow_up_calls():
+    create = Create([SEARCHED, CHOSEN])
+    r = claude_search.decide_type("q", "types", create)
+    marked = create.calls[1][1]["messages"][1]["content"]
+    assert marked[-1]["cache_control"] == {"type": "ephemeral"}, marked[-1]
+    assert sum("cache_control" in b for b in marked) == 1
+    # The returned history is untouched, so questions sets its own breakpoint.
+    assert not any("cache_control" in b for m in r["history"] if isinstance(m["content"], list)
+                   for b in m["content"])
+    create = Create([_msg([{"type": "text", "text": '<result>{"pub": null}</result>'}])])
+    q = [{"id": "pub", "when": "any", "ask": "Publisher?", "use": "field publisher"}]
+    claude_search.ask_questions(r["history"], q, create)
+    sent = create.calls[0][1]["messages"]
+    assert sent[1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert isinstance(sent[-1]["content"], str) and len(sent) == len(r["history"]) + 1
+
+
 def test_searches_are_recorded_and_priced():
     agent = biblio_agent.BiblioAgent(str(ROOT / "config.yaml"))
     agent.client = type("C", (), {"messages": type("Ms", (), {"create": lambda self, **k: SEARCHED})()})()
