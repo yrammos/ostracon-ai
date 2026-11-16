@@ -36,7 +36,7 @@ verdicts. Three programs, split by how they act:
   audit, or the two will disagree and the audit will be the wrong one.
 - **`dev/bib_normalize.py`** — edits derived from a rule that fires across the
   corpus.
-- **`dev/bib_apply.py`** — a named JSON edit list, for what judgement rather
+- **`dev/bib_apply.py`** — a named JSON edit list, for what judgment rather
   than rule has to settle.
 
 All three write nothing without ten gates passing. `dev/normalization-plan.md`
@@ -54,7 +54,7 @@ For a batch of reference works, run with `--model claude-opus-5`; the flag overr
 ## Autonomous sessions
 
 These rules govern any session where the maintainer is not watching. They exist
-because this project has produced, in a single week, four separate faults of one
+because this project produced, in one week of late August 2026, four separate faults of one
 shape: a failure that reported success. An empty tab list read as an empty
 browser; a refused permission read as no matching tab; an unparsable line skipped
 by a bare `continue`; a marker regex that never matched and silently disabled
@@ -70,13 +70,13 @@ Treat a confident completion report as the thing most likely to be wrong.
   both the most costly and the least visible kind. If an entry appears wrong,
   report it with the citekey and the evidence, and stop.
 - **Edit anything under `prompt-context/`, or a house-style file.** These form the cached
-  prefix; a change silently alters extraction behaviour for every subsequent run
+  prefix; a change silently alters extraction behavior for every subsequent run
   and invalidates comparison against the current baseline. Propose the wording
   and wait.
 - **Spend more than 10 live API calls in one session.** Measure offline where
-  the change allows it (saved outputs, fixtures). A full 61-entry run costs real
+  the change allows it (saved outputs, fixtures). A full 165-entry run costs real
   money and needs asking for.
-- **Claim a GUI-dependent thing works.** BibDesk colouring, Safari and Chrome tab
+- **Claim a GUI-dependent thing works.** BibDesk coloring, Safari and Chrome tab
   capture, the Quick Action, Apple Events permissions: none is visible from a
   terminal. Say what you changed, name the check the maintainer should run, and
   stop there.
@@ -86,8 +86,9 @@ Treat a confident completion report as the thing most likely to be wrong.
 - **Branch per issue**, named `issue-N-slug`, off `main`. Small commits.
   `Closes #N` in the PR body, not in a commit message on a branch that may be
   rebased.
-- **Run `python3 dev/eval/test_eval.py` and `python dev/test_setup.py` before
-  every commit.** Plus the web-source suite when `src/web_source.py` is touched.
+- **Run `python3 dev/eval/test_eval.py` (a bare interpreter) and
+  `dev/test_setup.py` (the project environment's Python; see README
+  Installation) before every commit.** Plus the web-source suite when `src/web_source.py` is touched.
 - **`--rescore` measures the harness, not the pipeline.** It re-scores the
   saved output in `dev/eval/last-run/` against `expected.bib`, so it reflects
   changes to `scorer.py`, `run.py`'s parsing or `expected.bib`, and nothing
@@ -95,11 +96,12 @@ Treat a confident completion report as the thing most likely to be wrong.
   or `missing_fields()`. Run it after touching the harness or ground truth. For
   a change to extraction, say in the PR body that `--rescore` cannot see it;
   only a live run can, and that needs asking for. A live run that moves fewer
-  than about two entries in 61 is within noise: report it as unchanged rather
+  than about 3% of entries is within noise (two in the old 61-entry sample;
+  about five in 165, scaled, not yet measured): report it as unchanged rather
   than as an improvement. One entry flipped between the first two baseline
   runs with no attributable cause.
 - **Quote values from the file, not from memory.** A citekey, field value,
-  count, score or behaviour stated in a PR, issue or commit is read from its
+  count, score or behavior stated in a PR, issue or commit is read from its
   source in the same session; anything stated from recall is marked as
   recalled. A confidently wrong value looks exactly like a correct one.
 - **Distinguish what was tested from what was assumed.** A stub encodes the
@@ -110,14 +112,14 @@ Treat a confident completion report as the thing most likely to be wrong.
   constructed from documented grammar? Both are legitimate; conflating them is
   not.
 - **Correct your own earlier claims when they turn out to be wrong**, in a commit
-  and in the issue or PR that carries them. Two commit messages this week
+  and in the issue or PR that carries them. Two commit messages that week
   overstated a fix's scope and would have sent the maintainer re-checking a
   library that was never affected.
 
 ### When something fails
 
 Trace before proposing. Report where control actually goes, then stop. Do not
-change a mechanism on the assumption that it ran: three of this week's faults
+change a mechanism on the assumption that it ran: three of those faults
 looked like the wrong logic and were in fact code that never executed.
 
 If a diagnosis rests on something unobservable from here — a permission, a window,
@@ -129,4 +131,4 @@ Implementing what is in front of you is the easy part. If the issue seems wrong 
 badly scoped, already obsolete, or resting on a premise the baseline contradicts
 — say so instead of building it. #7 was correctly closed unbuilt, on the grounds
 that the measurement it proposed was below the noise floor of the instrument.
-That judgement was worth more than the implementation would have been.
+That judgment was worth more than the implementation would have been.
