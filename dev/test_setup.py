@@ -171,11 +171,51 @@ def test_ocr():
     import shutil
     if shutil.which("ocrmypdf"):
         print("  ✓ ocrmypdf installed (can handle scanned PDFs)")
-        return True
+        ok = True
     else:
         print("  ⚠  ocrmypdf not found (scanned PDFs won't be processed)")
         print("    Install with: brew install ocrmypdf")
+        ok = False
+    return report_ocr_engine() and ok
+
+
+def report_ocr_engine():
+    """Name the engine a scanned PDF would get, by the choice the run makes
+    (extract_pages.choose_ocr_engine, ocrdoc's own offline setup check
+    included). False only when ocr_engine is google and ocrdoc is unusable,
+    or the value is invalid: auto falling back to Tesseract is a choice."""
+    config = {}
+    try:
+        import yaml
+        with open(ROOT / "config.yaml") as f:
+            config = yaml.safe_load(f) or {}
+    except Exception:
+        pass   # test_config reports a missing or broken config.yaml
+    engine = config.get("ocr_engine", "auto")
+    ocrdoc_path = config.get("ocrdoc_path")
+    if ocrdoc_path:
+        p = Path(ocrdoc_path).expanduser()
+        ocrdoc_path = str(p if p.is_absolute() else (ROOT / p).resolve())
+    try:
+        sys.path.insert(0, str(ROOT / "src"))
+        import extract_pages
+    except ImportError as e:
+        print(f"  ⚠  OCR engine not determined ({e})")
         return False
+    chosen, note = extract_pages.choose_ocr_engine(engine, ocrdoc_path)
+    if chosen == "error":
+        print(f"  ✗ OCR engine: {note}")
+        return False
+    if chosen == "google":
+        print(f"  ✓ OCR engine: Google Document AI via ocrdoc (ocr_engine: {engine}); "
+              "Tesseract on failure")
+    elif note:   # ocrdoc configured but unusable
+        print(f"  ⚠  OCR engine: Tesseract - {note}")
+    else:
+        why = ("ocr_engine: tesseract" if str(engine).lower() == "tesseract"
+               else "ocrdoc_path not set")
+        print(f"  ✓ OCR engine: Tesseract ({why})")
+    return True
 
 def test_pdf_folder():
     """Test if the batch input folder exists."""
@@ -375,7 +415,7 @@ def main():
         if not results['project_files']:
             print("   - Restore the missing context files (see above)")
         if not results['ocr']:
-            print("   - Install ocrmypdf to handle scanned PDFs")
+            print("   - Install ocrmypdf, or fix the OCR engine, to handle scanned PDFs (see above)")
         if not results['pdf_folder']:
             print("   - Create pdf-in/ and drop sources there for --all")
         if not results['documentation']:
