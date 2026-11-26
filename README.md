@@ -163,8 +163,10 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `library_match` | `true` | Report duplicates; an item and its container inherit each other's fields from the library. |
 | `max_tokens` | `4000` | Ceiling per response. |
 | `model` | `claude-sonnet-4-6` | Claude model. |
+| `ocr_engine` | `auto` | Who OCRs a scanned PDF: `auto` (Google Document AI through ocrdoc when `ocrdoc_path` is set and its setup check passes, else Tesseract), `google` (an error when ocrdoc is unusable), or `tesseract`. A failed or thin Google reading is logged and handed to Tesseract. See Cost. |
+| `ocrdoc_path` | — | The ocrdoc checkout, run in its micromamba environment `ocrdoc`. Unset: Tesseract only. |
 | `ocr_threshold` | `100` | Words below which a page is OCR'd. |
-| `ocr_timeout` | `180` | Seconds allowed to `ocrmypdf`. |
+| `ocr_timeout` | `180` | Seconds allowed to `ocrmypdf`, or to ocrdoc. |
 | `open_blocked_in_browser` | `false` | Open a blocked page in Chrome. Needs Chrome's "Allow JavaScript from Apple Events". |
 | `render_check` | `false` | Test-compile each entry. About 3 s a source. |
 | `repair_entries` | `true` | One Claude call repairs an entry biber rejects. |
@@ -242,6 +244,7 @@ current prompt per model.
 | Google AI Mode (`type_search: ai-mode`) | none; about a minute per item in Chrome | the same |
 | Gemini (`type_search: gemini`) | about $0.03 in tokens, plus searches past the free 5,000 a month (about 40 per source in the 2026-11-06 billing export) | the same |
 | Google Scholar (ScrapingDog)  | about $0.001 a lookup | the same          |
+| Google Document AI, through ocrdoc (`ocr_engine`) | scanned PDFs only: about $1.50 per 1,000 pages, so about $0.0075 for the 5 key pages | the same |
 | Google Search, through Gemini | 5,000 a month free, then $14 per 1,000 | the same |
 
 The first source pays to write the cached prompt; later ones read it back. At the
@@ -317,7 +320,16 @@ Allow JavaScript from Apple Events. Without it the log reports the refusal and t
 agent falls back to CrossRef.
 
 **OCR not running.** Install `ocrmypdf`; without it the agent extracts the text
-layer only.
+layer only. `dev/test_setup.py` names the active engine.
+
+**Google OCR not used.** With `ocrdoc_path` set, the log says why: “ocrdoc
+unusable (…)” when its setup check (`pdflayer.py --preflight ocr`) fails, or
+“Google OCR (ocrdoc) fell back to Tesseract: …” with the exit code, the timeout
+or the word count. ocrdoc runs through `micromamba run -n ocrdoc`; the quick
+action gets a minimal environment, so if `micromamba` cannot find the
+environment there, add `export MAMBA_ROOT_PREFIX=...` (your micromamba root) to
+`automator/script.sh` and re-run `./install`. ocrdoc reads one file at a time
+across the Mac, so in a batch the wait for it counts against `ocr_timeout`.
 
 **A scanned PDF yields little but a date.** Its text layer holds only whitespace,
 which `ocrmypdf --skip-text` treats as done. Strip the layer, or OCR the file

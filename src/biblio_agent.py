@@ -101,7 +101,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _PATH_KEYS = (
     'rules_file', 'house_style_file', 'template_file', 'ref_file',
     'pdf_in_folder', 'pdf_out_folder',
-    'main_bib_file', 'failed_bib_file',
+    'main_bib_file', 'failed_bib_file', 'ocrdoc_path',
 )
 
 # Of those, the ones naming a file that must exist when the key is configured.
@@ -863,11 +863,20 @@ excerpt's text won't (e.g. an embedded Author field):
         else:
             language_prompt_fn = lambda: default_lang
 
+        # The OCR engine's messages (which engine read the pages, and why
+        # ocrdoc fell back to Tesseract) go through _log, as web_source's do:
+        # the windowed run shows nothing printed to stderr.
+        def ocr_log(message):
+            self._log(f"   {message}", 'warning' if message.startswith('⚠') else 'info')
+
         return dict(
             quiet=quiet,
             language_prompt_fn=language_prompt_fn,
             min_words_threshold=self.config.get('ocr_threshold', 100),
             ocr_timeout=self.config.get('ocr_timeout', 180),
+            ocr_engine=self.config.get('ocr_engine', 'auto'),
+            ocrdoc_path=self.config.get('ocrdoc_path'),
+            log=ocr_log,
             thin_yield_words=self.config.get(
                 'thin_yield_threshold', extract_pages.DEFAULT_THIN_YIELD_WORDS),
         )
