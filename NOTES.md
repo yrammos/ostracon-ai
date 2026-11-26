@@ -113,7 +113,7 @@ and Claude, Gemini and the network are stubbed:
 | `test_batch.py` | Parallel batches: every source saved, one save at a time, a failure not stopping the rest. |
 | `test_biblio_agent_markers.py` | What `save_entry()` writes: `% AMBER` comments, colour, `failed_bib_file`. |
 | `test_bib_validate.py`, `test_bib_render.py` | The biber check and the render check, with TeX. |
-| `test_extract_pages.py` | The thin-yield marking of a PDF that yields almost no text. |
+| `test_extract_pages.py` | The thin-yield marking of a PDF that yields almost no text; the OCR engine choice and every fallback from ocrdoc to Tesseract (stubbed), plus one offline run of the real ocrdoc CLI on its fake engine when `ocrdoc_path` and `ocrdoc_python` are set. |
 | `test_ai_mode.py` | The type search through Google's AI Mode: the prompt, the entry read from the page, its fields filling gaps only. |
 | `test_claude_search.py` | The type search through Claude's web search: the per-item cap, no answer without a search, searches recorded and priced. |
 | `test_gemini_search.py`, `test_gemini_step.py` | Gemini's type and questions; nothing reaches Gemini when it is off. |
