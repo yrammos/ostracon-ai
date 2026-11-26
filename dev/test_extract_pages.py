@@ -20,7 +20,8 @@ rather than pypdf.
 The OCR engine tests (issue #129) cover the choice between Google, through
 ocrdoc, and Tesseract, and each road back to Tesseract; ocrdoc is stubbed in
 all but the last, which runs the real ocrdoc CLI offline with its fake engine
-(Tesseract answering as Google) when config.yaml sets ocrdoc_path.
+(Tesseract answering as Google) when config.yaml sets ocrdoc_path and
+ocrdoc_python.
 
     python dev/test_extract_pages.py     # the project environment's Python
 """
@@ -236,7 +237,7 @@ def _ocr_run(engine="auto", ocrdoc_path="/stub/ocrdoc", **patches):
 def _preflight(ok, why=""):
     calls = []
 
-    def stub(path):
+    def stub(path, python=None):
         calls.append(path)
         return (ok, why)
     stub.calls = calls
@@ -271,14 +272,14 @@ def test_preflight_runs_once_and_reports_why():
     def run_group(cmd, timeout, cwd=None):
         calls.append(cmd)
         return 1, "", "Google: no sign-in (run `python docai.py login` once)\n"
-    with _Patch(_ocrdoc_command=lambda path, *a: (["pdflayer", *a], None), _run_group=run_group):
+    with _Patch(_ocrdoc_command=lambda path, python, *a: (["pdflayer", *a], None), _run_group=run_group):
         first = extract_pages.ocrdoc_preflight("/stub")
         second = extract_pages.ocrdoc_preflight("/stub")
     assert first == second and first[0] is False, first
     assert "no sign-in" in first[1], first
     assert len(calls) == 1, calls
     assert calls[0][-2:] == ["--preflight", "ocr"], calls
-    # A path with no pdflayer.py never reaches micromamba.
+    # A path with no pdflayer.py never starts a process.
     with _Patch():
         ok, why = extract_pages.ocrdoc_preflight("/nonexistent/ocrdoc")
     assert ok is False and "pdflayer.py" in why, why
@@ -288,7 +289,8 @@ def test_preflight_runs_once_and_reports_why():
 def test_auto_uses_google_when_present():
     google_calls = []
 
-    def google(pdf_path, page_numbers, ocrdoc_path, language="eng", timeout=180):
+    def google(pdf_path, page_numbers, ocrdoc_path, language="eng", timeout=180,
+               ocrdoc_python=None):
         google_calls.append((list(page_numbers), ocrdoc_path, language, timeout))
         return {n: _words(80) for n in page_numbers}
     _, total, lines, tesseract = _ocr_run(ocrdoc_preflight=_preflight(True),
@@ -331,7 +333,7 @@ def test_google_mode_fails_loudly_when_unusable():
 def _fallback(run_group, **extra):
     """extract_content() with ocrdoc's process replaced by run_group."""
     return _ocr_run(ocrdoc_preflight=_preflight(True),
-                    _ocrdoc_command=lambda path, *a: (["pdflayer", *a], None),
+                    _ocrdoc_command=lambda path, python, *a: (["pdflayer", *a], None),
                     _run_group=run_group, **extra)
 
 
@@ -403,65 +405,40 @@ def test_timeout_kills_ocrdoc_child_processes():
     raise AssertionError(f"background child {pid} survived the timeout")
 
 
-def test_mamba_root_prefix_read_from_zsh_when_unset():
-    """The Quick Action's environment lacks MAMBA_ROOT_PREFIX: it is read from
-    an interactive zsh (last line of its output, noise before it ignored) and
-    passed to ocrdoc; when already set, zsh is never asked."""
-    import os
-    import subprocess
+def test_ocrdoc_command_uses_ocrdocs_interpreter():
+    """ocrdoc runs under the interpreter named by ocrdoc_python, directly:
+    no environment manager, no shell variables."""
     import tempfile
-    calls = []
-    saved_env = os.environ.pop("MAMBA_ROOT_PREFIX", None)
-    saved_run = subprocess.run
-    with tempfile.TemporaryDirectory() as root:
-        def fake_run(cmd, **kw):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout=f"motd noise\n{root}\n", stderr="")
-        try:
-            subprocess.run = fake_run
-            extract_pages._mamba_root_cache.clear()
-            assert extract_pages._ocrdoc_env()["MAMBA_ROOT_PREFIX"] == root
-            extract_pages._ocrdoc_env()
-            assert len(calls) == 1, f"zsh asked {len(calls)} times"
-            # The lookup runs inside ocrdoc_preflight(), which holds its own
-            # lock: sharing that lock deadlocked here. Run it with the cache
-            # cold, in a thread, so a regression fails instead of hanging.
-            import threading
-            extract_pages._mamba_root_cache.clear()
-            extract_pages._preflight_cache.clear()
-            result = []
-            with _Patch(_ocrdoc_command=lambda path, *a: (["/usr/bin/true"], None)):
-                t = threading.Thread(target=lambda: result.append(
-                    extract_pages.ocrdoc_preflight(root)), daemon=True)
-                t.start()
-                t.join(15)
-            extract_pages._preflight_cache.clear()
-            assert not t.is_alive(), "ocrdoc_preflight() deadlocked on the MAMBA_ROOT_PREFIX lookup"
-            assert result and result[0][0], f"preflight failed: {result}"
-            calls.clear()
-            os.environ["MAMBA_ROOT_PREFIX"] = "/set/already"
-            assert extract_pages._ocrdoc_env()["MAMBA_ROOT_PREFIX"] == "/set/already"
-            assert len(calls) == 0, "zsh asked although the variable was set"
-        finally:
-            subprocess.run = saved_run
-            extract_pages._mamba_root_cache.clear()
-            os.environ.pop("MAMBA_ROOT_PREFIX", None)
-            if saved_env is not None:
-                os.environ["MAMBA_ROOT_PREFIX"] = saved_env
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        (td / "pdflayer.py").write_text("")
+        python = td / "python"
+        python.write_text("#!/bin/sh\n")
+        cmd, why = extract_pages._ocrdoc_command(str(td), None, "ocr")
+        assert cmd is None and "ocrdoc_python is not set" in why, why
+        cmd, why = extract_pages._ocrdoc_command(str(td), str(python), "ocr")
+        assert cmd is None and "not an executable" in why, why
+        python.chmod(0o755)
+        cmd, why = extract_pages._ocrdoc_command(str(td), str(python), "ocr", "x.pdf")
+        assert cmd == [str(python), str(td / "pdflayer.py"), "ocr", "x.pdf"], (cmd, why)
     return True
 
 
-def _configured_ocrdoc_path():
+def _configured_ocrdoc():
+    """(ocrdoc_path, ocrdoc_python) from config.yaml, resolved; None for either unset."""
     try:
         import yaml
         with open(ROOT / "config.yaml") as f:
-            value = (yaml.safe_load(f) or {}).get("ocrdoc_path")
+            config = yaml.safe_load(f) or {}
     except Exception:
-        return None
-    if not value:
-        return None
-    p = Path(value).expanduser()
-    return str(p if p.is_absolute() else (ROOT / p).resolve())
+        return None, None
+
+    def resolve(value):
+        if not value:
+            return None
+        p = Path(value).expanduser()
+        return str(p if p.is_absolute() else (ROOT / p).resolve())
+    return resolve(config.get("ocrdoc_path")), resolve(config.get("ocrdoc_python"))
 
 
 _SCAN = r"""
@@ -487,13 +464,13 @@ def test_end_to_end_with_ocrdoc_fake_engine():
     # The real ocrdoc CLI, offline: OCRDOC_DOCAI_FAKE answers with Tesseract
     # in place of Google, so this proves the plumbing (preflight, the subset,
     # --langs, the in-place write, the read-back), not Google's quality.
-    # Skipped when config.yaml sets no ocrdoc_path.
+    # Skipped unless config.yaml sets ocrdoc_path and ocrdoc_python.
     import os
     import subprocess
     import tempfile
-    ocrdoc_path = _configured_ocrdoc_path()
-    if not ocrdoc_path:
-        return "skipped: config.yaml sets no ocrdoc_path"
+    ocrdoc_path, ocrdoc_python = _configured_ocrdoc()
+    if not (ocrdoc_path and ocrdoc_python):
+        return "skipped: config.yaml lacks ocrdoc_path or ocrdoc_python"
     saved = {k: os.environ.get(k) for k in
              ("OCRDOC_DOCAI_FAKE", "OCRDOC_DOCAI_STORE", "OCRDOC_STATE")}
     with tempfile.TemporaryDirectory() as td:
@@ -507,10 +484,8 @@ def test_end_to_end_with_ocrdoc_fake_engine():
             # Constructed fixture: an 8-page image-only PDF, drawn in ocrdoc's
             # environment (it has Pillow; ostracon's does not).
             scan = td / "scan.pdf"
-            subprocess.run([extract_pages._micromamba_bin(), "run", "-n", extract_pages.OCRDOC_ENV,
-                            "python", "-c", _SCAN, str(scan), "8"],
-                           check=True, capture_output=True, timeout=120,
-                           env=extract_pages._ocrdoc_env())
+            subprocess.run([ocrdoc_python, "-c", _SCAN, str(scan), "8"],
+                           check=True, capture_output=True, timeout=120)
 
             def no_tesseract(*a, **k):
                 raise AssertionError("Tesseract fallback ran: ocrdoc did not succeed")
@@ -518,6 +493,7 @@ def test_end_to_end_with_ocrdoc_fake_engine():
             with _Patch(run_ocr=no_tesseract):
                 text, total = extract_pages.extract_content(
                     scan, quiet=True, ocr_engine="google", ocrdoc_path=ocrdoc_path,
+                    ocrdoc_python=ocrdoc_python,
                     ocr_timeout=300, log=lines.append, language_prompt_fn=lambda: "eng")
             assert not text.startswith("Error:"), (text, lines)
             assert not any("fell back" in l for l in lines), lines
@@ -557,7 +533,7 @@ TESTS = [
     test_fallback_on_timeout,
     test_fallback_on_thin_yield_reaches_the_forced_retry,
     test_timeout_kills_ocrdoc_child_processes,
-    test_mamba_root_prefix_read_from_zsh_when_unset,
+    test_ocrdoc_command_uses_ocrdocs_interpreter,
     test_end_to_end_with_ocrdoc_fake_engine,
 ]
 

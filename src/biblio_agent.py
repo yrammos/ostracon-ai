@@ -101,7 +101,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _PATH_KEYS = (
     'rules_file', 'house_style_file', 'template_file', 'ref_file',
     'pdf_in_folder', 'pdf_out_folder',
-    'main_bib_file', 'failed_bib_file', 'ocrdoc_path',
+    'main_bib_file', 'failed_bib_file', 'ocrdoc_path', 'ocrdoc_python',
 )
 
 # Of those, the ones naming a file that must exist when the key is configured.
@@ -876,6 +876,7 @@ excerpt's text won't (e.g. an embedded Author field):
             ocr_timeout=self.config.get('ocr_timeout', 180),
             ocr_engine=self.config.get('ocr_engine', 'auto'),
             ocrdoc_path=self.config.get('ocrdoc_path'),
+            ocrdoc_python=self.config.get('ocrdoc_python'),
             log=ocr_log,
             thin_yield_words=self.config.get(
                 'thin_yield_threshold', extract_pages.DEFAULT_THIN_YIELD_WORDS),

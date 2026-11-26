@@ -47,13 +47,16 @@ ocr_threshold: 100 # Minimum words extracted before OCR is attempted on key page
 ocr_timeout: 180 # Seconds to allow ocrmypdf (or ocrdoc) on the extracted page subset before giving up
 
 # OCR engine for scanned PDFs. auto: Google Document AI through ocrdoc when
-# ocrdoc_path is set and ocrdoc's setup check passes, else Tesseract (ocrmypdf).
+# ocrdoc_path and ocrdoc_python are set and ocrdoc's setup check passes, else
+# Tesseract (ocrmypdf).
 # google: an error when ocrdoc is unusable. tesseract: never run ocrdoc.
 # Whenever ocrdoc fails at run time (an error, a timeout, too few words), one
 # log line names the reason and Tesseract reads the pages instead. Google
 # charges about $1.50 per 1,000 pages: some 5 pages, $0.0075, per scanned PDF.
 ocr_engine: auto
-# ocrdoc_path: "/path/to/ocrdoc"  # its checkout; run in its micromamba environment "ocrdoc"
+# ocrdoc_path: "/path/to/ocrdoc"  # its checkout
+# ocrdoc_python: "/path/to/ocrdoc-env/bin/python"  # the interpreter of ocrdoc's environment
+#   (micromamba, poetry, uv or venv alike); in that environment, `python -c "import sys; print(sys.executable)"`
 
 # Words a PDF must yield across all its pages - after OCR, where OCR ran -
 # before its extraction is taken at face value. Below this the entry is marked

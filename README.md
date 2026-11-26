@@ -163,8 +163,9 @@ gemini_api_key_command: "security find-generic-password -s ostracon-gemini-api-k
 | `library_match` | `true` | Report duplicates; an item and its container inherit each other's fields from the library. |
 | `max_tokens` | `4000` | Ceiling per response. |
 | `model` | `claude-sonnet-4-6` | Claude model. |
-| `ocr_engine` | `auto` | Who OCRs a scanned PDF: `auto` (Google Document AI through ocrdoc when `ocrdoc_path` is set and its setup check passes, else Tesseract), `google` (an error when ocrdoc is unusable), or `tesseract`. A failed or thin Google reading is logged and handed to Tesseract. See Cost. |
-| `ocrdoc_path` | — | The ocrdoc checkout, run in its micromamba environment `ocrdoc`. Unset: Tesseract only. |
+| `ocr_engine` | `auto` | Who OCRs a scanned PDF: `auto` (Google Document AI through ocrdoc when `ocrdoc_path` and `ocrdoc_python` are set and its setup check passes, else Tesseract), `google` (an error when ocrdoc is unusable), or `tesseract`. A failed or thin Google reading is logged and handed to Tesseract. See Cost. |
+| `ocrdoc_path` | — | The ocrdoc checkout. Unset: Tesseract only. |
+| `ocrdoc_python` | — | The Python interpreter of ocrdoc's environment, whatever manages it (micromamba, poetry, uv, venv). ocrdoc runs under it directly. |
 | `ocr_threshold` | `100` | Words below which a page is OCR'd. |
 | `ocr_timeout` | `180` | Seconds allowed to `ocrmypdf`, or to ocrdoc. |
 | `open_blocked_in_browser` | `false` | Open a blocked page in Chrome. Needs Chrome's "Allow JavaScript from Apple Events". |
@@ -325,10 +326,8 @@ layer only. `dev/test_setup.py` names the active engine.
 **Google OCR not used.** With `ocrdoc_path` set, the log says why: “ocrdoc
 unusable (…)” when its setup check (`pdflayer.py --preflight ocr`) fails, or
 “Google OCR (ocrdoc) fell back to Tesseract: …” with the exit code, the timeout
-or the word count. ocrdoc runs through `micromamba run -n ocrdoc`, which needs
-`MAMBA_ROOT_PREFIX`; when the environment lacks it (the quick action's does),
-it is read from an interactive zsh, so it must be set in `~/.zshrc` or
-earlier. ocrdoc reads one file at a time
+or the word count. ocrdoc runs as `<ocrdoc_python> <ocrdoc_path>/pdflayer.py`, so
+`ocrdoc_python` must be the interpreter of ocrdoc's own environment. ocrdoc reads one file at a time
 across the Mac, so in a batch the wait for it counts against `ocr_timeout`.
 
 **A scanned PDF yields little but a date.** Its text layer holds only whitespace,

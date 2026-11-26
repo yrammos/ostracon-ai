@@ -192,17 +192,20 @@ def report_ocr_engine():
     except Exception:
         pass   # test_config reports a missing or broken config.yaml
     engine = config.get("ocr_engine", "auto")
-    ocrdoc_path = config.get("ocrdoc_path")
-    if ocrdoc_path:
-        p = Path(ocrdoc_path).expanduser()
-        ocrdoc_path = str(p if p.is_absolute() else (ROOT / p).resolve())
+    def resolve(key):
+        value = config.get(key)
+        if not value:
+            return None
+        p = Path(value).expanduser()
+        return str(p if p.is_absolute() else (ROOT / p).resolve())
+    ocrdoc_path, ocrdoc_python = resolve("ocrdoc_path"), resolve("ocrdoc_python")
     try:
         sys.path.insert(0, str(ROOT / "src"))
         import extract_pages
     except ImportError as e:
         print(f"  ⚠  OCR engine not determined ({e})")
         return False
-    chosen, note = extract_pages.choose_ocr_engine(engine, ocrdoc_path)
+    chosen, note = extract_pages.choose_ocr_engine(engine, ocrdoc_path, ocrdoc_python)
     if chosen == "error":
         print(f"  ✗ OCR engine: {note}")
         return False

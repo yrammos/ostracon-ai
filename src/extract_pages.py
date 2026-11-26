@@ -130,81 +130,34 @@ def _brew_env():
 
 # ---------------------------------------------------------------- ocrdoc (Google Document AI)
 #
-# ocrdoc is a separate program with its own micromamba environment, so it is
-# run, never imported: `micromamba run -n ocrdoc python <ocrdoc>/pdflayer.py`.
+# ocrdoc is a separate program with its own Python environment, so it is run,
+# never imported: `<ocrdoc_python> <ocrdoc_path>/pdflayer.py`. Calling that
+# interpreter directly works whatever manages the environment (micromamba,
+# poetry, uv, venv) and needs no shell variables, which the Quick Action lacks.
 # It is given only the temporary page subset run_ocr() would give ocrmypdf,
 # never the user's file, and writes Google's text into that subset in place.
 
 OCR_ENGINES = ("auto", "google", "tesseract")
-OCRDOC_ENV = "ocrdoc"               # ocrdoc's micromamba environment
 OCRDOC_PREFLIGHT_TIMEOUT = 60       # seconds; the check makes no network call
 
 _preflight_lock = threading.Lock()
 _preflight_cache = {}
 
 
-def _micromamba_bin():
-    """The micromamba executable, or None. In an interactive shell micromamba
-    is usually a shell function, invisible to subprocess, so the binary is
-    looked for directly."""
-    found = shutil.which("micromamba") or os.environ.get("MAMBA_EXE")
-    if found and Path(found).exists():
-        return found
-    for p in ("~/.local/bin/micromamba", "/opt/homebrew/bin/micromamba",
-              "/usr/local/bin/micromamba"):
-        p = Path(p).expanduser()
-        if p.exists():
-            return str(p)
-    return None
-
-
-_mamba_root_lock = threading.Lock()  # not _preflight_lock: the preflight holds it while it runs ocrdoc
-_mamba_root_cache = []
-
-
-def _mamba_root_prefix():
-    """MAMBA_ROOT_PREFIX from the environment, else as an interactive zsh sets
-    it (~/.zshrc), else None. The Quick Action starts without the variables
-    the shell sets, and without this micromamba cannot find ocrdoc's
-    environment. Asked once per process."""
-    if os.environ.get("MAMBA_ROOT_PREFIX"):
-        return os.environ["MAMBA_ROOT_PREFIX"]
-    with _mamba_root_lock:
-        if not _mamba_root_cache:
-            value = None
-            try:
-                out = subprocess.run(
-                    ["/bin/zsh", "-lic", 'print -r -- "$MAMBA_ROOT_PREFIX"'],
-                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10,
-                ).stdout
-                lines = [l.strip() for l in out.splitlines() if l.strip()]
-                value = lines[-1] if lines and Path(lines[-1]).is_dir() else None
-            except (OSError, subprocess.SubprocessError):
-                pass
-            _mamba_root_cache.append(value)
-        return _mamba_root_cache[0]
-
-
-def _ocrdoc_env():
-    """_brew_env() plus MAMBA_ROOT_PREFIX, for running ocrdoc."""
-    env = _brew_env()
-    root = _mamba_root_prefix()
-    if root:
-        env["MAMBA_ROOT_PREFIX"] = root
-    return env
-
-
-def _ocrdoc_command(ocrdoc_path, *args):
-    """(argv, None) for running ocrdoc's pdflayer.py with args, or (None, reason)."""
+def _ocrdoc_command(ocrdoc_path, ocrdoc_python, *args):
+    """(argv, None) for running ocrdoc's pdflayer.py with args under ocrdoc's
+    own interpreter, or (None, reason)."""
     if not ocrdoc_path:
         return None, "ocrdoc_path is not set"
     root = Path(ocrdoc_path).expanduser()
     if not (root / "pdflayer.py").is_file():
         return None, f"no pdflayer.py in {root}"
-    mamba = _micromamba_bin()
-    if not mamba:
-        return None, "micromamba not found"
-    return [mamba, "run", "-n", OCRDOC_ENV, "python", str(root / "pdflayer.py"), *args], None
+    if not ocrdoc_python:
+        return None, "ocrdoc_python is not set"
+    python = Path(ocrdoc_python).expanduser()
+    if not (python.is_file() and os.access(python, os.X_OK)):
+        return None, f"ocrdoc_python is not an executable file: {python}"
+    return [str(python), str(root / "pdflayer.py"), *args], None
 
 
 def _run_group(cmd, timeout, cwd=None):
@@ -213,7 +166,7 @@ def _run_group(cmd, timeout, cwd=None):
     would leave running - and calling Google - after the fallback began.
     Returns (returncode, stdout, stderr); raises subprocess.TimeoutExpired."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            env=_ocrdoc_env(), cwd=cwd, start_new_session=True)
+                            env=_brew_env(), cwd=cwd, start_new_session=True)
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -235,14 +188,15 @@ def _last_line(*texts):
     return ""
 
 
-def ocrdoc_preflight(ocrdoc_path):
+def ocrdoc_preflight(ocrdoc_path, ocrdoc_python=None):
     """(usable, reason): ocrdoc's own setup check, `pdflayer.py --preflight
-    ocr`, which makes no network call. Run once per process and path."""
-    key = str(ocrdoc_path)
+    ocr`, which makes no network call. Run once per process, path and
+    interpreter."""
+    key = (str(ocrdoc_path), str(ocrdoc_python))
     with _preflight_lock:
         if key in _preflight_cache:
             return _preflight_cache[key]
-        cmd, why = _ocrdoc_command(ocrdoc_path, "--preflight", "ocr")
+        cmd, why = _ocrdoc_command(ocrdoc_path, ocrdoc_python, "--preflight", "ocr")
         if cmd is None:
             result = (False, why)
         else:
@@ -259,7 +213,7 @@ def ocrdoc_preflight(ocrdoc_path):
         return result
 
 
-def choose_ocr_engine(ocr_engine="auto", ocrdoc_path=None):
+def choose_ocr_engine(ocr_engine="auto", ocrdoc_path=None, ocrdoc_python=None):
     """("google" | "tesseract", note) or ("error", message).
 
     auto: Google when ocrdoc_path is set and ocrdoc's preflight passes, else
@@ -275,7 +229,7 @@ def choose_ocr_engine(ocr_engine="auto", ocrdoc_path=None):
         if engine == "google":
             return "error", "ocr_engine is google but ocrdoc_path is not set"
         return "tesseract", None
-    usable, why = ocrdoc_preflight(ocrdoc_path)
+    usable, why = ocrdoc_preflight(ocrdoc_path, ocrdoc_python)
     if usable:
         return "google", None
     if engine == "google":
@@ -283,7 +237,8 @@ def choose_ocr_engine(ocr_engine="auto", ocrdoc_path=None):
     return "tesseract", f"ocrdoc unusable ({why}); OCR by Tesseract"
 
 
-def run_google_ocr(pdf_path, page_numbers, ocrdoc_path, language="eng", timeout=180):
+def run_google_ocr(pdf_path, page_numbers, ocrdoc_path, language="eng", timeout=180,
+                   ocrdoc_python=None):
     """OCR the given pages with ocrdoc (Google Document AI) on a temporary
     page subset, as run_ocr() does with ocrmypdf.
 
@@ -295,7 +250,7 @@ def run_google_ocr(pdf_path, page_numbers, ocrdoc_path, language="eng", timeout=
     """
     tmp_path = _write_subset(pdf_path, page_numbers)
     try:
-        cmd, why = _ocrdoc_command(ocrdoc_path, "ocr", str(tmp_path),
+        cmd, why = _ocrdoc_command(ocrdoc_path, ocrdoc_python, "ocr", str(tmp_path),
                                    "--langs", language or "eng", "--yes")
         if cmd is None:
             return f"OCR Error: {why}"
@@ -478,7 +433,7 @@ def _merged(page_texts, ocr_result):
 
 def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_threshold=100,
                      quiet=False, language_prompt_fn=None, ocr_timeout=180,
-                     ocr_engine="auto", ocrdoc_path=None, log=None):
+                     ocr_engine="auto", ocrdoc_path=None, ocrdoc_python=None, log=None):
     """
     Extract beginning and end of PDF for bibliographic extraction.
 
@@ -496,6 +451,7 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         ocr_timeout: Seconds to allow ocrmypdf, or ocrdoc, before giving up
         ocr_engine: "auto", "google" or "tesseract"; see choose_ocr_engine()
         ocrdoc_path: The ocrdoc checkout, or None when it is not installed
+        ocrdoc_python: The Python interpreter of ocrdoc's environment
         log: Optional callable (str) -> None for the OCR engine's messages:
             which engine read the pages, and why ocrdoc was passed over or
             fell back to Tesseract. Without it they go to stderr, the
@@ -541,7 +497,7 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
             elif always or not quiet:
                 print(message, file=sys.stderr)
 
-        engine, note = choose_ocr_engine(ocr_engine, ocrdoc_path)
+        engine, note = choose_ocr_engine(ocr_engine, ocrdoc_path, ocrdoc_python)
         if engine == "error":
             say(f"⚠️  {note}", always=True)
             return f"Error: {note}", 0
@@ -555,7 +511,8 @@ def extract_content(pdf_path, min_first_words=450, last_words=150, min_words_thr
         done = False
         if engine == "google":
             google = run_google_ocr(pdf_path, ocr_pages, ocrdoc_path,
-                                    language=language, timeout=ocr_timeout)
+                                    language=language, timeout=ocr_timeout,
+                                    ocrdoc_python=ocrdoc_python)
             if isinstance(google, dict):
                 g_texts, g_full, g_words = _merged(page_texts, google)
                 if len(g_words) >= min_words_threshold:
@@ -656,7 +613,8 @@ def extract_pdf(pdf_path, thin_yield_words=DEFAULT_THIN_YIELD_WORDS, **opts):
     presents the same interface as other source extractors (e.g.
     web_source.extract_webloc). Accepts the same keyword options as
     extract_content() (min_first_words, last_words, min_words_threshold,
-    quiet, language_prompt_fn, ocr_timeout, ocr_engine, ocrdoc_path, log).
+    quiet, language_prompt_fn, ocr_timeout, ocr_engine, ocrdoc_path,
+    ocrdoc_python, log).
 
     Args:
         thin_yield_words: Below this many words for the whole PDF, the result
