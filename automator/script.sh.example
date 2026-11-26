@@ -3,15 +3,6 @@ WORKDIR="/path/to/ostracon-ai"  # absolute path to this repository
 
 cd "$WORKDIR"
 
-# The quick action starts with a minimal environment, without the variables an
-# interactive zsh sets. micromamba needs MAMBA_ROOT_PREFIX to find ocrdoc's
-# environment (Google OCR); without it OCR falls back to Tesseract. Read it from
-# zsh rather than hardwiring it here, so it follows wherever ~/.zshrc sets it.
-if [ -z "${MAMBA_ROOT_PREFIX:-}" ]; then
-    MAMBA_ROOT_PREFIX=$(/bin/zsh -lic 'print -r -- "$MAMBA_ROOT_PREFIX"' 2>/dev/null </dev/null | tail -n 1)
-    [ -n "$MAMBA_ROOT_PREFIX" ] && export MAMBA_ROOT_PREFIX
-fi
-
 # Pre-flight before the batch: dependencies, config, and the context files
 # that form the cached prompt prefix. Silent when everything is in order.
 # Without it a broken environment surfaces as a Python traceback in an alert,

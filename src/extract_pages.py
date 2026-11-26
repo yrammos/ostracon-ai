@@ -158,6 +158,42 @@ def _micromamba_bin():
     return None
 
 
+_mamba_root_lock = threading.Lock()  # not _preflight_lock: the preflight holds it while it runs ocrdoc
+_mamba_root_cache = []
+
+
+def _mamba_root_prefix():
+    """MAMBA_ROOT_PREFIX from the environment, else as an interactive zsh sets
+    it (~/.zshrc), else None. The Quick Action starts without the variables
+    the shell sets, and without this micromamba cannot find ocrdoc's
+    environment. Asked once per process."""
+    if os.environ.get("MAMBA_ROOT_PREFIX"):
+        return os.environ["MAMBA_ROOT_PREFIX"]
+    with _mamba_root_lock:
+        if not _mamba_root_cache:
+            value = None
+            try:
+                out = subprocess.run(
+                    ["/bin/zsh", "-lic", 'print -r -- "$MAMBA_ROOT_PREFIX"'],
+                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10,
+                ).stdout
+                lines = [l.strip() for l in out.splitlines() if l.strip()]
+                value = lines[-1] if lines and Path(lines[-1]).is_dir() else None
+            except (OSError, subprocess.SubprocessError):
+                pass
+            _mamba_root_cache.append(value)
+        return _mamba_root_cache[0]
+
+
+def _ocrdoc_env():
+    """_brew_env() plus MAMBA_ROOT_PREFIX, for running ocrdoc."""
+    env = _brew_env()
+    root = _mamba_root_prefix()
+    if root:
+        env["MAMBA_ROOT_PREFIX"] = root
+    return env
+
+
 def _ocrdoc_command(ocrdoc_path, *args):
     """(argv, None) for running ocrdoc's pdflayer.py with args, or (None, reason)."""
     if not ocrdoc_path:
@@ -177,7 +213,7 @@ def _run_group(cmd, timeout, cwd=None):
     would leave running - and calling Google - after the fallback began.
     Returns (returncode, stdout, stderr); raises subprocess.TimeoutExpired."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            env=_brew_env(), cwd=cwd, start_new_session=True)
+                            env=_ocrdoc_env(), cwd=cwd, start_new_session=True)
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:

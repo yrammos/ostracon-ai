@@ -403,6 +403,54 @@ def test_timeout_kills_ocrdoc_child_processes():
     raise AssertionError(f"background child {pid} survived the timeout")
 
 
+def test_mamba_root_prefix_read_from_zsh_when_unset():
+    """The Quick Action's environment lacks MAMBA_ROOT_PREFIX: it is read from
+    an interactive zsh (last line of its output, noise before it ignored) and
+    passed to ocrdoc; when already set, zsh is never asked."""
+    import os
+    import subprocess
+    import tempfile
+    calls = []
+    saved_env = os.environ.pop("MAMBA_ROOT_PREFIX", None)
+    saved_run = subprocess.run
+    with tempfile.TemporaryDirectory() as root:
+        def fake_run(cmd, **kw):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout=f"motd noise\n{root}\n", stderr="")
+        try:
+            subprocess.run = fake_run
+            extract_pages._mamba_root_cache.clear()
+            assert extract_pages._ocrdoc_env()["MAMBA_ROOT_PREFIX"] == root
+            extract_pages._ocrdoc_env()
+            assert len(calls) == 1, f"zsh asked {len(calls)} times"
+            # The lookup runs inside ocrdoc_preflight(), which holds its own
+            # lock: sharing that lock deadlocked here. Run it with the cache
+            # cold, in a thread, so a regression fails instead of hanging.
+            import threading
+            extract_pages._mamba_root_cache.clear()
+            extract_pages._preflight_cache.clear()
+            result = []
+            with _Patch(_ocrdoc_command=lambda path, *a: (["/usr/bin/true"], None)):
+                t = threading.Thread(target=lambda: result.append(
+                    extract_pages.ocrdoc_preflight(root)), daemon=True)
+                t.start()
+                t.join(15)
+            extract_pages._preflight_cache.clear()
+            assert not t.is_alive(), "ocrdoc_preflight() deadlocked on the MAMBA_ROOT_PREFIX lookup"
+            assert result and result[0][0], f"preflight failed: {result}"
+            calls.clear()
+            os.environ["MAMBA_ROOT_PREFIX"] = "/set/already"
+            assert extract_pages._ocrdoc_env()["MAMBA_ROOT_PREFIX"] == "/set/already"
+            assert len(calls) == 0, "zsh asked although the variable was set"
+        finally:
+            subprocess.run = saved_run
+            extract_pages._mamba_root_cache.clear()
+            os.environ.pop("MAMBA_ROOT_PREFIX", None)
+            if saved_env is not None:
+                os.environ["MAMBA_ROOT_PREFIX"] = saved_env
+    return True
+
+
 def _configured_ocrdoc_path():
     try:
         import yaml
@@ -461,7 +509,8 @@ def test_end_to_end_with_ocrdoc_fake_engine():
             scan = td / "scan.pdf"
             subprocess.run([extract_pages._micromamba_bin(), "run", "-n", extract_pages.OCRDOC_ENV,
                             "python", "-c", _SCAN, str(scan), "8"],
-                           check=True, capture_output=True, timeout=120)
+                           check=True, capture_output=True, timeout=120,
+                           env=extract_pages._ocrdoc_env())
 
             def no_tesseract(*a, **k):
                 raise AssertionError("Tesseract fallback ran: ocrdoc did not succeed")
@@ -508,6 +557,7 @@ TESTS = [
     test_fallback_on_timeout,
     test_fallback_on_thin_yield_reaches_the_forced_retry,
     test_timeout_kills_ocrdoc_child_processes,
+    test_mamba_root_prefix_read_from_zsh_when_unset,
     test_end_to_end_with_ocrdoc_fake_engine,
 ]
 
