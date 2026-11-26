@@ -326,9 +326,9 @@ layer only. `dev/test_setup.py` names the active engine.
 unusable (…)” when its setup check (`pdflayer.py --preflight ocr`) fails, or
 “Google OCR (ocrdoc) fell back to Tesseract: …” with the exit code, the timeout
 or the word count. ocrdoc runs through `micromamba run -n ocrdoc`; the quick
-action gets a minimal environment, so if `micromamba` cannot find the
-environment there, add `export MAMBA_ROOT_PREFIX=...` (your micromamba root) to
-`automator/script.sh` and re-run `./install`. ocrdoc reads one file at a time
+action gets a minimal environment, so `automator/script.sh.example` reads
+`MAMBA_ROOT_PREFIX` from an interactive zsh. A `script.sh` copied before that
+change lacks those lines: copy them from the `.example` and re-run `./install`. ocrdoc reads one file at a time
 across the Mac, so in a batch the wait for it counts against `ocr_timeout`.
 
 **A scanned PDF yields little but a date.** Its text layer holds only whitespace,
